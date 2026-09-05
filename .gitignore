@@ -11,3 +11,10 @@ dist/
 
 *.log
 .DS_Store
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Generated pdf.js worker — copied from node_modules at install/build time.
+# Served same-origin at /pdf.worker.min.mjs; never commit the binary.
+public/pdf.worker.min.mjs
