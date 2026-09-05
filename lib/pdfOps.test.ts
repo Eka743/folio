@@ -9,9 +9,11 @@ import { PDFDocument } from "pdf-lib";
 import {
   getPdfPageCount,
   imagesToPdf,
+  loadPdfDocument,
   mergePdfs,
   optimizePdf,
   rotatePdf,
+  sanitizeMammothHtml,
   splitPdf,
 } from "./pdfOps";
 
@@ -80,5 +82,45 @@ describe("pdf engine", () => {
   it("builds a PDF with one page per image", async () => {
     const out = await imagesToPdf([makePng("a.png"), makePng("b.png")]);
     expect(await getPdfPageCount(out)).toBe(2);
+  });
+
+  it("rejects malformed PDFs with human-readable errors", async () => {
+    const bad = new File(["not a pdf at all"], "bad.pdf", {
+      type: "application/pdf",
+    });
+    const badBytes = new Uint8Array(await bad.arrayBuffer());
+    await expect(loadPdfDocument(badBytes)).rejects.toThrow(
+      /Could not read this PDF/,
+    );
+    await expect(getPdfPageCount(badBytes)).rejects.toThrow(
+      /Could not read this PDF/,
+    );
+    await expect(mergePdfs([bad])).rejects.toThrow(/Could not read this PDF/);
+    await expect(splitPdf(bad, [1])).rejects.toThrow(/Could not read this PDF/);
+    await expect(rotatePdf(bad, null, 90)).rejects.toThrow(
+      /Could not read this PDF/,
+    );
+    await expect(optimizePdf(bad)).rejects.toThrow(/Could not read this PDF/);
+  });
+
+  it("sanitizes mammoth HTML but preserves content tags", async () => {
+    const dirty =
+      `<h1>Title</h1><p>Hello <strong>world</strong></p>` +
+      `<script>alert(1)</script>` +
+      `<iframe src="https://evil.example"></iframe>` +
+      `<p onclick="alert(1)" onload="x()">click</p>` +
+      `<a href="javascript:alert(1)">bad</a>` +
+      `<a href="https://example.com">good</a>` +
+      `<ul><li>one</li></ul><table><tr><td>cell</td></tr></table>`;
+    const clean = sanitizeMammothHtml(dirty);
+    expect(clean).not.toContain("<script");
+    expect(clean).not.toContain("<iframe");
+    expect(clean).not.toMatch(/onclick/i);
+    expect(clean).not.toContain("javascript:");
+    expect(clean).toContain("<h1>Title</h1>");
+    expect(clean).toContain("<strong>world</strong>");
+    expect(clean).toContain("<ul>");
+    expect(clean).toContain("<table>");
+    expect(clean).toContain('href="https://example.com"');
   });
 });

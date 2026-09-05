@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dropzone, FileList, type ListedFile } from "@/components/Dropzone";
 import {
   FieldLabel,
@@ -13,6 +13,7 @@ import {
 import {
   formatBytes,
   formatPercentChange,
+  safeFileName,
   validateFiles,
   withExtension,
 } from "@/lib/files";
@@ -32,12 +33,6 @@ type Result =
   | { kind: "images"; pages: Array<{ page: number; url: string; size: number }> }
   | null;
 
-interface JpgPage {
-  page: number;
-  blob: Blob;
-  url: string;
-}
-
 export function ToolRunner({ tool }: { tool: FolioTool }) {
   const [files, setFiles] = useState<ListedFile[]>([]);
   const [complaints, setComplaints] = useState<string[]>([]);
@@ -46,31 +41,49 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
-  const [jpgPages, setJpgPages] = useState<JpgPage[]>([]);
 
   // Per-tool options
   const [rangeText, setRangeText] = useState("1-3,5");
   const [rotateMode, setRotateMode] = useState<"all" | "pages">("all");
   const [degrees, setDegrees] = useState<RotationDegrees>(90);
+  const [zipMeta, setZipMeta] = useState<{ name: string; size: number } | null>(null);
 
   const fileObjs = useMemo(() => files.map((f) => f.file), [files]);
 
-  // Revoke object URLs when results are cleared.
+  // Single registry for every object URL this component creates, so cleanup
+  // never depends on stale state closures or double-revokes.
+  const urlsRef = useRef<Set<string>>(new Set());
+  const trackUrl = useCallback((url: string): string => {
+    urlsRef.current.add(url);
+    return url;
+  }, []);
+  const revokeAllUrls = useCallback(() => {
+    for (const url of urlsRef.current) URL.revokeObjectURL(url);
+    urlsRef.current.clear();
+  }, []);
+
+  // Revoke any remaining object URLs on unmount only.
   useEffect(() => {
+    const registry = urlsRef.current;
     return () => {
-      if (resultUrl) URL.revokeObjectURL(resultUrl);
-      for (const p of jpgPages) URL.revokeObjectURL(p.url);
+      for (const url of registry) URL.revokeObjectURL(url);
+      registry.clear();
     };
-  }, [resultUrl, jpgPages]);
+  }, []);
 
   const resetResults = useCallback(() => {
-    if (resultUrl) URL.revokeObjectURL(resultUrl);
-    for (const p of jpgPages) URL.revokeObjectURL(p.url);
-    setJpgPages([]);
+    revokeAllUrls();
     setResultUrl(null);
     setResult(null);
     setError(null);
-  }, [resultUrl, jpgPages]);
+    setZipMeta(null);
+  }, [revokeAllUrls]);
+
+  function blobUrl(bytes: Uint8Array, mime: string): string {
+    const copy = new Uint8Array(bytes.length);
+    copy.set(bytes);
+    return trackUrl(URL.createObjectURL(new Blob([copy], { type: mime })));
+  }
 
   const addFiles = useCallback(
     (incoming: File[]) => {
@@ -130,7 +143,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           const { mergePdfs } = await import("@/lib/pdfOps");
           const bytes = await mergePdfs(fileObjs);
           const name = withExtension(
-            `${stripExt(fileObjs[0].name)}-merged`,
+            `${safeFileName(fileObjs[0].name)}-merged`,
             "pdf",
           );
           const url = blobUrl(bytes, "application/pdf");
@@ -150,7 +163,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           setProgress(`Extracting ${summarizePages(parsed.pages)}…`);
           const bytes = await splitPdf(file, parsed.pages);
           const name = withExtension(
-            `${stripExt(file.name)}-pages-${parsed.pages[0]}-${parsed.pages[parsed.pages.length - 1]}`,
+            `${safeFileName(file.name)}-pages-${parsed.pages[0]}-${parsed.pages[parsed.pages.length - 1]}`,
             "pdf",
           );
           const url = blobUrl(bytes, "application/pdf");
@@ -170,7 +183,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           const bytes = await imagesToPdf(fileObjs);
           const name = withExtension(
             fileObjs.length === 1
-              ? `${stripExt(fileObjs[0].name)}`
+              ? `${safeFileName(fileObjs[0].name)}`
               : "folio-images",
             "pdf",
           );
@@ -183,7 +196,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           const file = needSingle(fileObjs);
           const { docxToPdf } = await import("@/lib/pdfOps");
           const bytes = await docxToPdf(file, (stage) => setProgress(stage));
-          const name = withExtension(stripExt(file.name), "pdf");
+          const name = withExtension(safeFileName(file.name), "pdf");
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
           setResult({
@@ -206,10 +219,9 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           const withUrls = pages.map((p) => ({
             page: p.pageNumber,
             blob: p.blob,
-            url: URL.createObjectURL(p.blob),
+            url: trackUrl(URL.createObjectURL(p.blob)),
           }));
-          setJpgPages(withUrls);
-          const base = stripExt(file.name);
+          const base = safeFileName(file.name, "page");
           if (withUrls.length === 1) {
             setResult({
               kind: "images",
@@ -227,7 +239,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               zip.file(`${base}-p${p.page}.jpg`, p.blob);
             }
             const zipBlob = await zip.generateAsync({ type: "blob" });
-            const url = URL.createObjectURL(zipBlob);
+            const url = trackUrl(URL.createObjectURL(zipBlob));
             setResultUrl(url);
             setResult({
               kind: "images",
@@ -261,7 +273,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           }
           const bytes = await rotatePdf(file, targets, degrees);
           const name = withExtension(
-            `${stripExt(file.name)}-rotated-${degrees}`,
+            `${safeFileName(file.name)}-rotated-${degrees}`,
             "pdf",
           );
           const url = blobUrl(bytes, "application/pdf");
@@ -274,7 +286,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           setProgress("Optimizing PDF…");
           const { optimizePdf } = await import("@/lib/pdfOps");
           const { bytes, beforeBytes, afterBytes } = await optimizePdf(file);
-          const name = withExtension(`${stripExt(file.name)}-optimized`, "pdf");
+          const name = withExtension(`${safeFileName(file.name)}-optimized`, "pdf");
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
           setResult({ kind: "compress", fileName: name, before: beforeBytes, after: afterBytes });
@@ -288,11 +300,6 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
       setProgress("");
     }
   }
-
-  const [zipMeta, setZipMeta] = useState<{ name: string; size: number } | null>(null);
-  useEffect(() => {
-    if (!result) setZipMeta(null);
-  }, [result]);
 
   const canRun =
     !busy &&
@@ -339,12 +346,13 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
         {(tool.slug === "split-pdf" ||
           (tool.slug === "rotate-pdf" && rotateMode === "pages")) && (
           <div>
-            <FieldLabel>
+            <FieldLabel htmlFor="folio-pages">
               {tool.slug === "split-pdf"
                 ? "Pages to keep (e.g. 1-3,5,8-10)"
                 : "Pages to rotate (e.g. 1-3,5)"}
             </FieldLabel>
             <input
+              id="folio-pages"
               type="text"
               value={rangeText}
               onChange={(e) => setRangeText(e.target.value)}
@@ -519,7 +527,10 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
                   </span>
                   <a
                     href={p.url}
-                    download={`${baseName(files[0]?.file.name ?? "page")}-p${p.page}.jpg`}
+                    download={withExtension(
+                      `${safeFileName(files[0]?.file.name ?? "page", "page")}-p${p.page}`,
+                      "jpg",
+                    )}
                     className="font-medium text-accent-600 hover:underline"
                   >
                     Download JPG
@@ -537,20 +548,6 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
 function needSingle(objs: File[]): File {
   if (objs.length !== 1) throw new Error("Add exactly one file to continue.");
   return objs[0];
-}
-
-function stripExt(name: string): string {
-  return name.replace(/\.[a-z0-9]+$/i, "") || "document";
-}
-
-function baseName(name: string): string {
-  return stripExt(name.split(/[\\/]/).pop() ?? "page");
-}
-
-function blobUrl(bytes: Uint8Array, mime: string): string {
-  const copy = new Uint8Array(bytes.length);
-  copy.set(bytes);
-  return URL.createObjectURL(new Blob([copy], { type: mime }));
 }
 
 function actionLabel(slug: string): string {

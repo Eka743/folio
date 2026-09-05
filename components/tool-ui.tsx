@@ -34,9 +34,18 @@ export function ToolHeader({
   );
 }
 
-export function FieldLabel({ children }: { children: React.ReactNode }) {
+export function FieldLabel({
+  children,
+  htmlFor,
+}: {
+  children: React.ReactNode;
+  htmlFor?: string;
+}) {
   return (
-    <label className="mb-1.5 block text-sm font-medium text-ink-900">
+    <label
+      htmlFor={htmlFor}
+      className="mb-1.5 block text-sm font-medium text-ink-900"
+    >
       {children}
     </label>
   );

@@ -7,9 +7,57 @@
  */
 
 export async function getPdfPageCount(data: Uint8Array): Promise<number> {
-  const { PDFDocument } = await import("pdf-lib");
-  const doc = await PDFDocument.load(data, { ignoreEncryption: true });
+  const doc = await loadPdfDocument(data);
   return doc.getPageCount();
+}
+
+/**
+ * Load a PDF with human-readable errors. pdf-lib throws low-level parser
+ * messages ("Invalid PDF structure") for corrupt files; surface guidance
+ * users can act on instead.
+ */
+export async function loadPdfDocument(
+  data: Uint8Array,
+): Promise<import("pdf-lib").PDFDocument> {
+  const { PDFDocument } = await import("pdf-lib");
+  try {
+    return await PDFDocument.load(data, { ignoreEncryption: true });
+  } catch {
+    throw new Error(
+      "Could not read this PDF — the file may be corrupted, password-protected, or not a valid PDF.",
+    );
+  }
+}
+
+/**
+ * Strip dangerous constructs from mammoth HTML before injecting it into
+ * the layout host. Content tags (p/h1-h6/ul/ol/table/img/a/strong/em)
+ * are preserved; scripts, frames, forms, event handlers and
+ * javascript:/data:text/html URLs are removed.
+ */
+export function sanitizeMammothHtml(html: string): string {
+  let out = html
+    .replace(/<script[\s\S]*?<\/script\s*>/gi, "")
+    .replace(/<style[\s\S]*?<\/style\s*>/gi, "")
+    .replace(/<\/?(iframe|frame|frameset|object|embed|form|input|button|select|textarea|meta|link|base)\b[^>]*>/gi, "");
+  // Strip event-handler attributes (onclick=, onerror=, …).
+  out = out.replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  // Neutralize javascript: and data:text/html URLs in href/src/action.
+  out = out.replace(
+    /\s(href|src|xlink:href|action)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+    (match, attr: string, _q: string, d: string, s: string, u: string) => {
+      const raw = (d ?? s ?? u ?? "").trim().toLowerCase();
+      if (
+        raw.startsWith("javascript:") ||
+        raw.startsWith("data:text/html") ||
+        raw.startsWith("vbscript:")
+      ) {
+        return ` ${attr}="#"`;
+      }
+      return match;
+    },
+  );
+  return out;
 }
 
 export async function mergePdfs(files: File[]): Promise<Uint8Array> {
@@ -17,7 +65,7 @@ export async function mergePdfs(files: File[]): Promise<Uint8Array> {
   const out = await PDFDocument.create();
   for (const file of files) {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const src = await loadPdfDocument(bytes);
     const pages = await out.copyPages(src, src.getPageIndices());
     for (const p of pages) out.addPage(p);
   }
@@ -30,7 +78,7 @@ export async function splitPdf(
 ): Promise<Uint8Array> {
   const { PDFDocument } = await import("pdf-lib");
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const src = await loadPdfDocument(bytes);
   const out = await PDFDocument.create();
   const indices = [...new Set(keepPages1Based.map((p) => p - 1))]
     .filter((i) => i >= 0 && i < src.getPageCount())
@@ -49,9 +97,9 @@ export async function rotatePdf(
   pages1Based: number[] | null,
   degrees: RotationDegrees,
 ): Promise<Uint8Array> {
-  const { PDFDocument, degrees: toDegrees } = await import("pdf-lib");
+  const { degrees: toDegrees } = await import("pdf-lib");
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const doc = await loadPdfDocument(bytes);
   const count = doc.getPageCount();
   const targets =
     pages1Based === null
@@ -80,10 +128,9 @@ export interface OptimizeResult {
  * already-optimized PDFs may barely change, and the UI must say so.
  */
 export async function optimizePdf(file: File): Promise<OptimizeResult> {
-  const { PDFDocument } = await import("pdf-lib");
   const beforeBytes = file.size;
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const doc = await loadPdfDocument(bytes);
   doc.setProducer("Folio");
   doc.setCreator("Folio (local processing)");
   const out = await doc.save({ useObjectStreams: true, addDefaultPage: false });
@@ -195,22 +242,29 @@ export interface RenderedPage {
   height: number;
 }
 
-const PDFJS_VERSION = "4.10.38";
+const PDF_WORKER_SRC = "/pdf.worker.min.mjs";
 
 export async function renderPdfPages(
   file: File,
   opts: { scale?: number; onProgress?: (done: number, total: number) => void } = {},
 ): Promise<RenderedPage[]> {
   const pdfjs = await import("pdfjs-dist");
-  // Only pdf.js library code is fetched from the CDN; document bytes never
-  // leave the browser. Pinned version matches the installed release.
+  // Self-hosted worker: same-origin, no third-party CDN at runtime.
+  // Document bytes never leave the browser.
   if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.mjs`;
+    pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
   }
 
   const data = new Uint8Array(await file.arrayBuffer());
-  const loading = pdfjs.getDocument({ data });
-  const pdf = await loading.promise;
+  let pdf;
+  try {
+    const loading = pdfjs.getDocument({ data });
+    pdf = await loading.promise;
+  } catch {
+    throw new Error(
+      "Could not read this PDF — the file may be corrupted, password-protected, or not a valid PDF.",
+    );
+  }
   const out: RenderedPage[] = [];
   const scale = opts.scale ?? 2;
 
@@ -257,10 +311,19 @@ export async function docxToPdf(
   ]);
 
   const buffer = await file.arrayBuffer();
-  const { value: html } = await convertToHtml({ arrayBuffer: buffer });
+  let html: string;
+  try {
+    const result = await convertToHtml({ arrayBuffer: buffer });
+    html = result.value;
+  } catch {
+    throw new Error(
+      "Could not read this Word document — the file may be corrupted or not a valid .docx file.",
+    );
+  }
   if (!html || html.trim().length === 0) {
     throw new Error("No readable content found in this document.");
   }
+  const safeHtml = sanitizeMammothHtml(html);
 
   onProgress?.("Laying out pages…");
   const host = document.createElement("div");
@@ -270,7 +333,7 @@ export async function docxToPdf(
   host.innerHTML =
     `<div class="folio-docx" style="width:794px;background:#fff;color:#111;` +
     `font-family:Georgia,'Times New Roman',serif;font-size:15px;line-height:1.6;` +
-    `padding:48px 56px;word-wrap:break-word;">${html}</div>` +
+    `padding:48px 56px;word-wrap:break-word;">${safeHtml}</div>` +
     `<style>
       .folio-docx h1{font-size:28px;line-height:1.25;margin:0 0 12px;font-family:Inter,system-ui,sans-serif;font-weight:700}
       .folio-docx h2{font-size:22px;margin:22px 0 8px;font-family:Inter,system-ui,sans-serif;font-weight:700}

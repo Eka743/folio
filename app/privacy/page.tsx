@@ -30,14 +30,13 @@ export default function PrivacyPage() {
         </section>
 
         <section className="rounded-2xl border border-slate-200 p-5">
-          <h2 className="font-semibold text-ink-950">One exception, honestly stated</h2>
+          <h2 className="font-semibold text-ink-950">Fully self-contained</h2>
           <p className="mt-2">
-            The PDF-to-JPG tool loads the open-source pdf.js rendering engine
-            from a pinned CDN URL (unpkg, version-pinned) so the download
-            stays small. That request fetches library code only — your
-            document bytes are never sent anywhere. If your network blocks
-            CDNs, that single tool may fail to load; every other tool is
-            fully self-contained.
+            Every tool — including PDF-to-JPG — runs with libraries served
+            from Folio itself. The pdf.js rendering engine is hosted
+            same-origin (no third-party CDN at runtime), so using Folio
+            makes zero third-party network requests. Your document bytes
+            are never sent anywhere.
           </p>
         </section>
 

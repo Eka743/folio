@@ -5,16 +5,16 @@
   "description": "Folio — free, simple, privacy-first web toolkit for everyday document and PDF operations.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/copy-pdf-worker.mjs && next build",
+    "postinstall": "node scripts/copy-pdf-worker.mjs",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "docx-preview": "^0.3.4",
     "html2canvas": "^1.4.1",
-    "jspdf": "^2.5.2",
+    "jspdf": "^4.2.1",
     "jszip": "^3.10.1",
     "mammoth": "^1.10.0",
     "next": "15.5.25",

@@ -89,9 +89,9 @@ export default function HomePage() {
           <div>
             <h2 className="font-semibold text-ink-950">No trackers</h2>
             <p className="mt-2 text-[15px] leading-relaxed text-ink-500">
-              No analytics SDKs, no ad scripts, no third-party tracking. The
-              only network request beyond the page itself is the open-source
-              PDF renderer loaded for PDF-to-JPG.
+              No analytics SDKs, no ad scripts, no third-party tracking. All
+              libraries — including the PDF renderer — are served from Folio
+              itself.
             </p>
           </div>
           <div>

@@ -28,9 +28,11 @@ the “no fake tools” principle. See “Known limitations”.
 
 - No database, no auth, no accounts, no analytics SDKs.
 - Document bytes never leave the browser tab.
-- One stated exception: PDF → JPG loads the pinned pdf.js worker script
-  from unpkg (library code only — document contents are never transmitted).
-  This is disclosed in the UI (`/privacy`).
+- Zero third-party runtime requests: the pdf.js worker used by PDF → JPG
+  is self-hosted same-origin (`/pdf.worker.min.mjs`, copied from the
+  installed `pdfjs-dist` package at install/build time via
+  `scripts/copy-pdf-worker.mjs`). The generated worker file is gitignored
+  and never committed.
 - Filenames are sanitized before download; inputs are type/size validated.
 
 ## Architecture
@@ -42,7 +44,8 @@ the “no fake tools” principle. See “Known limitations”.
   `tool-ui.tsx`).
 - Document logic in `lib/`:
   - `pdfOps.ts` — pdf-lib (merge/split/rotate/optimize/images), pdf.js
-    (render), mammoth + html2canvas + jsPDF (DOCX), JSZip (archives).
+    (render via self-hosted same-origin worker), mammoth + html2canvas +
+    jsPDF (DOCX), JSZip (archives).
     Heavy libs are dynamically imported so the homepage stays light.
   - `pageRanges.ts` — range parsing/validation (tested).
   - `files.ts` — validation, size formatting, safe filenames (tested).
@@ -81,11 +84,19 @@ Node 20+ recommended.
   cleanup). Already-optimized PDFs may barely shrink; the UI says so instead
   of inventing savings. Image-heavy scanned PDFs need server-side tools
   (e.g. Ghostscript) for deep recompression — out of scope for v0.1.
-- **PDF → JPG:** needs network access to unpkg for the pdf.js worker;
+- **PDF → JPG:** fully self-contained via the same-origin worker;
   very large PDFs may be slow or memory-heavy on low-end devices.
 - **File caps:** PDFs ≤ 100 MB (≤ 20 files for merge), images ≤ 25 MB,
   DOCX ≤ 50 MB — guards against browser memory exhaustion.
 - No PPTX/XLSX conversion (see above).
+
+## Dependency notes
+
+- `jspdf` is kept at v4+ (v2.x has known critical issues).
+- `npm audit` may still report postcss advisories bundled through the
+  pinned Next.js 15.x release; these are build-time CSS scope only
+  (not document handling) and are resolved by upgrading to a patched
+  Next 15.x / Next 16, deliberately deferred to avoid destabilizing v0.1.
 
 ## How to add a new Folio tool
 
