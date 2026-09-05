@@ -1,0 +1,578 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Dropzone, FileList, type ListedFile } from "@/components/Dropzone";
+import {
+  FieldLabel,
+  PrimaryButton,
+  ProgressBar,
+  SecondaryButton,
+  StatusBox,
+  ToolHeader,
+} from "@/components/tool-ui";
+import {
+  formatBytes,
+  formatPercentChange,
+  validateFiles,
+  withExtension,
+} from "@/lib/files";
+import { parsePageRanges, summarizePages } from "@/lib/pageRanges";
+import type { RotationDegrees } from "@/lib/pdfOpsTypes";
+import type { FolioTool, ToolSlug } from "@/lib/tools";
+
+let idCounter = 0;
+function nextId(): string {
+  idCounter++;
+  return `f-${Date.now().toString(36)}-${idCounter}`;
+}
+
+type Result =
+  | { kind: "file"; fileName: string; sizeBytes: number; note?: string }
+  | { kind: "compress"; fileName: string; before: number; after: number }
+  | { kind: "images"; pages: Array<{ page: number; url: string; size: number }> }
+  | null;
+
+interface JpgPage {
+  page: number;
+  blob: Blob;
+  url: string;
+}
+
+export function ToolRunner({ tool }: { tool: FolioTool }) {
+  const [files, setFiles] = useState<ListedFile[]>([]);
+  const [complaints, setComplaints] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<Result>(null);
+  const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [jpgPages, setJpgPages] = useState<JpgPage[]>([]);
+
+  // Per-tool options
+  const [rangeText, setRangeText] = useState("1-3,5");
+  const [rotateMode, setRotateMode] = useState<"all" | "pages">("all");
+  const [degrees, setDegrees] = useState<RotationDegrees>(90);
+
+  const fileObjs = useMemo(() => files.map((f) => f.file), [files]);
+
+  // Revoke object URLs when results are cleared.
+  useEffect(() => {
+    return () => {
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+      for (const p of jpgPages) URL.revokeObjectURL(p.url);
+    };
+  }, [resultUrl, jpgPages]);
+
+  const resetResults = useCallback(() => {
+    if (resultUrl) URL.revokeObjectURL(resultUrl);
+    for (const p of jpgPages) URL.revokeObjectURL(p.url);
+    setJpgPages([]);
+    setResultUrl(null);
+    setResult(null);
+    setError(null);
+  }, [resultUrl, jpgPages]);
+
+  const addFiles = useCallback(
+    (incoming: File[]) => {
+      setError(null);
+      const { accepted, complaints: found } = validateFiles(
+        tool,
+        incoming,
+        files.length,
+      );
+      if (accepted.length > 0) {
+        const listed = accepted.map((file) => ({ file, id: nextId() }));
+        setFiles((prev) =>
+          tool.multiple ? [...prev, ...listed] : listed.slice(0, 1),
+        );
+        resetResults();
+      }
+      setComplaints(found.map((c) => `${c.fileName}: ${c.reason}`));
+    },
+    [tool, files.length, resetResults],
+  );
+
+  const removeFile = useCallback(
+    (id: string) => {
+      setFiles((prev) => prev.filter((f) => f.id !== id));
+      resetResults();
+    },
+    [resetResults],
+  );
+
+  const moveFile = useCallback((id: string, dir: -1 | 1) => {
+    setFiles((prev) => {
+      const i = prev.findIndex((f) => f.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }, []);
+
+  const startOver = useCallback(() => {
+    resetResults();
+    setFiles([]);
+    setComplaints([]);
+  }, [resetResults]);
+
+  async function run(): Promise<void> {
+    setError(null);
+    resetResults();
+    setBusy(true);
+    try {
+      switch (tool.slug as ToolSlug) {
+        case "merge-pdf": {
+          if (fileObjs.length < 2)
+            throw new Error("Add at least two PDFs to merge.");
+          setProgress("Merging PDFs…");
+          const { mergePdfs } = await import("@/lib/pdfOps");
+          const bytes = await mergePdfs(fileObjs);
+          const name = withExtension(
+            `${stripExt(fileObjs[0].name)}-merged`,
+            "pdf",
+          );
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setResult({ kind: "file", fileName: name, sizeBytes: bytes.length });
+          break;
+        }
+        case "split-pdf": {
+          const file = needSingle(fileObjs);
+          setProgress("Reading PDF…");
+          const { getPdfPageCount, splitPdf } = await import("@/lib/pdfOps");
+          const count = await getPdfPageCount(
+            new Uint8Array(await file.arrayBuffer()),
+          );
+          const parsed = parsePageRanges(rangeText, count);
+          if (parsed.error) throw new Error(parsed.error);
+          setProgress(`Extracting ${summarizePages(parsed.pages)}…`);
+          const bytes = await splitPdf(file, parsed.pages);
+          const name = withExtension(
+            `${stripExt(file.name)}-pages-${parsed.pages[0]}-${parsed.pages[parsed.pages.length - 1]}`,
+            "pdf",
+          );
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setResult({
+            kind: "file",
+            fileName: name,
+            sizeBytes: bytes.length,
+            note: `Extracted ${summarizePages(parsed.pages)} from a ${count}-page PDF.`,
+          });
+          break;
+        }
+        case "images-to-pdf": {
+          if (fileObjs.length === 0) throw new Error("Add at least one image.");
+          setProgress(`Building PDF from ${fileObjs.length} image${fileObjs.length === 1 ? "" : "s"}…`);
+          const { imagesToPdf } = await import("@/lib/pdfOps");
+          const bytes = await imagesToPdf(fileObjs);
+          const name = withExtension(
+            fileObjs.length === 1
+              ? `${stripExt(fileObjs[0].name)}`
+              : "folio-images",
+            "pdf",
+          );
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setResult({ kind: "file", fileName: name, sizeBytes: bytes.length });
+          break;
+        }
+        case "docx-to-pdf": {
+          const file = needSingle(fileObjs);
+          const { docxToPdf } = await import("@/lib/pdfOps");
+          const bytes = await docxToPdf(file, (stage) => setProgress(stage));
+          const name = withExtension(stripExt(file.name), "pdf");
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setResult({
+            kind: "file",
+            fileName: name,
+            sizeBytes: bytes.length,
+            note: "Converted locally with formatting preserved as faithfully as browser conversion allows — check pagination before sharing.",
+          });
+          break;
+        }
+        case "pdf-to-jpg": {
+          const file = needSingle(fileObjs);
+          setProgress("Loading renderer…");
+          const { renderPdfPages } = await import("@/lib/pdfOps");
+          const pages = await renderPdfPages(file, {
+            scale: 2,
+            onProgress: (done, total) =>
+              setProgress(`Rendering page ${done} of ${total}…`),
+          });
+          const withUrls = pages.map((p) => ({
+            page: p.pageNumber,
+            blob: p.blob,
+            url: URL.createObjectURL(p.blob),
+          }));
+          setJpgPages(withUrls);
+          const base = stripExt(file.name);
+          if (withUrls.length === 1) {
+            setResult({
+              kind: "images",
+              pages: withUrls.map((p) => ({
+                page: p.page,
+                url: p.url,
+                size: p.blob.size,
+              })),
+            });
+          } else {
+            setProgress("Packing ZIP…");
+            const { default: JSZip } = await import("jszip");
+            const zip = new JSZip();
+            for (const p of withUrls) {
+              zip.file(`${base}-p${p.page}.jpg`, p.blob);
+            }
+            const zipBlob = await zip.generateAsync({ type: "blob" });
+            const url = URL.createObjectURL(zipBlob);
+            setResultUrl(url);
+            setResult({
+              kind: "images",
+              pages: withUrls.map((p) => ({
+                page: p.page,
+                url: p.url,
+                size: p.blob.size,
+              })),
+            });
+            setZipMeta({ name: `${base}-pages.zip`, size: zipBlob.size });
+          }
+          break;
+        }
+        case "rotate-pdf": {
+          const file = needSingle(fileObjs);
+          setProgress("Reading PDF…");
+          const { getPdfPageCount, rotatePdf } = await import("@/lib/pdfOps");
+          let targets: number[] | null = null;
+          if (rotateMode === "pages") {
+            const count = await getPdfPageCount(
+              new Uint8Array(await file.arrayBuffer()),
+            );
+            const parsed = parsePageRanges(rangeText, count);
+            if (parsed.error) throw new Error(parsed.error);
+            targets = parsed.pages;
+            setProgress(
+              `Rotating ${summarizePages(targets)} by ${degrees}°…`,
+            );
+          } else {
+            setProgress(`Rotating all pages by ${degrees}°…`);
+          }
+          const bytes = await rotatePdf(file, targets, degrees);
+          const name = withExtension(
+            `${stripExt(file.name)}-rotated-${degrees}`,
+            "pdf",
+          );
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setResult({ kind: "file", fileName: name, sizeBytes: bytes.length });
+          break;
+        }
+        case "compress-pdf": {
+          const file = needSingle(fileObjs);
+          setProgress("Optimizing PDF…");
+          const { optimizePdf } = await import("@/lib/pdfOps");
+          const { bytes, beforeBytes, afterBytes } = await optimizePdf(file);
+          const name = withExtension(`${stripExt(file.name)}-optimized`, "pdf");
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setResult({ kind: "compress", fileName: name, before: beforeBytes, after: afterBytes });
+          break;
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
+  }
+
+  const [zipMeta, setZipMeta] = useState<{ name: string; size: number } | null>(null);
+  useEffect(() => {
+    if (!result) setZipMeta(null);
+  }, [result]);
+
+  const canRun =
+    !busy &&
+    (tool.slug === "merge-pdf"
+      ? fileObjs.length >= 2
+      : tool.slug === "images-to-pdf"
+        ? fileObjs.length >= 1
+        : fileObjs.length === 1);
+
+  return (
+    <div className="mx-auto max-w-3xl px-5 py-10">
+      <ToolHeader
+        name={tool.name}
+        description={tool.longDescription}
+        accepts={tool.accepts}
+      />
+
+      <div className="mt-8 space-y-4">
+        <Dropzone
+          accepts={tool.accepts}
+          multiple={tool.multiple}
+          disabled={busy}
+          onFiles={addFiles}
+        />
+
+        {complaints.length > 0 && (
+          <StatusBox kind="error">
+            <ul className="list-disc pl-5">
+              {complaints.map((c, i) => (
+                <li key={i}>{c}</li>
+              ))}
+            </ul>
+          </StatusBox>
+        )}
+
+        <FileList
+          items={files}
+          reorderable={tool.multiple && files.length > 1}
+          onRemove={removeFile}
+          onMove={moveFile}
+        />
+
+        {/* Per-tool options */}
+        {(tool.slug === "split-pdf" ||
+          (tool.slug === "rotate-pdf" && rotateMode === "pages")) && (
+          <div>
+            <FieldLabel>
+              {tool.slug === "split-pdf"
+                ? "Pages to keep (e.g. 1-3,5,8-10)"
+                : "Pages to rotate (e.g. 1-3,5)"}
+            </FieldLabel>
+            <input
+              type="text"
+              value={rangeText}
+              onChange={(e) => setRangeText(e.target.value)}
+              disabled={busy}
+              inputMode="text"
+              autoComplete="off"
+              placeholder="1-3,5,8-10"
+              aria-describedby="range-help"
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-mono text-[15px] text-ink-900 placeholder:text-ink-400 focus:border-accent-600"
+            />
+            <p id="range-help" className="mt-1.5 text-[13px] text-ink-500">
+              Page numbers start at 1. Use commas to combine pages and dashes
+              for ranges; “8-” means “page 8 to the end”.
+            </p>
+          </div>
+        )}
+
+        {tool.slug === "rotate-pdf" && (
+          <fieldset className="rounded-2xl border border-slate-200 p-4">
+            <legend className="px-1 text-sm font-medium text-ink-900">
+              Rotation
+            </legend>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Scope">
+              {(["all", "pages"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setRotateMode(m)}
+                  aria-pressed={rotateMode === m}
+                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
+                    rotateMode === m
+                      ? "border-ink-950 bg-ink-950 text-white"
+                      : "border-slate-300 bg-white text-ink-700 hover:bg-slate-50"
+                  }`}
+                >
+                  {m === "all" ? "All pages" : "Selected pages"}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Degrees clockwise">
+              {([90, 180, 270] as RotationDegrees[]).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setDegrees(d)}
+                  aria-pressed={degrees === d}
+                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
+                    degrees === d
+                      ? "border-accent-600 bg-accent-50 text-accent-700"
+                      : "border-slate-300 bg-white text-ink-700 hover:bg-slate-50"
+                  }`}
+                >
+                  {d}° clockwise
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
+        {tool.slug === "compress-pdf" && (
+          <StatusBox kind="info">
+            Folio rewrites the PDF with optimized object streams and cleans
+            redundant metadata — entirely offline. Already-optimized files may
+            barely shrink; the result always shows honest before/after sizes.
+          </StatusBox>
+        )}
+
+        {tool.slug === "docx-to-pdf" && (
+          <StatusBox kind="info">
+            Beta: headings, bold/italic, lists, tables and images are
+            preserved, but pagination and advanced Word features (headers,
+            footers, footnotes, text boxes) may differ from Word. Always
+            review the PDF before sharing.
+          </StatusBox>
+        )}
+
+        {busy && <ProgressBar label={progress || "Working…"} />}
+
+        {error && <StatusBox kind="error">{error}</StatusBox>}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <PrimaryButton onClick={run} disabled={!canRun}>
+            {busy ? "Working…" : actionLabel(tool.slug)}
+          </PrimaryButton>
+          {(files.length > 0 || result) && (
+            <SecondaryButton onClick={startOver} disabled={busy}>
+              Start over
+            </SecondaryButton>
+          )}
+        </div>
+
+        {/* Results */}
+        {result?.kind === "file" && resultUrl && (
+          <StatusBox kind="success">
+            <p className="font-medium">
+              Done — {result.fileName} ({formatBytes(result.sizeBytes)})
+            </p>
+            {result.note && <p className="mt-1">{result.note}</p>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <a
+                href={resultUrl}
+                download={result.fileName}
+                className="inline-flex items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+              >
+                Download {result.fileName}
+              </a>
+            </div>
+          </StatusBox>
+        )}
+
+        {result?.kind === "compress" && resultUrl && (
+          <StatusBox kind={result.after < result.before ? "success" : "info"}>
+            <p className="font-medium">
+              {result.after < result.before ? (
+                <>
+                  Saved {formatBytes(result.before - result.after)} (
+                  {formatPercentChange(result.before, result.after)}):{" "}
+                  {formatBytes(result.before)} → {formatBytes(result.after)}
+                </>
+              ) : result.after === result.before ? (
+                <>
+                  No savings found — the file is already optimized (
+                  {formatBytes(result.before)} → {formatBytes(result.after)}).
+                  You can still download the rewritten copy.
+                </>
+              ) : (
+                <>
+                  The rewritten file is slightly larger (
+                  {formatBytes(result.before)} → {formatBytes(result.after)}
+                  ). The original is already well optimized — keeping it is
+                  the better choice.
+                </>
+              )}
+            </p>
+            <div className="mt-3">
+              <a
+                href={resultUrl}
+                download={result.fileName}
+                className="inline-flex items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+              >
+                Download {result.fileName}
+              </a>
+            </div>
+          </StatusBox>
+        )}
+
+        {result?.kind === "images" && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status">
+            <p className="text-sm font-medium text-emerald-900">
+              Rendered {result.pages.length} page
+              {result.pages.length === 1 ? "" : "s"}.
+            </p>
+            {zipMeta && resultUrl && (
+              <a
+                href={resultUrl}
+                download={zipMeta.name}
+                className="mt-3 inline-flex items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+              >
+                Download all as ZIP ({formatBytes(zipMeta.size)})
+              </a>
+            )}
+            <ul className="mt-3 space-y-2">
+              {result.pages.map((p) => (
+                <li
+                  key={p.page}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm"
+                >
+                  <span className="text-ink-700">
+                    Page {p.page} · {formatBytes(p.size)}
+                  </span>
+                  <a
+                    href={p.url}
+                    download={`${baseName(files[0]?.file.name ?? "page")}-p${p.page}.jpg`}
+                    className="font-medium text-accent-600 hover:underline"
+                  >
+                    Download JPG
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function needSingle(objs: File[]): File {
+  if (objs.length !== 1) throw new Error("Add exactly one file to continue.");
+  return objs[0];
+}
+
+function stripExt(name: string): string {
+  return name.replace(/\.[a-z0-9]+$/i, "") || "document";
+}
+
+function baseName(name: string): string {
+  return stripExt(name.split(/[\\/]/).pop() ?? "page");
+}
+
+function blobUrl(bytes: Uint8Array, mime: string): string {
+  const copy = new Uint8Array(bytes.length);
+  copy.set(bytes);
+  return URL.createObjectURL(new Blob([copy], { type: mime }));
+}
+
+function actionLabel(slug: string): string {
+  switch (slug) {
+    case "merge-pdf":
+      return "Merge PDFs";
+    case "split-pdf":
+      return "Extract pages";
+    case "images-to-pdf":
+      return "Create PDF";
+    case "docx-to-pdf":
+      return "Convert to PDF";
+    case "pdf-to-jpg":
+      return "Convert to JPG";
+    case "rotate-pdf":
+      return "Rotate PDF";
+    case "compress-pdf":
+      return "Compress PDF";
+    default:
+      return "Process";
+  }
+}
+
+/** Re-exported so ToolRunner callers share the degrees type. */
+export type { RotationDegrees as RunnerRotation };
