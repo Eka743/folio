@@ -1,7 +1,7 @@
 import Foundation
-#if canImport(Glibc)
+#if os(Linux)
 import Glibc
-#elseif canImport(Darwin)
+#else
 import Darwin
 #endif
 
@@ -24,7 +24,13 @@ let prober = DefaultAppProber()
 log("\(HelperConfig.name) v\(HelperConfig.version) starting on 127.0.0.1:\(port)")
 
 // POSIX socket, IPv4 loopback only.
+// NOTE: SOCK_STREAM differs by SDK — on Linux (Glibc) it is a typed
+// enum requiring .rawValue; on Darwin/macOS it is a plain Int32 constant.
+#if os(Linux)
 let fd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+#else
+let fd = socket(AF_INET, SOCK_STREAM, 0)
+#endif
 guard fd >= 0 else { fputs("socket() failed\n", stderr); exit(1) }
 var reuse: Int32 = 1
 setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
@@ -73,7 +79,9 @@ while true {
             var sent = 0
             while sent < data.count {
                 guard let base = ptr.baseAddress else { break }
-                let n = Glibc.send(conn, base.advanced(by: sent), data.count - sent, 0)
+                // Bare send() resolves via Glibc on Linux and Darwin on macOS.
+                // Never qualify with Glibc.* — that module does not exist on macOS.
+                let n = send(conn, base.advanced(by: sent), data.count - sent, 0)
                 if n <= 0 { break }
                 sent += n
             }
