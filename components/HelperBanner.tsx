@@ -1,0 +1,95 @@
+"use client";
+
+import type { HelperUiState } from "./useHelper";
+
+/**
+ * Non-cryptic helper connection banner. Never surfaces raw networking errors;
+ * every state maps to an actionable human message.
+ */
+export function HelperBanner({
+  state,
+  requiresApp,
+  compact,
+  onRetry,
+}: {
+  state: HelperUiState;
+  requiresApp?: string;
+  compact?: boolean;
+  onRetry?: () => void;
+}) {
+  if (state.kind === "checking") {
+    return (
+      <div role="status" className="rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm text-ink-500">
+        Checking for Folio for Mac…
+      </div>
+    );
+  }
+  if (state.kind === "connected") {
+    return (
+      <div
+        role="status"
+        className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900"
+      >
+        <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+        Folio for Mac connected — your document never leaves this Mac.
+      </div>
+    );
+  }
+  if (state.kind === "non-mac") {
+    return (
+      <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900">
+        <p className="font-medium">This format requires macOS.</p>
+        {!compact && (
+          <p className="mt-1">
+            Native Pages, Keynote, Numbers and Office conversion runs locally
+            on a Mac with Folio for Mac installed. There is no cloud
+            conversion — your files stay private.
+          </p>
+        )}
+      </div>
+    );
+  }
+  // missing
+  return (
+    <div role="status" className="rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm leading-relaxed text-ink-700">
+      <p className="font-medium text-ink-900">
+        This conversion requires Folio for Mac.
+      </p>
+      {!compact && (
+        <p className="mt-1">
+          Install the lightweight Folio for Mac helper
+          {requiresApp ? ` (plus ${requiresApp}) ` : " "}
+          to convert this file locally — no uploads, no cloud.{" "}
+          <span className="text-ink-500">
+            See <code className="rounded bg-slate-100 px-1">apps/macos-helper</code> in
+            the Folio repository for the helper source and setup.
+          </span>
+        </p>
+      )}
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[13px] font-medium hover:bg-slate-50"
+        >
+          Check again
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Subtle post-conversion engine transparency line. */
+export function EngineBadge({ engine }: { engine: string }) {
+  const label =
+    engine === "browser"
+      ? "Processed inside your browser"
+      : engine === "libreoffice"
+        ? "Converted locally using LibreOffice"
+        : `Converted locally with ${engine}`;
+  return (
+    <p className="mt-2 text-[13px] text-ink-500" role="status">
+      {label} · your document never left this device.
+    </p>
+  );
+}

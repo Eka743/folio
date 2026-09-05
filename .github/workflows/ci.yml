@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  ci:
+  web:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,3 +33,21 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  helper:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/macos-helper
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Swift build
+        run: swift build
+
+      - name: Swift tests
+        run: swift test

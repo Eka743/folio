@@ -4,30 +4,47 @@ Folio is a free, simple, privacy-first web toolkit for everyday document and
 PDF operations. Open it, pick a tool, drop files, download the result, leave.
 No account, no uploads, no trackers.
 
-## Current tools (v0.1)
+“Folio understands the files you actually use on Mac.”
 
-All tools run **entirely in the browser**. Files are read into tab memory and
-never sent to a server.
+## Current tools (v0.2)
 
-| Tool | Route | What it does |
-| ---- | ----- | ------------ |
-| Merge PDF | `/tools/merge-pdf` | Combine 2–20 PDFs in your order (drag to reorder) |
-| Split PDF | `/tools/split-pdf` | Extract pages via `1-3,5,8-10` syntax with validation |
-| JPG/PNG → PDF | `/tools/images-to-pdf` | Up to 30 images, reorderable, one per A4 page |
-| DOCX → PDF (Beta) | `/tools/docx-to-pdf` | mammoth → styled HTML → rasterized A4 PDF |
-| PDF → JPG | `/tools/pdf-to-jpg` | Per-page JPGs; single download or ZIP for multi-page |
-| Rotate PDF | `/tools/rotate-pdf` | All pages or selected pages, 90/180/270° clockwise |
-| Compress PDF | `/tools/compress-pdf` | Object-stream rewrite; always shows before/after sizes |
+PDF, image and browser tools run **entirely in the browser**. Office and
+iWork conversions run **locally on your Mac** via the Folio for Mac helper
+(see `apps/macos-helper`) — never in the cloud.
 
-**Intentionally omitted:** PPTX → PDF and XLSX → PDF. Reliable conversion
-needs LibreOffice or a paid API — both incompatible with a free,
-serverless, privacy-first static deployment. Shipping a fake would violate
-the “no fake tools” principle. See “Known limitations”.
+| Tool | Route | What it does | Engine |
+| ---- | ----- | ------------ | ------ |
+| Merge PDF | `/tools/merge-pdf` | Combine 2–20 PDFs in your order (drag to reorder) | Browser |
+| Split PDF | `/tools/split-pdf` | Extract pages via `1-3,5,8-10` syntax with validation | Browser |
+| JPG/PNG → PDF | `/tools/images-to-pdf` | Up to 30 images, reorderable, one per A4 page | Browser |
+| Word → PDF | `/tools/docx-to-pdf` | Browser Beta, or high fidelity with Word on Mac | Browser Beta / Word |
+| Word (.doc) → PDF | `/tools/word-to-pdf` | `.doc`/`.docx` via Word on your Mac | Word (LibreOffice fallback) |
+| Pages → PDF | `/tools/pages-to-pdf` | `.pages` via Pages on your Mac | Pages |
+| Pages → Word | `/tools/pages-to-word` | `.pages` → `.docx` via Pages on your Mac | Pages |
+| PowerPoint → PDF | `/tools/powerpoint-to-pdf` | `.ppt`/`.pptx` via PowerPoint on your Mac | PowerPoint (LibreOffice fallback) |
+| Keynote → PDF | `/tools/keynote-to-pdf` | `.key` via Keynote on your Mac | Keynote |
+| Keynote → PowerPoint | `/tools/keynote-to-powerpoint` | `.key` → `.pptx` via Keynote on your Mac | Keynote |
+| Excel → PDF | `/tools/excel-to-pdf` | `.xls`/`.xlsx` via Excel on your Mac | Excel (LibreOffice fallback) |
+| Numbers → PDF | `/tools/numbers-to-pdf` | `.numbers` via Numbers on your Mac | Numbers |
+| Numbers → Excel | `/tools/numbers-to-excel` | `.numbers` → `.xlsx` via Numbers on your Mac | Numbers |
+| PDF → JPG | `/tools/pdf-to-jpg` | Per-page JPGs; single download or ZIP for multi-page | Browser |
+| Rotate PDF | `/tools/rotate-pdf` | All pages or selected pages, 90/180/270° clockwise | Browser |
+| Compress PDF | `/tools/compress-pdf` | Object-stream rewrite; always shows before/after sizes | Browser |
+
+**Intentionally omitted:** browser-only PPTX/XLSX conversion. Reliable
+conversion needs the native desktop app or LibreOffice — both impossible in
+a serverless static deployment. Shipping a fake would violate the “no fake
+tools” principle. These formats convert locally via Folio for Mac instead.
+See “Known limitations”.
 
 ## Privacy model
 
 - No database, no auth, no accounts, no analytics SDKs.
-- Document bytes never leave the browser tab.
+- Browser tools: document bytes never leave the browser tab.
+- Mac tools: the website talks to Folio for Mac over localhost only
+  (`127.0.0.1:17391`); conversions run in your installed desktop apps and
+  every result names the engine that ran it. No document bytes reach Folio
+  servers, Vercel functions, or any conversion SaaS.
 - Zero third-party runtime requests: the pdf.js worker used by PDF → JPG
   is self-hosted same-origin (`/pdf.worker.min.mjs`, copied from the
   installed `pdfjs-dist` package at install/build time via
@@ -39,6 +56,11 @@ the “no fake tools” principle. See “Known limitations”.
 
 - **Next.js 15 (App Router) + React 19 + TypeScript (strict) + Tailwind 3**,
   deployable to Vercel’s free tier as a static-friendly app with no backend.
+- **Folio for Mac helper** (`apps/macos-helper`, Swift, zero dependencies):
+  localhost-only bridge (`127.0.0.1:17391`) driving Pages/Keynote/Numbers/
+  Word/PowerPoint/Excel via AppleScript plus an honestly-labeled
+  LibreOffice fallback for Office formats. See its README for the security
+  model, build/test instructions, and manual-validation checklist.
 - Shared workflow per tool: select/drop → validate → configure → process →
   result/download → start over (`components/ToolRunner.tsx`, `Dropzone.tsx`,
   `tool-ui.tsx`).
@@ -47,6 +69,12 @@ the “no fake tools” principle. See “Known limitations”.
     (render via self-hosted same-origin worker), mammoth + html2canvas +
     jsPDF (DOCX), JSZip (archives).
     Heavy libs are dynamically imported so the homepage stays light.
+  - `formatMatrix.ts` — the single source of truth for every conversion
+    (inputs, outputs, engines, status, limitations). UI state is generated
+    from it; compatibility rules are never duplicated in components.
+  - `helper.ts` — localhost helper client: discovery, capabilities,
+    engine route selection (`resolveConversionRoute`), filename
+    sanitization, human-readable errors. Pure logic is Vitest-covered.
   - `pageRanges.ts` — range parsing/validation (tested).
   - `files.ts` — validation, size formatting, safe filenames (tested).
   - `tools.ts` — tool registry; adding a tool = one entry + one runner case.
@@ -65,6 +93,12 @@ npm run build      # production build
 ```
 
 Node 20+ recommended.
+
+```bash
+cd apps/macos-helper
+swift build
+swift test
+```
 
 ## Vercel deployment
 
@@ -87,8 +121,12 @@ Node 20+ recommended.
 - **PDF → JPG:** fully self-contained via the same-origin worker;
   very large PDFs may be slow or memory-heavy on low-end devices.
 - **File caps:** PDFs ≤ 100 MB (≤ 20 files for merge), images ≤ 25 MB,
-  DOCX ≤ 50 MB — guards against browser memory exhaustion.
-- No PPTX/XLSX conversion (see above).
+  DOCX ≤ 50 MB, Office ≤ 50 MB, iWork ≤ 100 MB — guards against browser
+  memory exhaustion (the helper enforces 100 MB per conversion).
+- Native iWork/Office fidelity is NOT validated in CI (runners lack the
+  desktop apps). Each helper adapter requires manual validation on a Mac
+  with the app installed — see `apps/macos-helper/README.md`. Nothing here
+  renames extensions or rebuilds documents from plain text.
 
 ## Dependency notes
 
