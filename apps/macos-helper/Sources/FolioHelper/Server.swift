@@ -70,6 +70,9 @@ public func corsHeaders(for origin: String?) -> [String: String] {
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, X-Folio-Token",
         "Access-Control-Max-Age": "600",
+        // Chrome Private Network Access: allow https://folio.tools to reach
+        // the loopback bridge after preflight. Harmless elsewhere.
+        "Access-Control-Allow-Private-Network": "true",
     ]
 }
 
@@ -103,6 +106,12 @@ public func errorResponse(_ error: ConversionError, status: Int? = nil) -> HttpR
 public func routeRequest(_ req: HttpRequest, capabilities: HelperCapabilities, expectedToken: String) -> HttpResponse {
     if req.method == "OPTIONS" {
         return HttpResponse(status: 204, json: [:])
+    }
+    // DNS-rebinding defense: reject requests whose Host header is not a
+    // loopback literal (an attacker domain resolving to 127.0.0.1 still
+    // sends its own Host). Checked before any endpoint logic.
+    guard HelperSecurity.isAllowedHost(req.headers["host"]) else {
+        return HttpResponse(status: 403, json: ["error": "forbidden", "hint": "Unexpected Host."])
     }
     if req.path == "/v1/status", req.method == "GET" {
         return HttpResponse(status: 200, json: [

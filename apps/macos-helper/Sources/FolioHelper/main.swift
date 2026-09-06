@@ -19,9 +19,12 @@ func log(_ msg: String) {
 }
 
 let port: UInt16 = UInt16(ProcessInfo.processInfo.environment["FOLIO_HELPER_PORT"] ?? "").flatMap(UInt16.init) ?? UInt16(HelperConfig.port)
+let tlsPort: UInt16 = UInt16(ProcessInfo.processInfo.environment["FOLIO_HELPER_TLS_PORT"] ?? "").flatMap(UInt16.init) ?? UInt16(HelperConfig.tlsPort)
 let token = HelperSecurity.newPairingToken()
 let prober = DefaultAppProber()
 log("\(HelperConfig.name) v\(HelperConfig.version) starting on 127.0.0.1:\(port)")
+log("production bridge: https://127.0.0.1:\(tlsPort) (per-install loopback cert, see docs/MAC_BRIDGE_TLS.md)")
+log("development bridge: http://127.0.0.1:\(port) (localhost only; http://localhost origins)")
 
 // POSIX socket, IPv4 loopback only.
 // NOTE: SOCK_STREAM differs by SDK — on Linux (Glibc) it is a typed

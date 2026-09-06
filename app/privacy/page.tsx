@@ -40,11 +40,16 @@ export default function PrivacyPage() {
             <strong>
               processed locally on your Mac by Folio for Mac
             </strong>
-            : the Folio website talks to a localhost-only helper (
+            : the Folio website talks to a localhost-only helper over an
+            encrypted loopback connection (
             <code className="rounded bg-slate-100 px-1 text-[14px]">
-              127.0.0.1:17391
+              https://127.0.0.1:17392
             </code>
-            ), which drives the desktop app you already have (Pages, Keynote,
+            , with plain{" "}
+            <code className="rounded bg-slate-100 px-1 text-[14px]">
+              http://127.0.0.1:17391
+            </code>{" "}
+            kept for localhost development only), which drives the desktop app you already have (Pages, Keynote,
             Numbers, Word, PowerPoint, Excel) or — only for Office formats and
             only with your knowledge — a local LibreOffice fallback. Every
             result names the engine that actually ran it (e.g. “Converted

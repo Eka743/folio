@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { siteUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: {
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
   },
   description:
     "Folio is a free, privacy-first toolkit for everyday document tasks: merge, split, rotate, compress and convert PDFs and images — processed in your browser.",
-  metadataBase: new URL("https://folio.tools"),
+  metadataBase: new URL(siteUrl()),
   openGraph: {
     title: "Folio — Free, private PDF & document tools",
     description:

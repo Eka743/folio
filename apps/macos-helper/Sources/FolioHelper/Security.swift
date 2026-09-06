@@ -30,11 +30,44 @@ public enum HelperSecurity {
 
     /// Origin validation. `nil`/empty origins are rejected (non-browser
     /// clients must pair explicitly; browsers always send Origin on fetch).
+    /// Exact matches come from `HelperConfig.allowedOrigins`; https preview
+    /// deployments under `allowedOriginSuffix` are accepted as a documented
+    /// tradeoff (exact production origins stay pinned in the set above).
     public static func isAllowedOrigin(_ origin: String?) -> Bool {
         guard let origin, !origin.isEmpty else { return false }
         // Normalize to scheme://host (drop trailing slash / path).
         let trimmed = origin.hasSuffix("/") ? String(origin.dropLast()) : origin
-        return HelperConfig.allowedOrigins.contains(trimmed)
+        if HelperConfig.allowedOrigins.contains(trimmed) { return true }
+        guard trimmed.hasPrefix("https://"),
+              trimmed.hasSuffix(HelperConfig.allowedOriginSuffix) else { return false }
+        // Reject origins with paths, ports, userinfo or empty labels:
+        // suffix match must cover the whole host.
+        let host = String(trimmed.dropFirst("https://".count))
+        guard !host.isEmpty, !host.contains("/"), !host.contains(":"),
+              !host.contains("@"), !host.contains("..") else { return false }
+        let labels = host.split(separator: ".")
+        guard labels.count >= 3, labels.allSatisfy({ !$0.isEmpty }) else { return false }
+        return true
+    }
+
+    /// Host header validation — DNS-rebinding mitigation.
+    /// Accepts loopback literals with or without an explicit port
+    /// ("127.0.0.1", "127.0.0.1:17391", "localhost:17392"). Rejects
+    /// everything else, including attacker domains resolving to 127.0.0.1
+    /// and bare IPv6 forms (the server binds IPv4 loopback only).
+    public static func isAllowedHost(_ host: String?) -> Bool {
+        guard let host, !host.isEmpty else { return false }
+        let bare = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // Strip a single trailing :port if present.
+        let hostOnly: String
+        if let colon = bare.lastIndex(of: ":") {
+            let after = bare[bare.index(after: colon)...]
+            guard !after.isEmpty, after.allSatisfy({ $0.isNumber }) else { return false }
+            hostOnly = String(bare[..<colon])
+        } else {
+            hostOnly = bare
+        }
+        return HelperConfig.allowedHosts.contains(hostOnly)
     }
 
     /// Constant-time token comparison to blunt timing side-channels.
@@ -75,5 +108,25 @@ public enum HelperSecurity {
 
     public static func newPairingToken() -> String {
         UUID().uuidString + "-" + String(UUID().uuidString.prefix(8))
+    }
+
+    /// Rolling-window rate limiter (pure value type for testability).
+    /// Tracks request timestamps; `shouldAllow(now:)` evicts entries older
+    /// than the window and admits up to `maxRequests` per window.
+    public struct RateLimiter {
+        public var maxRequests: Int
+        public var windowSeconds: Double
+        private var stamps: [Double] = []
+        public init(maxRequests: Int = HelperConfig.rateLimitMaxRequests,
+                    windowSeconds: Double = HelperConfig.rateLimitWindowSeconds) {
+            self.maxRequests = maxRequests
+            self.windowSeconds = windowSeconds
+        }
+        public mutating func shouldAllow(now: Double) -> Bool {
+            stamps = stamps.filter { now - $0 < windowSeconds }
+            guard stamps.count < maxRequests else { return false }
+            stamps.append(now)
+            return true
+        }
     }
 }

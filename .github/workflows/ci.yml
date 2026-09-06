@@ -51,3 +51,6 @@ jobs:
 
       - name: Swift tests
         run: swift test
+
+      - name: FolioMac companion build
+        run: swift build --package-path ../folio-mac

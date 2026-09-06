@@ -1,7 +1,8 @@
 {
   "name": "folio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "description": "Folio — free, simple, privacy-first web toolkit for everyday document and PDF operations.",
   "scripts": {
     "dev": "next dev",

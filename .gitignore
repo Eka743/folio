@@ -22,3 +22,6 @@ public/pdf.worker.min.mjs
 # Swift package build artifacts (Folio for Mac helper).
 apps/macos-helper/.build/
 .swiftpm/
+
+# Folio for Mac companion build artifacts.
+apps/folio-mac/.build/

@@ -18,13 +18,42 @@ export const HELPER_HOST = "127.0.0.1";
 export const HELPER_PORT = 17391;
 export const HELPER_BASE = `http://${HELPER_HOST}:${HELPER_PORT}`;
 export const HELPER_VERSION = "0.2.0";
+/**
+ * Production TLS bridge (per-install loopback cert, CN/SAN 127.0.0.1).
+ * https:// pages MUST use this: browsers block https→http mixed-content
+ * fetches (Safari never issues the request — no preflight, nothing in helper
+ * logs). Plain HTTP stays for http://localhost development only.
+ */
+export const HELPER_TLS_PORT = 17392;
+export const HELPER_TLS_BASE = `https://${HELPER_HOST}:${HELPER_TLS_PORT}`;
 
 /** Origins the helper trusts. The Swift helper enforces the same list. */
 export const ALLOWED_FOLIO_ORIGINS = [
   "https://folio.tools",
+  "https://www.folio.tools",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
 ] as const;
+
+/** Vercel preview suffix accepted as a documented tradeoff (see helper docs). */
+export const ALLOWED_ORIGIN_SUFFIX = ".vercel.app";
+
+/**
+ * Ordered helper bases to probe for a given page context — HTTPS first.
+ * https:// pages try the TLS bridge before anything else; http://localhost
+ * dev pages keep the plaintext bridge as a fallback.
+ */
+export function helperBasesForPage(pageProtocol: string, pageHost?: string): string[] {
+  const bases: string[] = [];
+  if (pageProtocol === "https:") {
+    bases.push(HELPER_TLS_BASE);
+  } else {
+    // http://localhost dev: TLS first (may exist), then plaintext.
+    bases.push(HELPER_TLS_BASE, HELPER_BASE);
+  }
+  void pageHost;
+  return [...new Set(bases)];
+}
 
 export interface HelperCapabilities {
   pages: boolean;
@@ -69,7 +98,12 @@ export function isAllowedOrigin(origin: string | null | undefined): boolean {
   try {
     const url = new URL(origin);
     const normalized = `${url.protocol}//${url.host}`;
-    return (ALLOWED_FOLIO_ORIGINS as readonly string[]).includes(normalized);
+    if ((ALLOWED_FOLIO_ORIGINS as readonly string[]).includes(normalized)) return true;
+    // Documented preview-suffix tradeoff: https-only, whole-host match.
+    if (url.protocol !== "https:" || !url.host.endsWith(ALLOWED_ORIGIN_SUFFIX)) return false;
+    if (url.host.includes("..")) return false;
+    const labels = url.host.split(".");
+    return labels.length >= 3 && labels.every((l) => l.length > 0);
   } catch {
     return false;
   }
@@ -112,6 +146,10 @@ export function helperErrorMessage(code: string, hint?: string): string {
     too_large: "This file is too large for local conversion.",
     bad_request: "The conversion request was invalid.",
     forbidden: "The helper refused this request.",
+    secure_connection:
+      "Folio couldn't establish a secure connection with Folio for Mac. Make sure the app is running and its loopback certificate is trusted, then try again.",
+    not_trusted:
+      "Your browser doesn't trust the Folio for Mac certificate yet. Open Folio for Mac and complete the one-time certificate trust step.",
   };
   const base = map[code] ?? "Something went wrong during conversion.";
   return hint ? `${base} ${hint}` : base;
@@ -250,6 +288,49 @@ export function appMissingMessage(app: string | null): string {
 
 // ---- Browser fetch wrappers (not covered by node tests) ----
 
+const PAIR_TOKEN_KEY = "folio.helper.pairToken";
+
+function pageBases(): string[] {
+  if (typeof window === "undefined") return [HELPER_TLS_BASE];
+  return helperBasesForPage(window.location.protocol, window.location.host);
+}
+
+/** Per-tab pairing token (sessionStorage: tab-scoped, cleared on close). */
+export function getPairToken(): string | null {
+  try {
+    return window.sessionStorage.getItem(PAIR_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setPairToken(token: string): void {
+  try {
+    window.sessionStorage.setItem(PAIR_TOKEN_KEY, token);
+  } catch {
+    /* storage unavailable — convert will re-pair per attempt */
+  }
+}
+
+async function pairWithHelper(base: string): Promise<string | null> {
+  try {
+    const res = await fetchWithTimeout(
+      `${base}/v1/pair`,
+      { headers: { Origin: browserOrigin() } },
+      2500,
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as { token?: string };
+    if (json.token) {
+      setPairToken(json.token);
+      return json.token;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
@@ -273,32 +354,52 @@ function browserOrigin(): string {
 }
 
 export async function probeHelper(port = HELPER_PORT): Promise<boolean> {
-  try {
-    const res = await fetchWithTimeout(
-      `http://${HELPER_HOST}:${port}/v1/status`,
-      { headers: { Origin: browserOrigin() } },
-      1500,
-    );
-    return res.ok;
-  } catch {
-    return false;
+  // Port override is honored for development; default probes HTTPS-first.
+  if (port !== HELPER_PORT) {
+    try {
+      const res = await fetchWithTimeout(
+        `http://${HELPER_HOST}:${port}/v1/status`,
+        { headers: { Origin: browserOrigin() } },
+        1500,
+      );
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
+  for (const base of pageBases()) {
+    try {
+      const res = await fetchWithTimeout(
+        `${base}/v1/status`,
+        { headers: { Origin: browserOrigin() } },
+        1500,
+      );
+      if (res.ok) return true;
+    } catch {
+      /* try next base */
+    }
+  }
+  return false;
 }
 
 export async function fetchCapabilities(
   port = HELPER_PORT,
 ): Promise<HelperCapabilities | null> {
-  try {
-    const res = await fetchWithTimeout(
-      `http://${HELPER_HOST}:${port}/v1/capabilities`,
-      { headers: { Origin: browserOrigin() } },
-    );
-    if (!res.ok) return null;
-    const json = (await res.json()) as HelperCapabilities;
-    return json;
-  } catch {
-    return null;
+  const bases =
+    port !== HELPER_PORT ? [`http://${HELPER_HOST}:${port}`] : pageBases();
+  for (const base of bases) {
+    try {
+      const res = await fetchWithTimeout(
+        `${base}/v1/capabilities`,
+        { headers: { Origin: browserOrigin() } },
+      );
+      if (!res.ok) continue;
+      return (await res.json()) as HelperCapabilities;
+    } catch {
+      /* try next base */
+    }
   }
+  return null;
 }
 
 export interface HelperConvertResult {
@@ -315,7 +416,11 @@ export async function convertViaHelper(opts: {
   token?: string;
   onProgress?: (stage: string) => void;
 }): Promise<HelperConvertResult> {
-  const port = opts.port ?? HELPER_PORT;
+  const bases =
+    opts.port != null && opts.port !== HELPER_PORT && opts.port !== HELPER_TLS_PORT
+      ? [`http://${HELPER_HOST}:${opts.port}`]
+      : pageBases();
+  let token = opts.token ?? getPairToken();
   opts.onProgress?.("Uploading to Folio for Mac (localhost)…");
   const buffer = new Uint8Array(await opts.file.arrayBuffer());
   // Base64 without blowing the stack on large files.
@@ -325,39 +430,60 @@ export async function convertViaHelper(opts: {
     binary += String.fromCharCode(...buffer.subarray(i, i + CHUNK));
   }
   const contentBase64 = btoa(binary);
+  const payload = {
+    from: opts.from.toLowerCase(),
+    to: opts.to.toLowerCase(),
+    filename: sanitizeHelperFilename(opts.file.name),
+    contentBase64,
+  };
   opts.onProgress?.("Converting locally on your Mac…");
-  const res = await fetchWithTimeout(
-    `http://${HELPER_HOST}:${port}/v1/convert`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Origin: browserOrigin(),
-        ...(opts.token ? { "X-Folio-Token": opts.token } : {}),
-      },
-      body: JSON.stringify({
-        from: opts.from.toLowerCase(),
-        to: opts.to.toLowerCase(),
-        filename: sanitizeHelperFilename(opts.file.name),
-        contentBase64,
-      }),
-    },
-    120_000,
-  );
-  if (!res.ok) {
-    let code = "convert_failed";
-    let hint = "";
-    try {
-      const j = (await res.json()) as { error?: string; hint?: string };
-      if (j.error) code = j.error;
-      if (j.hint) hint = j.hint;
-    } catch {
-      /* keep defaults */
+  let lastError = "";
+  for (const base of bases) {
+    if (!token) {
+      token = await pairWithHelper(base);
+      if (!token) {
+        lastError = helperErrorMessage("secure_connection");
+        continue;
+      }
     }
-    throw new Error(helperErrorMessage(code, hint));
+    try {
+      const res = await fetchWithTimeout(
+        `${base}/v1/convert`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: browserOrigin(),
+            ...(token ? { "X-Folio-Token": token } : {}),
+          },
+          body: JSON.stringify(payload),
+        },
+        120_000,
+      );
+      if (!res.ok) {
+        let code = "convert_failed";
+        let hint = "";
+        try {
+          const j = (await res.json()) as { error?: string; hint?: string };
+          if (j.error) code = j.error;
+          if (j.hint) hint = j.hint;
+        } catch {
+          /* keep defaults */
+        }
+        // Token rejected (e.g. helper restarted) — re-pair once per base.
+        if (res.status === 403 && code === "forbidden") {
+          token = await pairWithHelper(base);
+          if (token) continue;
+        }
+        lastError = helperErrorMessage(code, hint);
+        continue;
+      }
+      return (await res.json()) as HelperConvertResult;
+    } catch {
+      lastError = helperErrorMessage("secure_connection");
+    }
   }
-  const json = (await res.json()) as HelperConvertResult;
-  return json;
+  throw new Error(lastError || helperErrorMessage("helper_unreachable"));
 }
 
 /** Decode helper base64 payload into bytes (browser). */

@@ -2,7 +2,11 @@ import XCTest
 @testable import FolioHelper
 
 private func req(_ method: String, _ path: String, headers: [String: String] = [:], body: Data = Data()) -> HttpRequest {
-    HttpRequest(method: method, path: path, headers: headers, body: body)
+    // Browsers always send Host; default to loopback so routing tests
+    // exercise endpoints rather than the DNS-rebinding guard.
+    var h = headers
+    if h["host"] == nil { h["host"] = "127.0.0.1:17391" }
+    return HttpRequest(method: method, path: path, headers: h, body: body)
 }
 
 private func convertBody(from: String, to: String, filename: String, b64: String = "aGVsbG8=") -> Data {
