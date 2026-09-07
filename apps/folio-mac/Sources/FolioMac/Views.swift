@@ -4,18 +4,17 @@ import AppKit
 
 /// macOS application lifecycle delegate.
 /// Starts the localhost bridge when Folio for Mac finishes launching and
-/// stops it on quit, so the user never touches Terminal. The bridge instance
-/// is owned by `FolioMacApp` (@StateObject) and handed to the delegate once
-/// the menu-bar content view appears.
+/// stops it on quit, so the user never touches Terminal. Owning the bridge
+/// here makes it available before `applicationDidFinishLaunching` runs.
 final class FolioAppDelegate: NSObject, NSApplicationDelegate {
-    var bridge: BridgeProcess?
+    let bridge = BridgeProcess()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        bridge?.start()
+        bridge.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        bridge?.stop()
+        bridge.stop()
     }
 }
 
@@ -25,7 +24,6 @@ final class FolioAppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct FolioMacApp: App {
     @NSApplicationDelegateAdaptor(FolioAppDelegate.self) private var appDelegate
-    @StateObject private var bridge = BridgeProcess()
     @State private var capabilities: [String: Bool] = [:]
 
     var body: some Scene {
@@ -33,13 +31,13 @@ struct FolioMacApp: App {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(bridge.running ? Color.green : Color.orange)
+                        .fill(appDelegate.bridge.running ? Color.green : Color.orange)
                         .frame(width: 8, height: 8)
                         .accessibilityHidden(true)
-                    Text(bridge.running ? "Ready" : "Starting…")
+                    Text(appDelegate.bridge.running ? "Ready" : "Starting…")
                         .font(.headline)
                 }
-                .accessibilityLabel(bridge.running ? "Folio for Mac ready" : "Folio for Mac starting")
+                .accessibilityLabel(appDelegate.bridge.running ? "Folio for Mac ready" : "Folio for Mac starting")
 
                 Divider()
 
@@ -67,19 +65,13 @@ struct FolioMacApp: App {
                 .keyboardShortcut("a")
 
                 Button("Quit Folio for Mac") {
-                    bridge.stop()
+                    appDelegate.bridge.stop()
                     NSApplication.shared.terminate(nil)
                 }
                 .keyboardShortcut("q")
             }
             .padding(12)
             .frame(width: 320)
-            .onAppear {
-                // Wire the lifecycle delegate to the owned bridge and start
-                // the localhost bridge automatically on launch.
-                appDelegate.bridge = bridge
-                bridge.start()
-            }
         }
     }
 }
