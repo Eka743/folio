@@ -1,11 +1,30 @@
 #if os(macOS) && canImport(SwiftUI)
 import SwiftUI
+import AppKit
+
+/// macOS application lifecycle delegate.
+/// Starts the localhost bridge when Folio for Mac finishes launching and
+/// stops it on quit, so the user never touches Terminal. The bridge instance
+/// is owned by `FolioMacApp` (@StateObject) and handed to the delegate once
+/// the menu-bar content view appears.
+final class FolioAppDelegate: NSObject, NSApplicationDelegate {
+    var bridge: BridgeProcess?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        bridge?.start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        bridge?.stop()
+    }
+}
 
 /// Minimal menu-bar interface. Not a document editor — status, engines,
 /// setup guidance, and Quit. Bridge supervision stops the helper on quit.
 @available(macOS 13, *)
 @main
 struct FolioMacApp: App {
+    @NSApplicationDelegateAdaptor(FolioAppDelegate.self) private var appDelegate
     @StateObject private var bridge = BridgeProcess()
     @State private var capabilities: [String: Bool] = [:]
 
@@ -55,8 +74,13 @@ struct FolioMacApp: App {
             }
             .padding(12)
             .frame(width: 320)
+            .onAppear {
+                // Wire the lifecycle delegate to the owned bridge and start
+                // the localhost bridge automatically on launch.
+                appDelegate.bridge = bridge
+                bridge.start()
+            }
         }
-        .onAppear { bridge.start() }
     }
 }
 #endif
