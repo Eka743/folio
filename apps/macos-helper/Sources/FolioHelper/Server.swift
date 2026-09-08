@@ -123,14 +123,17 @@ public func errorResponse(_ error: ConversionError, status: Int? = nil) -> HttpR
 /// Route a parsed request. Pure except for `capabilities` + token inputs.
 /// Conversion I/O happens in main.swift after validation succeeds.
 public func routeRequest(_ req: HttpRequest, capabilities: HelperCapabilities, expectedToken: String) -> HttpResponse {
-    if req.method == "OPTIONS" {
-        return HttpResponse(status: 204, json: [:])
-    }
     // DNS-rebinding defense: reject requests whose Host header is not a
     // loopback literal (an attacker domain resolving to 127.0.0.1 still
     // sends its own Host). Checked before any endpoint logic.
     guard HelperSecurity.isAllowedHost(req.headers["host"]) else {
         return HttpResponse(status: 403, json: ["error": "forbidden", "hint": "Unexpected Host."])
+    }
+    guard HelperSecurity.isAllowedOrigin(req.headers["origin"]) else {
+        return HttpResponse(status: 403, json: ["error": "forbidden", "hint": "Unknown origin."])
+    }
+    if req.method == "OPTIONS" {
+        return HttpResponse(status: 204, json: [:])
     }
     if req.path == "/v1/status", req.method == "GET" {
         return HttpResponse(status: 200, json: [
@@ -140,13 +143,6 @@ public func routeRequest(_ req: HttpRequest, capabilities: HelperCapabilities, e
         ])
     }
     if req.path == "/v1/pair", req.method == "GET" {
-        // Pairing requires an allowlisted Folio origin (browsers enforce
-        // Origin; arbitrary local processes are out of scope — the user
-        // already runs them as themselves).
-        let origin = req.headers["origin"]
-        guard HelperSecurity.isAllowedOrigin(origin) else {
-            return HttpResponse(status: 403, json: ["error": "forbidden", "hint": "Unknown origin."])
-        }
         return HttpResponse(status: 200, json: ["token": expectedToken])
     }
     if req.path == "/v1/capabilities", req.method == "GET" {
@@ -157,10 +153,6 @@ public func routeRequest(_ req: HttpRequest, capabilities: HelperCapabilities, e
         return HttpResponse(status: 500, json: ["error": "convert_failed", "hint": "Could not read capabilities."])
     }
     if req.path == "/v1/convert", req.method == "POST" {
-        let origin = req.headers["origin"]
-        guard HelperSecurity.isAllowedOrigin(origin) else {
-            return HttpResponse(status: 403, json: ["error": "forbidden", "hint": "Unknown origin."])
-        }
         guard HelperSecurity.tokensMatch(provided: req.headers["x-folio-token"], expected: expectedToken) else {
             return HttpResponse(status: 403, json: ["error": "forbidden", "hint": "Invalid or missing pairing token. GET /v1/pair from Folio first."])
         }

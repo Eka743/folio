@@ -22,8 +22,8 @@ iWork conversions run **locally on your Mac** via the Folio for Mac helper
 | Pages → PDF | `/tools/pages-to-pdf` | `.pages` via Pages on your Mac | Pages |
 | Pages → Word | `/tools/pages-to-word` | `.pages` → `.docx` via Pages on your Mac | Pages |
 | PowerPoint → PDF | `/tools/powerpoint-to-pdf` | `.ppt`/`.pptx` via PowerPoint on your Mac | PowerPoint (LibreOffice fallback) |
-| Keynote → PDF | `/tools/keynote-to-pdf` | `.key` via Keynote on your Mac | Keynote |
-| Keynote → PowerPoint | `/tools/keynote-to-powerpoint` | `.key` → `.pptx` via Keynote on your Mac | Keynote |
+| Keynote → PDF (Beta / known limitation) | `/tools/keynote-to-pdf` | `.key` via Keynote on your Mac; not validated | Keynote |
+| Keynote → PowerPoint (Beta / known limitation) | `/tools/keynote-to-powerpoint` | `.key` → `.pptx` via Keynote on your Mac; not validated | Keynote |
 | Excel → PDF | `/tools/excel-to-pdf` | `.xls`/`.xlsx` via Excel on your Mac | Excel (LibreOffice fallback) |
 | Numbers → PDF | `/tools/numbers-to-pdf` | `.numbers` via Numbers on your Mac | Numbers |
 | Numbers → Excel | `/tools/numbers-to-excel` | `.numbers` → `.xlsx` via Numbers on your Mac | Numbers |
@@ -57,7 +57,8 @@ See “Known limitations”.
 - **Next.js 15 (App Router) + React 19 + TypeScript (strict) + Tailwind 3**,
   deployable to Vercel’s free tier as a static-friendly app with no backend.
 - **Folio for Mac helper** (`apps/macos-helper`, Swift, zero dependencies):
-  localhost-only bridge (`127.0.0.1:17391`) driving Pages/Keynote/Numbers/
+  localhost-only bridge (`https://127.0.0.1:17392` in production;
+  `http://127.0.0.1:17391` for localhost development) driving Pages/Keynote/Numbers/
   Word/PowerPoint/Excel via AppleScript plus an honestly-labeled
   LibreOffice fallback for Office formats. See its README for the security
   model, build/test instructions, and manual-validation checklist.
@@ -104,10 +105,13 @@ swift test
 
 1. Import this repository in Vercel (Framework preset: Next.js).
 2. Build command `npm run build`, output `.next` (defaults).
-3. No environment variables, no database, no server config needed.
-4. Custom domain optional; `app/sitemap.ts` and `app/robots.ts` assume
-   `https://folio.tools` — update `metadataBase` in `app/layout.tsx` if your
-   domain differs.
+3. No database or server config is needed; environment variables are optional
+   for the domain, legal identity and Mac download link.
+4. Set `NEXT_PUBLIC_SITE_URL` when using a domain other than the default
+   `https://folio.tools`; metadata, sitemap and robots output use the same
+   configured value. Set `NEXT_PUBLIC_OWNER_NAME` and
+   `NEXT_PUBLIC_OWNER_CONTACT` before publishing the Legal Notice. A signed
+   Mac installer link is shown only when `NEXT_PUBLIC_MAC_DOWNLOAD_URL` is set.
 
 ## Known limitations (honest)
 
@@ -127,6 +131,10 @@ swift test
   desktop apps). Each helper adapter requires manual validation on a Mac
   with the app installed — see `apps/macos-helper/README.md`. Nothing here
   renames extensions or rebuilds documents from plain text.
+- **Keynote → PDF and Keynote → PPTX (deferred):** macOS Automation permission
+  for Keynote does not remain enabled reliably in the current release. Both
+  routes remain in the implementation for later compatibility work, but are
+  not validated or guaranteed and are excluded from the v0.2 release verdict.
 
 ## Dependency notes
 

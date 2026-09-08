@@ -8,9 +8,10 @@ Terminal use.
 ## Setup
 
 - Install Folio.app from `Folio-for-Mac.dmg` into Applications; open it.
-- Complete one-time certificate trust + Automation permission (explained
-  in-app). The imported certificate is named **Folio Loopback Bridge
-  (folio-bridge)** in Keychain Access; set its SSL trust to **Always Trust**.
+- Complete one-time certificate trust (explained in-app). The imported
+  certificate is named **Folio Loopback Bridge (folio-bridge)** in Keychain
+  Access; set its SSL trust to **Always Trust**. Automation consent is
+  requested only when a supported native conversion needs it.
 - Open the Folio PR preview in Safari.
 
 ## iWork matrix (each: simple text, images, formatting, multi-page/slides/sheets, tables, special chars, spaces + Unicode filenames, large file)
@@ -19,8 +20,8 @@ Terminal use.
 |---|---|---|
 | .pages | .pdf | Pages |
 | .pages | .docx | Pages |
-| .key | .pdf | Keynote |
-| .key | .pptx | Keynote |
+| .key | .pdf | Keynote — deferred, do not count as validated |
+| .key | .pptx | Keynote — deferred, do not count as validated |
 | .numbers | .pdf | Numbers |
 | .numbers | .xlsx | Numbers |
 
@@ -48,3 +49,7 @@ Terminal use.
 - Engine badge names the real engine after each conversion.
 - Temporary dirs removed after success and failure.
 - No document content in error messages or logs.
+
+Keynote Automation permission is a known unresolved macOS/TCC limitation. Do
+not spend this validation pass debugging it, and do not include either Keynote
+route in the v0.2 release acceptance result.

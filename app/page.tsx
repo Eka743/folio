@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { TOOLS, type ToolSlug } from "@/lib/tools";
-import { HOMEPAGE_CATEGORIES, conversionsByCategory } from "@/lib/formatMatrix";
+import {
+  HOMEPAGE_CATEGORIES,
+  conversionsByCategory,
+  getConversionBySlug,
+} from "@/lib/formatMatrix";
 
 const ICONS: Record<string, React.ReactNode> = {
   "merge-pdf": (
@@ -71,12 +75,13 @@ export default function HomePage() {
         </h1>
         <p className="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-ink-500">
           Merge, split, rotate, compress and convert your documents right in
-          your browser — plus high-fidelity Office and iWork conversion
-          locally on Mac. Nothing leaves your device.
+          your browser — plus local Office and iWork conversion on Mac.
+          Nothing leaves your device.
         </p>
         <p className="mx-auto mt-3 max-w-xl text-[15px] text-ink-500">
-          Folio understands the files you actually use on Mac: Pages, Keynote,
-          Numbers, Word, PowerPoint and Excel.
+          Folio understands the files you actually use on Mac: Pages, Numbers,
+          Word, PowerPoint and Excel. Keynote routes are currently Beta and
+          unvalidated.
         </p>
       </section>
 
@@ -102,33 +107,40 @@ export default function HomePage() {
                   : category}
             </h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {tools.map((tool) => (
-                <Link
-                  key={tool.slug}
-                  href={`/tools/${tool.slug}`}
-                  className="group relative flex flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_1px_2px_rgba(16,20,24,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_24px_rgba(16,20,24,0.08)]"
-                >
-                  <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-accent-50 text-accent-600">
-                    {ICONS[tool.slug as ToolSlug]}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-[17px] font-semibold tracking-tight text-ink-950">
-                      {tool.name}
-                    </h3>
-                    {tool.badge && (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-ink-500">
-                        {tool.badge}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 flex-1 text-[15px] leading-relaxed text-ink-500">
-                    {tool.description}
-                  </p>
-                  <span className="mt-3 text-sm font-medium text-accent-600 group-hover:underline">
-                    Open tool →
-                  </span>
-                </Link>
-              ))}
+              {tools.map((tool) => {
+                const conversion = getConversionBySlug(tool.slug);
+                const badge =
+                  conversion?.status === "helper-beta"
+                    ? "Beta / known limitation"
+                    : tool.badge;
+                return (
+                  <Link
+                    key={tool.slug}
+                    href={`/tools/${tool.slug}`}
+                    className="group relative flex flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_1px_2px_rgba(16,20,24,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_24px_rgba(16,20,24,0.08)]"
+                  >
+                    <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-accent-50 text-accent-600">
+                      {ICONS[tool.slug as ToolSlug]}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-[17px] font-semibold tracking-tight text-ink-950">
+                        {tool.name}
+                      </h3>
+                      {badge && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-ink-500">
+                          {badge}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 flex-1 text-[15px] leading-relaxed text-ink-500">
+                      {tool.description}
+                    </p>
+                    <span className="mt-3 text-sm font-medium text-accent-600 group-hover:underline">
+                      Open tool →
+                    </span>
+                  </Link>
+                );
+              })}
             </div>
           </section>
         );

@@ -30,6 +30,7 @@ import {
 import { parsePageRanges, summarizePages } from "@/lib/pageRanges";
 import type { RotationDegrees } from "@/lib/pdfOpsTypes";
 import type { FolioTool, ToolSlug } from "@/lib/tools";
+import { getConversion } from "@/lib/formatMatrix";
 
 let idCounter = 0;
 function nextId(): string {
@@ -78,6 +79,9 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
   const { state: helperState, refresh: refreshHelper, isMac } = useHelper();
   const needsHelper =
     tool.processing === "mac-helper" || tool.processing === "hybrid";
+  const matrixConversion = tool.conversionId
+    ? getConversion(tool.conversionId)
+    : undefined;
 
   const fileObjs = useMemo(() => files.map((f) => f.file), [files]);
 
@@ -504,6 +508,12 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
             Uses {tool.nativeEngine} on your Mac
             {tool.requiresApp ? ` (${tool.requiresApp} must be installed)` : ""}.
             Your document never leaves this Mac.
+          </StatusBox>
+        )}
+
+        {matrixConversion?.status === "helper-beta" && (
+          <StatusBox kind="info">
+            <strong>Known limitation:</strong> {matrixConversion.limitation}
           </StatusBox>
         )}
 

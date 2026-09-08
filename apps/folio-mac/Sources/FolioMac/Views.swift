@@ -54,7 +54,7 @@ struct FolioMacApp: App {
 
                 Divider()
 
-                Text("Folio for Mac lets Folio convert desktop documents locally. Your files never leave this Mac.")
+                Text("Folio for Mac lets Folio convert supported desktop documents locally. Your files never leave this Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -66,7 +66,7 @@ struct FolioMacApp: App {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                Button("Request Keynote Access…") {
+                Button("Request Keynote Access (Beta / unvalidated)…") {
                     keynoteAutomationStatus = nil
                     FolioMac.requestKeynoteAutomationPermission { status in
                         keynoteAutomationStatus = status
@@ -78,12 +78,12 @@ struct FolioMacApp: App {
                         .font(.caption2)
                         .foregroundStyle(keynoteAutomationStatus == .granted ? .green : .secondary)
                 } else {
-                    Text("Folio will ask macOS to authorize Keynote directly. Your files stay on this Mac.")
+                    Text("Keynote conversion is a known limitation in v0.2: macOS Automation permission may not remain enabled, so Keynote output is not validated or guaranteed. Your files stay on this Mac.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
 
-                Text("If macOS previously denied access, use System Settings → Privacy & Security → Automation to change only Folio’s Keynote permission, then relaunch Folio.")
+                Text("Keynote access is diagnostic only for now. Do not treat a granted permission as v0.2 validation; revisit this known limitation later.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 

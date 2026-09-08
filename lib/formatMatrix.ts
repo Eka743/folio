@@ -29,6 +29,7 @@ export type ConversionStatus =
   | "browser" // reliable browser-local conversion, no helper needed
   | "browser-beta" // browser conversion with known fidelity limits
   | "helper-native" // helper + native app (implemented, needs manual validation)
+  | "helper-beta" // helper path exists, but is explicitly not release-validated
   | "helper-fallback" // helper + LibreOffice fallback path
   | "hybrid"; // browser fallback + helper high-fidelity upgrade path
 
@@ -274,14 +275,14 @@ export const FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "keynote-to-pdf",
     category: "Presentations",
     title: "Keynote to PDF",
-    description: "Export Apple Keynote decks to PDF using Keynote on your Mac.",
+    description: "Beta: try exporting Keynote decks to PDF on your Mac.",
     browser: "none",
     helper: "native",
     nativeEngine: "keynote",
     fallbackEngine: null,
-    status: "helper-native",
+    status: "helper-beta",
     limitation:
-      ".key is a proprietary bundle; conversion uses Keynote.app export. Requires manual validation on a Mac with Keynote installed.",
+      "Known limitation: macOS Automation permission for Keynote does not remain enabled reliably in the current release. Keynote → PDF is not validated and must not be treated as guaranteed working. Revisit this route separately.",
     helperPair: "key>pdf",
     requiresMac: true,
     requiresApp: "Keynote",
@@ -293,14 +294,14 @@ export const FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "keynote-to-powerpoint",
     category: "Presentations",
     title: "Keynote to PowerPoint",
-    description: "Export Keynote decks to .pptx using Keynote on your Mac.",
+    description: "Beta: try exporting Keynote decks to .pptx on your Mac.",
     browser: "none",
     helper: "native",
     nativeEngine: "keynote",
     fallbackEngine: null,
-    status: "helper-native",
+    status: "helper-beta",
     limitation:
-      "Uses Keynote.app export to PowerPoint. Transitions, builds and some fonts do not survive; review in PowerPoint. Requires manual validation.",
+      "Known limitation: macOS Automation permission for Keynote does not remain enabled reliably in the current release. Keynote → PPTX is not validated and must not be treated as guaranteed working. Revisit this route separately.",
     helperPair: "key>pptx",
     requiresMac: true,
     requiresApp: "Keynote",

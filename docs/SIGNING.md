@@ -19,6 +19,8 @@ The Automation flow must use one consistently signed hardened-runtime app.
   to `/private/tmp/FolioPackage` so FileProvider metadata cannot invalidate
   the signature. Set `FOLIO_OUTPUT_DIR` to choose another local volume.
 - DMG creation via `hdiutil` on macOS (`Folio-for-Mac.dmg`).
+- Signing is release infrastructure only; it does not make the deferred
+  Keynote routes validated.
 
 ## Still needed (with credentials)
 

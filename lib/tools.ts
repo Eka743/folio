@@ -231,9 +231,9 @@ export const TOOLS: FolioTool[] = [
     slug: "keynote-to-pdf",
     name: "Keynote to PDF",
     shortName: "Keynote",
-    description: "Export Apple Keynote decks to PDF using Keynote on your Mac.",
+    description: "Beta: try exporting Keynote decks to PDF on your Mac.",
     longDescription:
-      "Export a .key deck to PDF using Keynote.app on your Mac via Folio for Mac. Your document never leaves your Mac. Requires macOS, Folio for Mac, and Keynote.",
+      "Beta / known limitation: the Keynote macOS Automation permission does not remain enabled reliably in the current release, so Keynote → PDF is not validated or guaranteed. The implementation remains available for later compatibility work; your document stays on your Mac.",
     accepts: ".key",
     acceptMime: ["application/x-iwork-keynote-sffkey", "application/octet-stream"],
     multiple: false,
@@ -253,9 +253,9 @@ export const TOOLS: FolioTool[] = [
     slug: "keynote-to-powerpoint",
     name: "Keynote to PowerPoint",
     shortName: "Kn→Pp",
-    description: "Export Keynote decks to .pptx using Keynote on your Mac.",
+    description: "Beta: try exporting Keynote decks to .pptx on your Mac.",
     longDescription:
-      "Export a .key deck to .pptx using Keynote.app on your Mac via Folio for Mac. Transitions, builds and some fonts do not survive — review in PowerPoint. Requires macOS, Folio for Mac, and Keynote.",
+      "Beta / known limitation: the Keynote macOS Automation permission does not remain enabled reliably in the current release, so Keynote → PPTX is not validated or guaranteed. If it does run, transitions, builds and some fonts may not survive; review the output. Your document stays on your Mac.",
     accepts: ".key",
     acceptMime: ["application/x-iwork-keynote-sffkey", "application/octet-stream"],
     multiple: false,

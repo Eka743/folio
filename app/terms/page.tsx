@@ -52,6 +52,11 @@ export default function TermsPage() {
             survive conversion. Folio reports which engine performed each conversion so you
             can judge fidelity. LibreOffice fallback output is always labeled as such.
           </p>
+          <p className="mt-2">
+            Keynote → PDF and Keynote → PPTX are currently Beta / unvalidated because
+            macOS Automation permission does not remain enabled reliably. They are
+            deferred known limitations, not guaranteed services.
+          </p>
         </section>
         <section className="rounded-2xl border border-slate-200 p-5">
           <h2 className="font-semibold text-ink-950">6. Third-party desktop applications</h2>

@@ -6,7 +6,8 @@ No Electron, no second Chromium, no cloud.
 
 ```
 Folio Web (browser)
-  → http://127.0.0.1:17391 (localhost only)
+  → https://127.0.0.1:17392 (production TLS; localhost only)
+    → http://127.0.0.1:17391 (HTTP development fallback only)
     → Folio Helper (this Swift package)
       → Pages / Keynote / Numbers / Word / PowerPoint / Excel (local apps)
       → LibreOffice headless fallback (Office formats only, clearly labeled)
@@ -32,7 +33,7 @@ Folio Web (browser)
 - Origin allowlist (`https://folio.tools`, `http://localhost:3000`,
   `http://127.0.0.1:3000`) + short-lived pairing token (`X-Folio-Token`).
 
-## What is scaffolded / needs a real Mac
+## Validation status
 
 CI builds and unit-tests the helper on Linux/macOS runners, but **no CI
 runner has Pages/Keynote/Numbers/Word/PowerPoint installed**, so actual
@@ -43,8 +44,12 @@ export fidelity is NOT validated in CI. On a Mac with the apps installed:
 3. Convert a real `.pages` / `.key` / `.numbers` / `.doc(x)` / `.ppt(x)` /
    `.xls(x)` file and verify output + engine label.
 
-Mark these runs “Requires manual validation on a Mac with \<app\>
-installed” — never fake them.
+Pages → PDF, Pages → DOCX, Numbers → PDF and Numbers → XLSX still require
+manual validation on a Mac with the corresponding apps installed. Keynote → PDF
+and Keynote → PPTX are an explicit deferred known limitation: macOS Automation
+permission does not remain enabled reliably, so neither route is validated or
+guaranteed in v0.2. Do not treat a successful-looking Keynote attempt as a
+release validation result.
 
 ## Build / test
 
@@ -68,7 +73,7 @@ Mitigations:
 
 | Threat | Mitigation |
 | --- | --- |
-| Arbitrary sites invoking the helper | Binds `127.0.0.1` only; `Origin` must be allowlisted on `/v1/pair` and `/v1/convert`; pairing token required for conversion |
+| Arbitrary sites invoking the helper | Binds `127.0.0.1` only; `Host` and `Origin` must be allowlisted on every browser endpoint; pairing token required for conversion |
 | CSRF / replay | Per-launch random token (`X-Folio-Token`), constant-time compare; token only issued to allowlisted origins |
 | Arbitrary commands / paths | No command API; fixed allowlist of `from>to` pairs; filenames sanitized + confined to the per-conversion temp dir |
 | AppleScript / shell injection | No shell; `Process` argument arrays only; AppleScript embeds only POSIX-quoted paths + fixed format enums |
@@ -79,10 +84,11 @@ Mitigations:
 
 ## Permissions
 
-First conversion (or the Folio for Mac “Request Keynote Access…” action)
-triggers macOS Automation consent (“Folio would like to control Pages…”). If denied, the helper returns
+The first supported native conversion triggers macOS Automation consent (for
+example, “Folio would like to control Pages…”). If denied, the helper returns
 `permission_denied` and the web UI explains how to re-allow it. The helper
-never re-prompts in a loop.
+never re-prompts in a loop. Keynote Automation is a separate deferred known
+limitation and is not part of the v0.2 validation claim.
 
 ## Distribution (future)
 

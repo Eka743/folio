@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
 
+const MAC_DOWNLOAD_URL = process.env.NEXT_PUBLIC_MAC_DOWNLOAD_URL?.trim();
+
 export const metadata: Metadata = {
   title: "Folio for Mac",
-  description: "Install Folio for Mac to convert Pages, Keynote, Numbers and Office documents locally — no Terminal, files never leave your Mac.",
+  description: "Install Folio for Mac for local Pages, Numbers and Office conversion — no Terminal, files never leave your Mac. Keynote remains Beta / unvalidated.",
 };
 
 const STEPS = [
-  { title: "1. Download", body: "Get Folio-for-Mac.dmg from the releases page and drag Folio to Applications." },
-  { title: "2. Open Folio for Mac", body: "Launch it from Applications. It shows connection status and which engines (Pages, Keynote, Numbers, Word, …) are installed." },
-  { title: "3. One-time setup", body: "Trust the loopback certificate when asked (lets Folio reach your Mac securely) and approve Automation access so Pages can export locally. Each prompt appears once, with an explanation first." },
+  { title: "1. Download", body: "Download the signed, notarized Folio-for-Mac.dmg from the published link below and drag Folio to Applications." },
+  { title: "2. Open Folio for Mac", body: "Launch it from Applications. It shows connection status and which supported engines (Pages, Numbers, Word, …) are installed." },
+  { title: "3. One-time setup", body: "Open the loopback certificate from Folio for Mac and set it to Always Trust in Keychain Access. Approve Automation access only for the named supported app when a conversion needs it. Keynote conversion remains a Beta / known limitation and is not validated in v0.2." },
   { title: "4. Convert", body: "Return to Folio in Safari, pick e.g. Pages → PDF, drag your file, and click Convert. The PDF downloads; temporary files are deleted." },
 ];
 
@@ -17,9 +19,24 @@ export default function MacPage() {
     <div className="mx-auto max-w-3xl px-5 py-12">
       <h1 className="text-3xl font-semibold tracking-tight text-ink-950">Folio for Mac</h1>
       <p className="mt-3 text-lg leading-relaxed text-ink-500">
-        The companion that converts Pages, Keynote, Numbers, and Office documents
-        locally. No Terminal. Your files never leave this Mac.
+        The companion for local Pages, Numbers, and Office conversion. Keynote
+        routes remain Beta / unvalidated. No Terminal. Your files never leave
+        this Mac.
       </p>
+      {MAC_DOWNLOAD_URL ? (
+        <a
+          href={MAC_DOWNLOAD_URL}
+          className="mt-5 inline-flex rounded-xl bg-ink-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-ink-800"
+        >
+          Download Folio for Mac
+        </a>
+      ) : (
+        <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="note">
+          The signed Mac installer link is not configured yet. A site operator
+          must set <code>NEXT_PUBLIC_MAC_DOWNLOAD_URL</code> before normal users
+          can download Folio for Mac.
+        </p>
+      )}
       <div className="mt-8 space-y-6 text-[16px] leading-relaxed text-ink-700">
         {STEPS.map((s) => (
           <section key={s.title} className="rounded-2xl border border-slate-200 p-5">

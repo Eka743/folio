@@ -1,10 +1,11 @@
 import { TOOLS } from "@/lib/tools";
+import { siteUrl } from "@/lib/site";
 
 export default function Sitemap(): Array<{
   url: string;
   lastModified: string;
 }> {
-  const base = "https://folio.tools";
+  const base = siteUrl();
   const now = new Date().toISOString();
   return [
     { url: base, lastModified: now },

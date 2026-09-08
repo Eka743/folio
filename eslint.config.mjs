@@ -3,7 +3,17 @@ import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
   {
-    ignores: [".next/**", "node_modules/**", "out/**", "coverage/**", "next-env.d.ts", "public/**"],
+    ignores: [
+      ".next/**",
+      "node_modules/**",
+      "out/**",
+      "dist/**",
+      "coverage/**",
+      "next-env.d.ts",
+      "public/**",
+      "apps/**/.build/**",
+      ".swiftpm/**",
+    ],
   },
   ...tseslint.configs.recommended,
   {

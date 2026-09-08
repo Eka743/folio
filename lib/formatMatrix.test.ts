@@ -68,6 +68,15 @@ describe("formatMatrix", () => {
     expect(numbers.nativeEngine).toBe("numbers");
   });
 
+  it("keeps both Keynote routes explicitly deferred and unvalidated", () => {
+    for (const id of ["key-to-pdf", "key-to-pptx"]) {
+      const conversion = getConversion(id)!;
+      expect(conversion.status).toBe("helper-beta");
+      expect(conversion.limitation).toMatch(/not validated/i);
+      expect(conversion.limitation).toMatch(/Automation/i);
+    }
+  });
+
   it("gives Office conversions an honest LibreOffice fallback", () => {
     expect(getConversion("docx-to-pdf")!.fallbackEngine).toBe("libreoffice");
     expect(getConversion("pptx-to-pdf")!.fallbackEngine).toBe("libreoffice");

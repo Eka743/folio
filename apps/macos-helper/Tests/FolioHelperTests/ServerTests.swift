@@ -6,6 +6,7 @@ private func req(_ method: String, _ path: String, headers: [String: String] = [
     // exercise endpoints rather than the DNS-rebinding guard.
     var h = headers
     if h["host"] == nil { h["host"] = "127.0.0.1:17391" }
+    if h["origin"] == nil { h["origin"] = "https://folio.tools" }
     return HttpRequest(method: method, path: path, headers: h, body: body)
 }
 
@@ -29,6 +30,21 @@ final class ServerTests: XCTestCase {
         let res = routeRequest(req("GET", "/v1/capabilities"), capabilities: caps, expectedToken: token)
         XCTAssertEqual(res.status, 200)
         XCTAssertEqual(res.json["pages"] as? Bool, true)
+    }
+
+    func testStatusAndCapabilitiesRequireAllowedOrigin() {
+        let status = routeRequest(
+            req("GET", "/v1/status", headers: ["origin": "https://evil.example"]),
+            capabilities: caps,
+            expectedToken: token
+        )
+        XCTAssertEqual(status.status, 403)
+        let capabilities = routeRequest(
+            req("GET", "/v1/capabilities", headers: ["origin": "https://evil.example"]),
+            capabilities: caps,
+            expectedToken: token
+        )
+        XCTAssertEqual(capabilities.status, 403)
     }
 
     func testPairRequiresAllowedOrigin() {
