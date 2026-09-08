@@ -11,6 +11,10 @@ function required(name, predicate = (value) => Boolean(value?.trim())) {
   return value;
 }
 
+function configured(value) {
+  return Boolean(value?.trim()) && !/^(todo|placeholder|replace(?:[-_ ]?me)?)\b/i.test(value.trim());
+}
+
 function httpsUrl(value) {
   try {
     return new URL(value).protocol === "https:";
@@ -23,8 +27,8 @@ function contact(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || httpsUrl(value);
 }
 
-required("NEXT_PUBLIC_OWNER_NAME");
-required("NEXT_PUBLIC_OWNER_CONTACT", contact);
+required("NEXT_PUBLIC_OWNER_NAME", configured);
+required("NEXT_PUBLIC_OWNER_CONTACT", (value) => configured(value) && contact(value));
 required("NEXT_PUBLIC_SITE_URL", httpsUrl);
 required("NEXT_PUBLIC_MAC_DOWNLOAD_URL", httpsUrl);
 required("NEXT_PUBLIC_SOURCE_REPOSITORY_URL", httpsUrl);
