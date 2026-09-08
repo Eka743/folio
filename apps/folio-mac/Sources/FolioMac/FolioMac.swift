@@ -1,4 +1,7 @@
 import Foundation
+#if os(macOS)
+import AppKit
+#endif
 
 /// Folio for Mac — user-facing macOS companion (no Terminal required).
 ///
@@ -53,7 +56,12 @@ public enum FolioMac {
     /// accepted. Running this from the signed Folio app makes TCC attribute
     /// the request to Folio (not Terminal or the helper's raw executable).
     public static func requestKeynoteAutomationPermission() {
-        DispatchQueue.global(qos: .userInitiated).async {
+        // TCC presents consent from the foreground app's main run loop. Keep
+        // this call on the main queue so a user-initiated menu action reliably
+        // reaches the native macOS prompt instead of being treated as a
+        // background Apple Event and silently denied.
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
             guard let script = NSAppleScript(
                 source: "tell application id \"com.apple.Keynote\" to get name"
             ) else { return }

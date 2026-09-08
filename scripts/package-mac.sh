@@ -41,12 +41,46 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+# iCloud Drive can add Finder/resource-fork metadata while copying build
+# products. Those xattrs are not part of the app and prevent codesign from
+# sealing the generated bundle, so remove them from this disposable artifact
+# only (never from source files).
+if command -v xattr >/dev/null 2>&1; then
+  xattr -cr "${APP}"
+fi
+
 # Optional signing (no-op without credentials):
+DMG_SOURCE="${APP}"
 if [[ -n "${DEVELOPER_ID_APP:-}" ]]; then
   echo "==> Signing with ${DEVELOPER_ID_APP}"
+  # iCloud Drive may reattach Finder metadata to a bundle while codesign is
+  # walking it. Stage the disposable artifact on a local filesystem so the
+  # nested and outer signatures are deterministic, then copy the signed
+  # bundle back without extended attributes/resource forks.
+  SIGNING_ROOT="$(mktemp -d /private/tmp/folio-package.XXXXXX)"
+  SIGNING_APP="${SIGNING_ROOT}/Folio.app"
+  trap 'rm -rf "${SIGNING_ROOT}"' EXIT
+  ditto --norsrc --noextattr --noqtn --noacl "${APP}" "${SIGNING_APP}"
+  xattr -cr "${SIGNING_APP}" 2>/dev/null || true
   codesign --force --options runtime --timestamp \
     --sign "${DEVELOPER_ID_APP}" \
-    "${APP}/Contents/MacOS/FolioHelper" "${APP}/Contents/MacOS/Folio"
+    "${SIGNING_APP}/Contents/MacOS/FolioHelper"
+  codesign --force --options runtime --timestamp \
+    --sign "${DEVELOPER_ID_APP}" \
+    "${SIGNING_APP}/Contents/MacOS/Folio"
+  # Sign the outer bundle after its nested executables so macOS/TCC sees a
+  # stable bundle identity and can validate the Info.plist/resource seal.
+  codesign --force --options runtime --timestamp \
+    --sign "${DEVELOPER_ID_APP}" \
+    "${SIGNING_APP}"
+  # Build the DMG from the clean local staging copy. FileProvider can attach
+  # FinderInfo to the iCloud copy immediately after it is written.
+  DMG_SOURCE="${SIGNING_APP}"
+  rm -rf "${APP}"
+  ditto --norsrc --noextattr --noqtn --noacl "${SIGNING_APP}" "${APP}"
+  # FileProvider can add FinderInfo during the copy-back; remove it once
+  # more so the artifact handed to the user verifies immediately.
+  xattr -cr "${APP}" 2>/dev/null || true
 else
   echo "==> No DEVELOPER_ID_APP set; leaving unsigned (testing only)."
 fi
@@ -54,7 +88,7 @@ fi
 if command -v hdiutil >/dev/null 2>&1; then
   echo "==> Creating DMG"
   rm -f "${OUT}/Folio-for-Mac.dmg"
-  hdiutil create -volname "Folio for Mac" -srcfolder "${APP}" \
+  hdiutil create -volname "Folio for Mac" -srcfolder "${DMG_SOURCE}" \
     -ov -format UDZO "${OUT}/Folio-for-Mac.dmg"
   echo "DMG: ${OUT}/Folio-for-Mac.dmg"
 else
