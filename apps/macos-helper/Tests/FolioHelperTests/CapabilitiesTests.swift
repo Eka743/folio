@@ -21,6 +21,16 @@ final class CapabilitiesTests: XCTestCase {
         XCTAssertFalse(caps.libreoffice)
     }
 
+    func testDetectsMacOS26IWorkBundleIDs() {
+        let prober = MockAppProber(
+            installed: ["com.apple.Pages", "com.apple.Keynote", "com.apple.Numbers"]
+        )
+        let caps = detectCapabilities(prober: prober)
+        XCTAssertTrue(caps.pages)
+        XCTAssertTrue(caps.keynote)
+        XCTAssertTrue(caps.numbers)
+    }
+
     func testCapabilitiesEncodeOnlyKnownKeys() throws {
         let caps = HelperCapabilities(pages: true)
         let data = try JSONEncoder().encode(caps)

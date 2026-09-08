@@ -103,6 +103,14 @@ final class HardeningTests: XCTestCase {
         XCTAssertTrue(args.contains("/CN=127.0.0.1"))
         // No shell interpolation surface: args are an array, never a string.
         XCTAssertFalse(args.joined(separator: " ").contains(";"))
+
+        let p12 = BridgeTLS.pkcs12Arguments(
+            certPath: "/tmp/c.pem",
+            keyPath: "/tmp/k.pem",
+            identityPath: "/tmp/i.p12"
+        )
+        XCTAssertEqual(p12.prefix(3), ["openssl", "pkcs12", "-export"])
+        XCTAssertEqual(p12.suffix(2), ["-passout", "pass:folio-loopback-v02"])
     }
 
     func testNeedsProvisioning() {
@@ -115,5 +123,6 @@ final class HardeningTests: XCTestCase {
         let home = URL(fileURLWithPath: "/Users/test")
         XCTAssertTrue(BridgeTLS.certURL(home: home).path.hasSuffix(".folio/bridge/folio-bridge-cert.pem"))
         XCTAssertTrue(BridgeTLS.keyURL(home: home).path.hasSuffix(".folio/bridge/folio-bridge-key.pem"))
+        XCTAssertTrue(BridgeTLS.identityURL(home: home).path.hasSuffix(".folio/bridge/folio-bridge-identity.p12"))
     }
 }

@@ -22,8 +22,8 @@ let port: UInt16 = UInt16(ProcessInfo.processInfo.environment["FOLIO_HELPER_PORT
 let tlsPort: UInt16 = UInt16(ProcessInfo.processInfo.environment["FOLIO_HELPER_TLS_PORT"] ?? "").flatMap(UInt16.init) ?? UInt16(HelperConfig.tlsPort)
 let token = HelperSecurity.newPairingToken()
 let prober = DefaultAppProber()
+var rateLimiter = HelperSecurity.RateLimiter()
 log("\(HelperConfig.name) v\(HelperConfig.version) starting on 127.0.0.1:\(port)")
-log("production bridge: https://127.0.0.1:\(tlsPort) (per-install loopback cert, see docs/MAC_BRIDGE_TLS.md)")
 log("development bridge: http://127.0.0.1:\(port) (localhost only; http://localhost origins)")
 
 // POSIX socket, IPv4 loopback only.
@@ -51,6 +51,29 @@ guard listen(fd, 16) == 0 else { fputs("listen() failed\n", stderr); exit(1) }
 log("listening on 127.0.0.1:\(port) (localhost only)")
 log("pairing token issued via GET /v1/pair (Folio origin required)")
 
+#if os(macOS)
+// Retain the TLS listener for the process lifetime. It terminates HTTPS on
+// loopback and streams requests to the same HTTP router below, preserving all
+// origin, host, pairing and payload validation in one place.
+let tlsProxy: LoopbackTLSProxy?
+do {
+    let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+    let identity = try BridgeTLS.loadOrCreateIdentity(home: home)
+    let proxy = try LoopbackTLSProxy(
+        port: tlsPort,
+        upstreamPort: port,
+        identity: identity,
+        logger: log
+    )
+    proxy.start()
+    tlsProxy = proxy
+    log("production bridge starting on https://127.0.0.1:\(tlsPort)")
+} catch {
+    tlsProxy = nil
+    log("production TLS bridge unavailable: \(error)")
+}
+#endif
+
 while true {
     var peer = sockaddr_in()
     var peerLen = socklen_t(MemoryLayout<sockaddr_in>.size)
@@ -70,9 +93,8 @@ while true {
         if n <= 0 { break }
         buffer.append(contentsOf: chunk.prefix(n))
         if let parsed = parseHttpRequest(buffer) { complete = parsed; break }
-        if buffer.count > 4096, parseHttpRequest(buffer) == nil,
-           let s = String(data: buffer.prefix(4096), encoding: .utf8),
-           !s.contains("Content-Length:") && buffer.count > 8192 { break }
+        if buffer.count > 8192, parseHttpRequest(buffer) == nil,
+           !hasContentLengthHeader(Data(buffer.prefix(4096))) { break }
     }
     if buffer.count >= HelperConfig.maxBase64Chars + 65536 { tooBig = true }
 
@@ -99,6 +121,21 @@ while true {
     }
 
     let origin = req.headers["origin"]
+    let rateLimitedRoute =
+        (req.path == "/v1/pair" && req.method == "GET") ||
+        (req.path == "/v1/convert" && req.method == "POST")
+    if rateLimitedRoute,
+       !rateLimiter.shouldAllow(now: Date().timeIntervalSinceReferenceDate) {
+        sendResponse(
+            HttpResponse(status: 429, json: [
+                "error": "rate_limited",
+                "hint": "Too many requests. Wait a minute and try again.",
+            ]),
+            origin: origin
+        )
+        close(conn)
+        continue
+    }
     // Route validation first (origin, token, allowlist, sizes).
     let caps = detectCapabilities(prober: prober)
     let routed = routeRequest(req, capabilities: caps, expectedToken: token)
@@ -134,7 +171,9 @@ while true {
             let runner = AppleScriptRunner()
             let orchestrator = ConversionOrchestrator(
                 capabilities: caps,
-                runScript: { _, script in try runner.run(source: script) },
+                runScript: { appName, script in
+                    try runner.run(appName: appName, source: script)
+                },
                 libreOffice: caps.libreoffice ? LibreOfficeConverter() : nil
             )
             #else

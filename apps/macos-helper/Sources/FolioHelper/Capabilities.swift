@@ -43,10 +43,14 @@ public struct DefaultAppProber: AppProber {
             "/System/Applications",
             NSHomeDirectory() + "/Applications",
         ]
-        // Map bundle IDs to app names for a cheap existence check.
-        let appName = DefaultAppProber.appName(for: bundleID)
+        // Apple changed the iWork bundle IDs and Finder display names in
+        // macOS 26. Keep both generations so existing installs and the new
+        // "Creator Studio" app bundles are detected without launching them.
+        let appNames = DefaultAppProber.appNames(for: bundleID)
         for dir in candidates {
-            if let appName, fm.fileExists(atPath: "\(dir)/\(appName).app") { return true }
+            for appName in appNames where fm.fileExists(atPath: "\(dir)/\(appName).app") {
+                return true
+            }
         }
         return false
 #else
@@ -66,15 +70,18 @@ public struct DefaultAppProber: AppProber {
 #endif
     }
 
-    static func appName(for bundleID: String) -> String? {
+    static func appNames(for bundleID: String) -> [String] {
         switch bundleID {
-        case "com.apple.iWork.Pages": return "Pages"
-        case "com.apple.iWork.Keynote": return "Keynote"
-        case "com.apple.iWork.Numbers": return "Numbers"
-        case "com.microsoft.Word": return "Microsoft Word"
-        case "com.microsoft.Powerpoint": return "Microsoft PowerPoint"
-        case "com.microsoft.Excel": return "Microsoft Excel"
-        default: return nil
+        case "com.apple.iWork.Pages", "com.apple.Pages":
+            return ["Pages", "Pages Creator Studio"]
+        case "com.apple.iWork.Keynote", "com.apple.Keynote":
+            return ["Keynote", "Keynote Creator Studio"]
+        case "com.apple.iWork.Numbers", "com.apple.Numbers":
+            return ["Numbers", "Numbers Creator Studio"]
+        case "com.microsoft.Word": return ["Microsoft Word"]
+        case "com.microsoft.Powerpoint": return ["Microsoft PowerPoint"]
+        case "com.microsoft.Excel": return ["Microsoft Excel"]
+        default: return []
         }
     }
 }
@@ -91,10 +98,13 @@ public struct MockAppProber: AppProber {
 }
 
 public func detectCapabilities(prober: AppProber = DefaultAppProber()) -> HelperCapabilities {
-    HelperCapabilities(
-        pages: prober.isAppInstalled(bundleID: "com.apple.iWork.Pages"),
-        keynote: prober.isAppInstalled(bundleID: "com.apple.iWork.Keynote"),
-        numbers: prober.isAppInstalled(bundleID: "com.apple.iWork.Numbers"),
+    func hasAny(_ bundleIDs: [String]) -> Bool {
+        bundleIDs.contains { prober.isAppInstalled(bundleID: $0) }
+    }
+    return HelperCapabilities(
+        pages: hasAny(["com.apple.iWork.Pages", "com.apple.Pages"]),
+        keynote: hasAny(["com.apple.iWork.Keynote", "com.apple.Keynote"]),
+        numbers: hasAny(["com.apple.iWork.Numbers", "com.apple.Numbers"]),
         word: prober.isAppInstalled(bundleID: "com.microsoft.Word"),
         powerpoint: prober.isAppInstalled(bundleID: "com.microsoft.Powerpoint"),
         excel: prober.isAppInstalled(bundleID: "com.microsoft.Excel"),

@@ -73,6 +73,12 @@ describe("helperErrorMessage", () => {
     expect(helperErrorMessage("helper_unreachable")).toMatch(/isn't running/);
     expect(helperErrorMessage("permission_denied")).toMatch(/Automation/);
     expect(helperErrorMessage("nope")).toMatch(/went wrong/);
+    expect(
+      helperErrorMessage(
+        "open_failed",
+        "The desktop app couldn't open this document. It may be damaged.",
+      ),
+    ).toBe("The desktop app couldn't open this document. It may be damaged.");
   });
 });
 

@@ -57,6 +57,14 @@ struct FolioMacApp: App {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                Button("Install Loopback Certificate…") {
+                    NSWorkspace.shared.open(FolioMac.bridgeCertificateURL)
+                }
+
+                Text("In Keychain Access, set the Folio loopback certificate to Always Trust once so HTTPS Folio pages can connect.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
                 Button("Open Automation Settings") {
                     if let url = URL(string: FolioMac.automationSettingsURL) {
                         NSWorkspace.shared.open(url)

@@ -97,6 +97,11 @@ final class ServerTests: XCTestCase {
         XCTAssertEqual(parsed?.body.count, 3)
     }
 
+    func testContentLengthDetectionIsCaseInsensitive() {
+        let lower = Data("POST /v1/convert HTTP/1.1\r\ncontent-length: 3\r\n\r\nabc".utf8)
+        XCTAssertTrue(hasContentLengthHeader(lower))
+    }
+
     func testParseStripsQueryString() {
         let raw = Data("GET /v1/status?x=1 HTTP/1.1\r\nContent-Length: 0\r\n\r\n".utf8)
         XCTAssertEqual(parseHttpRequest(raw)?.path, "/v1/status")

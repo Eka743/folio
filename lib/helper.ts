@@ -144,6 +144,7 @@ export function helperErrorMessage(code: string, hint?: string): string {
     convert_failed: "The converted file could not be created.",
     damaged: "This document appears to be damaged.",
     too_large: "This file is too large for local conversion.",
+    rate_limited: "Too many requests. Wait a minute and try again.",
     bad_request: "The conversion request was invalid.",
     forbidden: "The helper refused this request.",
     secure_connection:
@@ -152,7 +153,11 @@ export function helperErrorMessage(code: string, hint?: string): string {
       "Your browser doesn't trust the Folio for Mac certificate yet. Open Folio for Mac and complete the one-time certificate trust step.",
   };
   const base = map[code] ?? "Something went wrong during conversion.";
-  return hint ? `${base} ${hint}` : base;
+  if (!hint) return base;
+  const cleanHint = hint.trim();
+  const basePrefix = base.replace(/[.!?]+$/, "").toLowerCase();
+  if (cleanHint.toLowerCase().startsWith(basePrefix)) return cleanHint;
+  return `${base} ${cleanHint}`;
 }
 
 /**

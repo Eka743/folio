@@ -13,10 +13,12 @@ public enum HelperConfig {
     /// (Safari never even issues the request — see docs/MAC_BRIDGE_TLS.md).
     public static let tlsPort = 17392
     /// Per-install loopback certificate (CN/SAN scoped to 127.0.0.1 /
-    /// localhost), provisioned by scripts/provision-bridge-cert.sh with
-    /// fixed openssl arguments. Private key must be 0600.
+    /// localhost), provisioned automatically or by
+    /// scripts/provision-bridge-cert.sh with fixed openssl arguments.
+    /// Private key must be 0600.
     public static let certFileName = "folio-bridge-cert.pem"
     public static let keyFileName = "folio-bridge-key.pem"
+    public static let identityFileName = "folio-bridge-identity.p12"
     public static let bridgeDirName = ".folio/bridge"
     /// Host header allowlist — DNS-rebinding mitigation. The server only
     /// answers when Host is a loopback literal (optionally with port).

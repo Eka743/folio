@@ -105,12 +105,26 @@ public enum AppleScripts {
         let o = HelperSecurity.appleScriptQuoted(outputPath)
         let kind = format == "pdf" ? "PDF" : "Microsoft Word"
         return """
-        tell application "Pages"
-          activate
-          set srcDoc to open POSIX file "\(i)"
-          export srcDoc to POSIX file "\(o)" as \(kind)
-          close srcDoc saving no
-        end tell
+        with timeout of 120 seconds
+          tell application "Pages"
+            activate
+            set didOpen to false
+            try
+              set srcDoc to open POSIX file "\(i)"
+              set didOpen to true
+              delay 1
+              export srcDoc to POSIX file "\(o)" as \(kind)
+              close srcDoc saving no
+            on error errorMessage number errorNumber
+              if didOpen then
+                try
+                  close srcDoc saving no
+                end try
+              end if
+              error errorMessage number errorNumber
+            end try
+          end tell
+        end timeout
         """
     }
 
@@ -119,12 +133,26 @@ public enum AppleScripts {
         let o = HelperSecurity.appleScriptQuoted(outputPath)
         let kind = format == "pdf" ? "PDF" : "Microsoft PowerPoint"
         return """
-        tell application "Keynote"
-          activate
-          set srcDoc to open POSIX file "\(i)"
-          export srcDoc to POSIX file "\(o)" as \(kind)
-          close srcDoc saving no
-        end tell
+        with timeout of 120 seconds
+          tell application "Keynote"
+            activate
+            set didOpen to false
+            try
+              set srcDoc to open POSIX file "\(i)"
+              set didOpen to true
+              delay 1
+              export srcDoc to POSIX file "\(o)" as \(kind)
+              close srcDoc saving no
+            on error errorMessage number errorNumber
+              if didOpen then
+                try
+                  close srcDoc saving no
+                end try
+              end if
+              error errorMessage number errorNumber
+            end try
+          end tell
+        end timeout
         """
     }
 
@@ -133,12 +161,26 @@ public enum AppleScripts {
         let o = HelperSecurity.appleScriptQuoted(outputPath)
         let kind = format == "pdf" ? "PDF" : "Microsoft Excel"
         return """
-        tell application "Numbers"
-          activate
-          set srcDoc to open POSIX file "\(i)"
-          export srcDoc to POSIX file "\(o)" as \(kind)
-          close srcDoc saving no
-        end tell
+        with timeout of 120 seconds
+          tell application "Numbers"
+            activate
+            set didOpen to false
+            try
+              set srcDoc to open POSIX file "\(i)"
+              set didOpen to true
+              delay 1
+              export srcDoc to POSIX file "\(o)" as \(kind)
+              close srcDoc saving no
+            on error errorMessage number errorNumber
+              if didOpen then
+                try
+                  close srcDoc saving no
+                end try
+              end if
+              error errorMessage number errorNumber
+            end try
+          end tell
+        end timeout
         """
     }
 
@@ -147,23 +189,40 @@ public enum AppleScripts {
         let o = HelperSecurity.appleScriptQuoted(outputPath)
         // Word/Excel/PowerPoint save-as-PDF via AppleScript `save as`.
         return """
-        tell application "\(app)"
-          activate
-          set srcDoc to open POSIX file "\(i)"
-          save as srcDoc file name "\(o)" file format format PDF
-          close srcDoc saving no
-        end tell
+        with timeout of 120 seconds
+          tell application "\(app)"
+            activate
+            set didOpen to false
+            try
+              set srcDoc to open POSIX file "\(i)"
+              set didOpen to true
+              delay 1
+              save as srcDoc file name "\(o)" file format format PDF
+              close srcDoc saving no
+            on error errorMessage number errorNumber
+              if didOpen then
+                try
+                  close srcDoc saving no
+                end try
+              end if
+              error errorMessage number errorNumber
+            end try
+          end tell
+        end timeout
         """
     }
 }
 
 #if os(macOS)
+import AppKit
+
 /// Runs AppleScript via NSAppleScript (no shell, no GUI clicking, no keystrokes).
 /// Kept behind `#if os(macOS)` so the package still builds/tests on Linux CI.
 public struct AppleScriptRunner {
     public init() {}
     @discardableResult
-    public func run(source: String) throws -> String {
+    public func run(appName: String, source: String) throws -> String {
+        try ensureApplicationIsRunning(appName: appName)
         // NSAppleScript lives in Foundation on macOS.
         guard let script = NSAppleScript(source: source) else {
             throw ConversionError.convertFailed
@@ -173,11 +232,69 @@ public struct AppleScriptRunner {
         if let err {
             let msg = "\(err)"
             if msg.localizedCaseInsensitiveContains("not authorized") || msg.localizedCaseInsensitiveContains("permission") {
-                throw ConversionError.permissionDenied(appName: "the desktop app")
+                throw ConversionError.permissionDenied(appName: appName)
             }
             throw ConversionError.openFailed
         }
         return result.stringValue ?? ""
+    }
+
+    /// `activate` is asynchronous on current iWork releases and an immediate
+    /// `open` can fail with AppleEvent -600. Ask Launch Services to start the
+    /// fixed, detected application first, then wait until it is registered as
+    /// running before executing the export script.
+    private func ensureApplicationIsRunning(appName: String) throws {
+        let bundleIDs: [String]
+        switch appName {
+        case "Pages": bundleIDs = ["com.apple.Pages", "com.apple.iWork.Pages"]
+        case "Keynote": bundleIDs = ["com.apple.Keynote", "com.apple.iWork.Keynote"]
+        case "Numbers": bundleIDs = ["com.apple.Numbers", "com.apple.iWork.Numbers"]
+        case "Microsoft Word": bundleIDs = ["com.microsoft.Word"]
+        case "Microsoft PowerPoint": bundleIDs = ["com.microsoft.Powerpoint"]
+        case "Microsoft Excel": bundleIDs = ["com.microsoft.Excel"]
+        default: throw ConversionError.appMissing(appName: appName)
+        }
+
+        if runningApplication(bundleIDs: bundleIDs)?.isFinishedLaunching == true {
+            return
+        }
+
+        guard let appURL = bundleIDs.compactMap({
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
+        }).first else {
+            throw ConversionError.appMissing(appName: appName)
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-g", appURL.path]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw ConversionError.openFailed }
+
+        for _ in 0..<150 {
+            if runningApplication(bundleIDs: bundleIDs)?.isFinishedLaunching == true {
+                // Creator Studio iWork builds can report finishedLaunching a
+                // moment before their AppleEvent export handlers are ready.
+                // This delay only applies to a cold launch; already-running
+                // applications return through the fast path above.
+                Thread.sleep(forTimeInterval: 5)
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        throw ConversionError.openFailed
+    }
+
+    private func runningApplication(bundleIDs: [String]) -> NSRunningApplication? {
+        for bundleID in bundleIDs {
+            if let application = NSRunningApplication
+                .runningApplications(withBundleIdentifier: bundleID)
+                .first {
+                return application
+            }
+        }
+        return nil
     }
 }
 #endif

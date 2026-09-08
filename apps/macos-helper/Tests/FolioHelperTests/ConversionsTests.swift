@@ -52,6 +52,9 @@ final class ConversionsTests: XCTestCase {
         XCTAssertTrue(s.contains("Pages"))
         XCTAssertTrue(s.contains(#"a\"b"#))
         XCTAssertTrue(s.contains("PDF"))
+        XCTAssertTrue(s.contains("with timeout of 120 seconds"))
+        XCTAssertTrue(s.contains("delay 1"))
+        XCTAssertTrue(s.contains("on error errorMessage number errorNumber"))
         let w = AppleScripts.pagesExport(inputPath: "/tmp/a.pages", outputPath: "/tmp/o.docx", format: "docx")
         XCTAssertTrue(w.contains("Microsoft Word"))
     }

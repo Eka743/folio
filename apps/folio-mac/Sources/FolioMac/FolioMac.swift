@@ -19,6 +19,10 @@ public enum FolioMac {
     public static let helperExecutableName = "FolioHelper"
     public static let helperPort = 17391
     public static let helperTLSPort = 17392
+    public static var bridgeCertificateURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".folio/bridge/folio-bridge-cert.pem")
+    }
 
     /// Engines shown in the status UI. Availability is reported by the
     /// helper's GET /v1/capabilities endpoint at runtime.

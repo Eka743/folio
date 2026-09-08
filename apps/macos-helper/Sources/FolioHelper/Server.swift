@@ -31,6 +31,7 @@ public func reasonPhrase(_ status: Int) -> String {
     case 404: return "Not Found"
     case 405: return "Method Not Allowed"
     case 413: return "Payload Too Large"
+    case 429: return "Too Many Requests"
     case 500: return "Internal Server Error"
     default: return "OK"
     }
@@ -61,6 +62,24 @@ public func parseHttpRequest(_ data: Data) -> HttpRequest? {
     guard data.count >= bodyStart + contentLength else { return nil }
     let body = data.subdata(in: bodyStart..<(bodyStart + contentLength))
     return HttpRequest(method: method, path: rawPath, headers: headers, body: body)
+}
+
+/// Header names are case-insensitive under HTTP/1.1. The socket read loop uses
+/// this while waiting for larger bodies so lowercase clients are not mistaken
+/// for unsupported streaming requests.
+public func hasContentLengthHeader(_ data: Data) -> Bool {
+    guard let headerEnd = data.range(of: Data("\r\n\r\n".utf8)),
+          let headerText = String(
+            data: data.subdata(in: data.startIndex..<headerEnd.lowerBound),
+            encoding: .utf8
+          ) else {
+        return false
+    }
+    return headerText.components(separatedBy: "\r\n").dropFirst().contains { line in
+        guard let colon = line.firstIndex(of: ":") else { return false }
+        return line[..<colon].trimmingCharacters(in: .whitespaces)
+            .localizedCaseInsensitiveCompare("content-length") == .orderedSame
+    }
 }
 
 public func corsHeaders(for origin: String?) -> [String: String] {
