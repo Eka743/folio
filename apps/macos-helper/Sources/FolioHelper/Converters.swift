@@ -34,7 +34,7 @@ public enum ConversionError: Error, Equatable {
         case .openFailed: return "The desktop app couldn't open this document. It may be damaged or in an unsupported format."
         case .convertFailed: return "The converted file could not be created."
         case .damaged: return "This document appears to be damaged."
-        case .permissionDenied(let a): return "macOS denied permission to control \(a). Open System Settings → Privacy & Security → Automation and allow Folio Helper, then try again."
+        case .permissionDenied(let a): return "macOS denied permission for Folio to control \(a). Open System Settings → Privacy & Security → Automation, expand Folio, turn on \(a), then try again."
         }
     }
 }

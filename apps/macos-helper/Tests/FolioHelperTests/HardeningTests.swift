@@ -100,7 +100,7 @@ final class HardeningTests: XCTestCase {
         let args = BridgeTLS.opensslArguments(certPath: "/tmp/c.pem", keyPath: "/tmp/k.pem")
         XCTAssertEqual(args.first, "openssl")
         XCTAssertTrue(args.contains("subjectAltName=IP:127.0.0.1,DNS:localhost"))
-        XCTAssertTrue(args.contains("/CN=127.0.0.1"))
+        XCTAssertTrue(args.contains("/CN=\(BridgeTLS.certificateCommonName)"))
         // No shell interpolation surface: args are an array, never a string.
         XCTAssertFalse(args.joined(separator: " ").contains(";"))
 

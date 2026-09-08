@@ -46,6 +46,22 @@ public enum FolioMac {
     /// Deep-link target for Automation settings (macOS 13+).
     public static let automationSettingsURL =
         "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+
+#if os(macOS)
+    /// Ask macOS for Automation consent without requiring a document upload.
+    /// The target is fixed to Keynote; no user-controlled AppleScript source is
+    /// accepted. Running this from the signed Folio app makes TCC attribute
+    /// the request to Folio (not Terminal or the helper's raw executable).
+    public static func requestKeynoteAutomationPermission() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let script = NSAppleScript(
+                source: "tell application id \"com.apple.Keynote\" to get name"
+            ) else { return }
+            var error: NSDictionary?
+            _ = script.executeAndReturnError(&error)
+        }
+    }
+#endif
 }
 
 /// Supervises the bundled FolioHelper child process.

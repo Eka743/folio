@@ -12,7 +12,8 @@ mixed content kills the request before any of them matter.
 ## Production architecture
 
 - Folio for Mac serves a **TLS listener on 127.0.0.1:17392** with a
-  per-install loopback certificate (CN/SAN scoped to 127.0.0.1 + localhost),
+  per-install loopback certificate (Keychain name **Folio Loopback Bridge
+  (folio-bridge)**; SAN scoped to 127.0.0.1 + localhost),
   generated automatically by the helper (or manually by
   `scripts/provision-bridge-cert.sh`) using fixed openssl arguments, with the
   key and PKCS#12 identity set to 0600 in `~/.folio/bridge/`. The identity is

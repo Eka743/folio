@@ -12,7 +12,7 @@ public enum HelperConfig {
     /// TLS listener because browsers block https→http mixed-content fetches
     /// (Safari never even issues the request — see docs/MAC_BRIDGE_TLS.md).
     public static let tlsPort = 17392
-    /// Per-install loopback certificate (CN/SAN scoped to 127.0.0.1 /
+    /// Per-install loopback certificate (friendly CN, SAN scoped to 127.0.0.1 /
     /// localhost), provisioned automatically or by
     /// scripts/provision-bridge-cert.sh with fixed openssl arguments.
     /// Private key must be 0600.

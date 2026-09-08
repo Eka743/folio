@@ -79,8 +79,8 @@ Mitigations:
 
 ## Permissions
 
-First conversion triggers macOS Automation consent (“Folio Helper would
-like to control Pages…”). If denied, the helper returns
+First conversion (or the Folio for Mac “Request Keynote Access…” action)
+triggers macOS Automation consent (“Folio would like to control Pages…”). If denied, the helper returns
 `permission_denied` and the web UI explains how to re-allow it. The helper
 never re-prompts in a loop.
 

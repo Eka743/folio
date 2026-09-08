@@ -57,11 +57,19 @@ struct FolioMacApp: App {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Button("Install Loopback Certificate…") {
+                Button("Open Loopback Certificate in Keychain Access…") {
                     NSWorkspace.shared.open(FolioMac.bridgeCertificateURL)
                 }
 
-                Text("In Keychain Access, set the Folio loopback certificate to Always Trust once so HTTPS Folio pages can connect.")
+                Text("The certificate appears as ‘Folio Loopback Bridge (folio-bridge)’. Open it, expand Trust, choose ‘Always Trust’ for ‘When using this certificate’, then close the dialog and authenticate.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Button("Request Keynote Access…") {
+                    FolioMac.requestKeynoteAutomationPermission()
+                }
+
+                Text("If macOS shows a Keynote prompt, choose Allow. You can also open Automation Settings and turn on Keynote under Folio.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 

@@ -42,6 +42,13 @@ final class ConversionsTests: XCTestCase {
         XCTAssertThrowsError(try validateConvertPayload(p))
     }
 
+    func testPermissionHintNamesTheFolioAutomationSender() {
+        let hint = ConversionError.permissionDenied(appName: "Keynote").hint
+        XCTAssertTrue(hint.contains("expand Folio"))
+        XCTAssertTrue(hint.contains("turn on Keynote"))
+        XCTAssertFalse(hint.contains("Folio Helper"))
+    }
+
     func testOutputFilename() {
         XCTAssertEqual(outputFilename(for: "a.pages", to: "pdf"), "a.pdf")
         XCTAssertEqual(outputFilename(for: "a", to: "pdf"), "a.pdf")

@@ -15,7 +15,7 @@ public enum BridgeTLSError: Error {
 /// Why TLS exists at all: browsers block `https://` pages from fetching
 /// `http://127.0.0.1` as mixed content (Safari never issues the request),
 /// so the helper must serve a TLS listener with a per-install loopback
-/// certificate (CN/SAN scoped to 127.0.0.1 + localhost). The user trusts it
+/// certificate (friendly CN plus SAN scoped to 127.0.0.1 + localhost). The user trusts it
 /// once via the Folio for Mac app; thereafter https:// Folio pages probe
 /// `https://127.0.0.1:17392` first and fall back to plain HTTP only on
 /// `http://localhost` development origins.
@@ -23,6 +23,11 @@ public enum BridgeTLSError: Error {
 /// Actual TLS termination uses Network.framework in `LoopbackTLSProxy.swift`.
 /// Path and fixed-argument construction stays platform-neutral and testable.
 public enum BridgeTLS {
+    /// Human-readable certificate identity shown by Keychain Access. The SAN,
+    /// rather than this display name, is what limits TLS validation to the
+    /// loopback endpoints.
+    public static let certificateCommonName = "Folio Loopback Bridge (folio-bridge)"
+
     // The PKCS#12 is only a compatibility container beside the 0600 PEM key,
     // not a security boundary. A non-empty value is required by
     // SecPKCS12Import on macOS even though LibreSSL accepts an empty password.
@@ -53,7 +58,7 @@ public enum BridgeTLS {
             "-keyout", keyPath,
             "-out", certPath,
             "-days", "825",
-            "-subj", "/CN=127.0.0.1",
+            "-subj", "/CN=\(certificateCommonName)",
             "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost",
         ]
     }
@@ -94,10 +99,14 @@ public enum BridgeTLS {
         )
         try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
 
+        // Refresh certificates minted by the v0.2 prototype whose subject was
+        // just "127.0.0.1". Keeping the same path makes the in-app installer
+        // stable while giving users a searchable Keychain identity after the
+        // first launch of this version.
         let recreateCertificate = needsProvisioning(
             certExists: fm.fileExists(atPath: cert.path),
             keyExists: fm.fileExists(atPath: key.path)
-        )
+        ) || !hasCurrentSubject(at: cert)
         if recreateCertificate {
             try? fm.removeItem(at: cert)
             try? fm.removeItem(at: key)
@@ -158,6 +167,24 @@ public enum BridgeTLS {
         guard process.terminationStatus == 0 else {
             throw BridgeTLSError.provisioningFailed(process.terminationStatus)
         }
+    }
+
+    private static func hasCurrentSubject(at url: URL) -> Bool {
+        // The on-disk certificate is PEM (the format Keychain Access opens),
+        // while SecCertificateCreateWithData expects DER. Decode the PEM
+        // envelope before asking Security for its subject summary.
+        guard let pem = try? String(contentsOf: url, encoding: .utf8),
+              let der = Data(
+                  base64Encoded: pem
+                      .replacingOccurrences(of: "-----BEGIN CERTIFICATE-----", with: "")
+                      .replacingOccurrences(of: "-----END CERTIFICATE-----", with: ""),
+                  options: [.ignoreUnknownCharacters]
+              ),
+              let certificate = SecCertificateCreateWithData(nil, der as CFData),
+              let subject = SecCertificateCopySubjectSummary(certificate) as String? else {
+            return false
+        }
+        return subject == certificateCommonName
     }
 
     private static func importIdentity(at url: URL, into imported: inout CFArray?) -> OSStatus {

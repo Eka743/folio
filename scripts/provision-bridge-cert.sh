@@ -1,7 +1,9 @@
 #!/bin/bash
 # Provision the per-install Folio loopback TLS certificate.
 # Fixed openssl arguments only — no untrusted input. Key written 0600.
-# CN/SAN scoped to 127.0.0.1 + localhost; never used for any other host.
+# Friendly CN plus SAN scoped to 127.0.0.1 + localhost; never used for any
+# other host. The Keychain label intentionally contains "folio-bridge" so it
+# is searchable from the Folio setup instructions.
 set -euo pipefail
 
 BRIDGE_DIR="${HOME}/.folio/bridge"
@@ -24,7 +26,7 @@ if [[ ! -f "${CERT}" || ! -f "${KEY}" ]]; then
     -keyout "${KEY}" \
     -out "${CERT}" \
     -days 825 \
-    -subj "/CN=127.0.0.1" \
+    -subj "/CN=Folio Loopback Bridge (folio-bridge)" \
     -addext "subjectAltName=IP:127.0.0.1,DNS:localhost"
 fi
 

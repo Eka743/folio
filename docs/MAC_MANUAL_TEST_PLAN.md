@@ -8,7 +8,9 @@ Terminal use.
 ## Setup
 
 - Install Folio.app from `Folio-for-Mac.dmg` into Applications; open it.
-- Complete one-time cert trust + Automation permission (explained in-app).
+- Complete one-time certificate trust + Automation permission (explained
+  in-app). The imported certificate is named **Folio Loopback Bridge
+  (folio-bridge)** in Keychain Access; set its SSL trust to **Always Trust**.
 - Open the Folio PR preview in Safari.
 
 ## iWork matrix (each: simple text, images, formatting, multi-page/slides/sheets, tables, special chars, spaces + Unicode filenames, large file)
