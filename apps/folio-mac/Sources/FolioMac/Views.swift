@@ -25,6 +25,7 @@ final class FolioAppDelegate: NSObject, NSApplicationDelegate {
 struct FolioMacApp: App {
     @NSApplicationDelegateAdaptor(FolioAppDelegate.self) private var appDelegate
     @State private var capabilities: [String: Bool] = [:]
+    @State private var keynoteAutomationStatus: FolioMac.KeynoteAutomationStatus?
 
     var body: some Scene {
         MenuBarExtra("Folio for Mac", systemImage: "doc.on.doc") {
@@ -66,10 +67,23 @@ struct FolioMacApp: App {
                     .foregroundStyle(.secondary)
 
                 Button("Request Keynote Access…") {
-                    FolioMac.requestKeynoteAutomationPermission()
+                    keynoteAutomationStatus = nil
+                    FolioMac.requestKeynoteAutomationPermission { status in
+                        keynoteAutomationStatus = status
+                    }
                 }
 
-                Text("If macOS shows a Keynote prompt, choose Allow. You can also open Automation Settings and turn on Keynote under Folio.")
+                if let keynoteAutomationStatus {
+                    Text(keynoteAutomationMessage(keynoteAutomationStatus))
+                        .font(.caption2)
+                        .foregroundStyle(keynoteAutomationStatus == .granted ? .green : .secondary)
+                } else {
+                    Text("Folio will ask macOS to authorize Keynote directly. Your files stay on this Mac.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text("If macOS previously denied access, use System Settings → Privacy & Security → Automation to change only Folio’s Keynote permission, then relaunch Folio.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
@@ -88,6 +102,21 @@ struct FolioMacApp: App {
             }
             .padding(12)
             .frame(width: 320)
+        }
+    }
+
+    private func keynoteAutomationMessage(_ status: FolioMac.KeynoteAutomationStatus) -> String {
+        switch status {
+        case .granted:
+            return "Keynote access is granted."
+        case .denied:
+            return "Keynote access was denied or previously denied. macOS will not prompt again until you change Folio’s Keynote permission in System Settings."
+        case .restricted:
+            return "Keynote automation is restricted by macOS policy on this Mac."
+        case .unavailable:
+            return "Keynote is not installed or is unavailable to macOS."
+        case .failed:
+            return "macOS could not complete the Keynote authorization request. Quit and relaunch Folio, then try once more."
         }
     }
 }

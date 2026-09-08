@@ -1,13 +1,33 @@
 #!/bin/bash
 # Build Folio.app (+ Folio-for-Mac.dmg when hdiutil is available) for testing.
-# Unsigned development build: Gatekeeper will warn. Signed distribution
-# requires Apple Developer credentials — see docs/SIGNING.md. Nothing here
-# hardcodes certificates.
+# The Automation permission flow requires a consistently signed hardened
+# runtime app. Set DEVELOPER_ID_APP to the stable signing identity used for
+# this installation; unsigned output is opt-in for non-TCC build checks.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT="${ROOT}/dist"
+if [[ -n "${FOLIO_OUTPUT_DIR:-}" ]]; then
+  OUT="${FOLIO_OUTPUT_DIR}"
+elif [[ "${ROOT}" == *"/Library/Mobile Documents/"* ]]; then
+  # FileProvider can reattach Finder metadata to iCloud Drive bundles after
+  # codesign has verified them. Keep the canonical signed artifact local.
+  OUT="/private/tmp/FolioPackage"
+else
+  OUT="${ROOT}/dist"
+fi
 APP="${OUT}/Folio.app"
+ENTITLEMENTS="${ROOT}/scripts/folio-automation.entitlements"
+
+if [[ ! -f "${ENTITLEMENTS}" ]]; then
+  echo "Missing entitlements file: ${ENTITLEMENTS}" >&2
+  exit 2
+fi
+
+if [[ -z "${DEVELOPER_ID_APP:-}" && "${FOLIO_ALLOW_UNSIGNED:-}" != "1" ]]; then
+  echo "DEVELOPER_ID_APP is required for a Folio build used with macOS Automation." >&2
+  echo "Set FOLIO_ALLOW_UNSIGNED=1 only for builds that will not request TCC permissions." >&2
+  exit 2
+fi
 
 echo "==> Building FolioHelper (release)"
 swift build -c release --package-path "${ROOT}/apps/macos-helper"
@@ -30,6 +50,8 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>tools.folio.mac</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleSignature</key><string>FOLI</string>
   <key>CFBundleName</key><string>Folio for Mac</string>
   <key>CFBundleVersion</key><string>0.2.0</string>
   <key>CFBundleShortVersionString</key><string>0.2.0</string>
@@ -49,7 +71,9 @@ if command -v xattr >/dev/null 2>&1; then
   xattr -cr "${APP}"
 fi
 
-# Optional signing (no-op without credentials):
+# Sign nested executables first, then the outer bundle. Both processes send
+# Apple Events in production: Folio requests consent and FolioHelper performs
+# document exports. They therefore need the same hardened-runtime entitlement.
 DMG_SOURCE="${APP}"
 if [[ -n "${DEVELOPER_ID_APP:-}" ]]; then
   echo "==> Signing with ${DEVELOPER_ID_APP}"
@@ -63,14 +87,17 @@ if [[ -n "${DEVELOPER_ID_APP:-}" ]]; then
   ditto --norsrc --noextattr --noqtn --noacl "${APP}" "${SIGNING_APP}"
   xattr -cr "${SIGNING_APP}" 2>/dev/null || true
   codesign --force --options runtime --timestamp \
+    --entitlements "${ENTITLEMENTS}" \
     --sign "${DEVELOPER_ID_APP}" \
     "${SIGNING_APP}/Contents/MacOS/FolioHelper"
   codesign --force --options runtime --timestamp \
+    --entitlements "${ENTITLEMENTS}" \
     --sign "${DEVELOPER_ID_APP}" \
     "${SIGNING_APP}/Contents/MacOS/Folio"
   # Sign the outer bundle after its nested executables so macOS/TCC sees a
   # stable bundle identity and can validate the Info.plist/resource seal.
   codesign --force --options runtime --timestamp \
+    --entitlements "${ENTITLEMENTS}" \
     --sign "${DEVELOPER_ID_APP}" \
     "${SIGNING_APP}"
   # Build the DMG from the clean local staging copy. FileProvider can attach
@@ -81,6 +108,7 @@ if [[ -n "${DEVELOPER_ID_APP:-}" ]]; then
   # FileProvider can add FinderInfo during the copy-back; remove it once
   # more so the artifact handed to the user verifies immediately.
   xattr -cr "${APP}" 2>/dev/null || true
+  codesign --verify --deep --strict --verbose=2 "${APP}"
 else
   echo "==> No DEVELOPER_ID_APP set; leaving unsigned (testing only)."
 fi

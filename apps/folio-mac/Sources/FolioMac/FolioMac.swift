@@ -51,22 +51,62 @@ public enum FolioMac {
         "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
 
 #if os(macOS)
+    /// Result of the user-facing Keynote Apple Events request.
+    ///
+    /// `.denied` also covers a previously denied request: macOS will not
+    /// show the consent prompt again until the user changes that decision in
+    /// System Settings.
+    public enum KeynoteAutomationStatus: Equatable {
+        case granted
+        case denied
+        case restricted
+        case unavailable
+        case failed
+    }
+
     /// Ask macOS for Automation consent without requiring a document upload.
     /// The target is fixed to Keynote; no user-controlled AppleScript source is
     /// accepted. Running this from the signed Folio app makes TCC attribute
     /// the request to Folio (not Terminal or the helper's raw executable).
-    public static func requestKeynoteAutomationPermission() {
+    public static func requestKeynoteAutomationPermission(
+        completion: @escaping (KeynoteAutomationStatus) -> Void = { _ in }
+    ) {
         // TCC presents consent from the foreground app's main run loop. Keep
         // this call on the main queue so a user-initiated menu action reliably
         // reaches the native macOS prompt instead of being treated as a
         // background Apple Event and silently denied.
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
+
+            guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Keynote") != nil else {
+                completion(.unavailable)
+                return
+            }
+
             guard let script = NSAppleScript(
                 source: "tell application id \"com.apple.Keynote\" to get name"
-            ) else { return }
+            ) else {
+                completion(.failed)
+                return
+            }
+
             var error: NSDictionary?
             _ = script.executeAndReturnError(&error)
+
+            guard let error else {
+                completion(.granted)
+                return
+            }
+
+            let errorNumber = (error[NSAppleScript.errorNumber] as? NSNumber)?.intValue
+            switch errorNumber {
+            case -1743: // errAEEventNotPermitted
+                completion(.denied)
+            case -1744, -10004: // errAEEventWouldBeBlocked / errAEPrivilegeError
+                completion(.restricted)
+            default:
+                completion(.failed)
+            }
         }
     }
 #endif
