@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   description:
     "Folio is a free, privacy-first toolkit for everyday document tasks: merge, split, rotate, compress and convert PDFs and images — processed in your browser.",
   metadataBase: new URL(siteUrl()),
+  alternates: { canonical: siteUrl() },
   openGraph: {
     title: "Folio — Free, private PDF & document tools",
     description:

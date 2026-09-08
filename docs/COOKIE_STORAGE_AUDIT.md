@@ -1,5 +1,7 @@
 # Cookie / Storage Audit (Folio v0.2)
 
+Last audited: 2026-09-08
+
 ## Classification
 
 | Mechanism | Used by Folio? | Purpose | Essential? |

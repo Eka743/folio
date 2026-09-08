@@ -39,10 +39,12 @@ See “Known limitations”.
 
 ## Privacy model
 
-- No database, no auth, no accounts, no analytics SDKs.
+- No database, no auth, no accounts, no analytics SDKs. The hosting provider
+  may still receive ordinary technical request metadata such as IP address,
+  timestamps, and security logs.
 - Browser tools: document bytes never leave the browser tab.
-- Mac tools: the website talks to Folio for Mac over localhost only
-  (`127.0.0.1:17391`); conversions run in your installed desktop apps and
+- Mac tools: the website talks to Folio for Mac over encrypted localhost only
+  (`127.0.0.1:17392` in production; `17391` is development-only); conversions run in your installed desktop apps and
   every result names the engine that ran it. No document bytes reach Folio
   servers, Vercel functions, or any conversion SaaS.
 - Zero third-party runtime requests: the pdf.js worker used by PDF → JPG
@@ -105,13 +107,16 @@ swift test
 
 1. Import this repository in Vercel (Framework preset: Next.js).
 2. Build command `npm run build`, output `.next` (defaults).
-3. No database or server config is needed; environment variables are optional
-   for the domain, legal identity and Mac download link.
-4. Set `NEXT_PUBLIC_SITE_URL` when using a domain other than the default
-   `https://folio.tools`; metadata, sitemap and robots output use the same
-   configured value. Set `NEXT_PUBLIC_OWNER_NAME` and
-   `NEXT_PUBLIC_OWNER_CONTACT` before publishing the Legal Notice. A signed
-   Mac installer link is shown only when `NEXT_PUBLIC_MAC_DOWNLOAD_URL` is set.
+3. No database or document-processing server config is needed. Before public
+   release, configure the verified operator/contact values, site URL, legal
+   update date, public source repository state, and signed Mac download URL.
+4. Run `npm run release:check` with those values before publishing. Metadata,
+   sitemap and robots output use `NEXT_PUBLIC_SITE_URL`; the Legal Notice uses
+   `NEXT_PUBLIC_OWNER_NAME` and `NEXT_PUBLIC_OWNER_CONTACT`. Set
+   `NEXT_PUBLIC_SOURCE_REPOSITORY_PUBLIC=true` only after the repository is
+   actually public. `NEXT_PUBLIC_MAC_DOWNLOAD_URL` must point to a signed,
+   notarized installer.
+   `.env.example` lists the configuration keys without containing personal data.
 
 ## Known limitations (honest)
 
@@ -135,6 +140,17 @@ swift test
   for Keynote does not remain enabled reliably in the current release. Both
   routes remain in the implementation for later compatibility work, but are
   not validated or guaranteed and are excluded from the v0.2 release verdict.
+
+## Public release compliance
+
+- The public legal configuration is centralized in `lib/site.ts` and checked by
+  `npm run release:check` without printing environment values.
+- `/privacy`, `/cookies`, `/terms`, `/legal`, `/security`, `/open-source`, and
+  `/mac` describe the current local-first architecture and release limitations.
+- Direct dependency notices are recorded in `docs/THIRD_PARTY_NOTICES.md`.
+- The GitHub repository is currently private. The Open Source page deliberately
+  does not claim public source availability until the repository is made public
+  and the release configuration confirms it.
 
 ## Dependency notes
 

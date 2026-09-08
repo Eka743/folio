@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "release:check": "node scripts/release-check.mjs"
   },
   "dependencies": {
     "html2canvas": "^1.4.1",

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-
-const MAC_DOWNLOAD_URL = process.env.NEXT_PUBLIC_MAC_DOWNLOAD_URL?.trim();
+import { publicSiteConfig } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Folio for Mac",
@@ -15,6 +14,7 @@ const STEPS = [
 ];
 
 export default function MacPage() {
+  const { macDownloadUrl } = publicSiteConfig();
   return (
     <div className="mx-auto max-w-3xl px-5 py-12">
       <h1 className="text-3xl font-semibold tracking-tight text-ink-950">Folio for Mac</h1>
@@ -23,12 +23,13 @@ export default function MacPage() {
         routes remain Beta / unvalidated. No Terminal. Your files never leave
         this Mac.
       </p>
-      {MAC_DOWNLOAD_URL ? (
+      {macDownloadUrl ? (
         <a
-          href={MAC_DOWNLOAD_URL}
+          href={macDownloadUrl}
+          rel="noreferrer"
           className="mt-5 inline-flex rounded-xl bg-ink-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-ink-800"
         >
-          Download Folio for Mac
+          Download the signed Folio for Mac
         </a>
       ) : (
         <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="note">
@@ -51,6 +52,30 @@ export default function MacPage() {
             <li>“Pages isn&apos;t installed.” — install Pages from the App Store, or use an Office format with the labeled LibreOffice fallback.</li>
             <li>“Folio needs permission to use Pages.” — allow it once under System Settings → Privacy &amp; Security → Automation.</li>
             <li>“Couldn&apos;t establish a secure connection.” — open Folio for Mac and complete the certificate trust step.</li>
+          </ul>
+        </section>
+        <section className="rounded-2xl border border-slate-200 p-5">
+          <h2 className="font-semibold text-ink-950">Permissions and certificate</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>
+              The loopback certificate encrypts the browser-to-helper connection
+              on this Mac. It does not grant Folio internet access, access to
+              unrelated files, or a general remote-control channel.
+            </li>
+            <li>
+              macOS Automation permission is requested only when a named desktop
+              app must be driven. Review the app name before allowing it, and
+              revoke access later in System Settings → Privacy &amp; Security →
+              Automation.
+            </li>
+            <li>
+              Never bypass Gatekeeper or security prompts to install an
+              untrusted build. The public download must point to a signed and
+              notarized release.
+            </li>
+            <li>
+              Keynote routes remain Beta / deferred / unvalidated in v0.2.
+            </li>
           </ul>
         </section>
       </div>

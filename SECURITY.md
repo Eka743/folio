@@ -21,9 +21,10 @@ Folio v0.2 (this branch) is the currently supported version.
 ## Reporting a Vulnerability
 
 - **Do not** open a public issue for an unpatched vulnerability.
-- Contact the repository owner privately (see Legal Notice on the site for
-  the configured contact; if placeholders are still set, use a private
-  security advisory on GitHub).
+- Contact the security address shown in the site Legal Notice after release
+  configuration is completed. While the repository is private or that address
+  is not configured, use a private GitHub Security Advisory rather than a
+  public issue.
 - Include: affected component (web / helper / Folio for Mac), version or
   commit, reproduction steps, and impact. **Never include real document
   contents.**
@@ -35,3 +36,7 @@ Folio v0.2 (this branch) is the currently supported version.
 - Social engineering, physical access, or a compromised user Mac (the helper
   intentionally runs as the user).
 - Vulnerabilities in Apple / Microsoft / LibreOffice desktop apps themselves.
+
+The public Security page and Legal Notice are generated from the same release
+configuration as the privacy contact. No document contents are needed for a
+report; redact or replace them with synthetic files.
