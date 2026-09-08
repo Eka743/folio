@@ -95,7 +95,7 @@ npm test           # vitest run
 npm run build      # production build
 ```
 
-Node 20+ recommended.
+Node 20.9+ required by the current Next.js release.
 
 ```bash
 cd apps/macos-helper
@@ -155,10 +155,9 @@ swift test
 ## Dependency notes
 
 - `jspdf` is kept at v4+ (v2.x has known critical issues).
-- `npm audit` may still report postcss advisories bundled through the
-  pinned Next.js 15.x release; these are build-time CSS scope only
-  (not document handling) and are resolved by upgrading to a patched
-  Next 15.x / Next 16, deliberately deferred to avoid destabilizing v0.1.
+- The current Next.js 16.3.4 dependency pins a patched PostCSS release. Run
+  `npm audit` during release review and do not publish with unresolved
+  production advisories.
 
 ## How to add a new Folio tool
 
