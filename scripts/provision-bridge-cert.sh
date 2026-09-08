@@ -10,14 +10,20 @@ BRIDGE_DIR="${HOME}/.folio/bridge"
 CERT="${BRIDGE_DIR}/folio-bridge-cert.pem"
 KEY="${BRIDGE_DIR}/folio-bridge-key.pem"
 IDENTITY="${BRIDGE_DIR}/folio-bridge-identity.p12"
+EXPECTED_SUBJECT='CN=Folio Loopback Bridge (folio-bridge)'
 
 mkdir -p "${BRIDGE_DIR}"
 chmod 700 "${HOME}/.folio" 2>/dev/null || true
 chmod 700 "${BRIDGE_DIR}"
 
 if [[ -f "${CERT}" && -f "${KEY}" && -f "${IDENTITY}" ]]; then
-  echo "Loopback certificate already exists at ${BRIDGE_DIR}"
-  exit 0
+  if openssl x509 -in "${CERT}" -noout -subject -nameopt RFC2253 2>/dev/null \
+      | grep -Fq "${EXPECTED_SUBJECT}"; then
+    echo "Loopback certificate already exists at ${BRIDGE_DIR}"
+    exit 0
+  fi
+  echo "Refreshing the legacy loopback certificate identity at ${BRIDGE_DIR}"
+  rm -f "${CERT}" "${KEY}" "${IDENTITY}"
 fi
 
 if [[ ! -f "${CERT}" || ! -f "${KEY}" ]]; then
