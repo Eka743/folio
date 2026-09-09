@@ -1,16 +1,83 @@
 import { describe, expect, it } from "vitest";
 import {
   FORMAT_MATRIX,
-  HELPER_ALLOWLIST,
+  HOMEPAGE_CATEGORIES,
+  PUBLIC_WEB_FORMAT_MATRIX,
   conversionsByCategory,
-  engineDisplayName,
   getConversion,
   getConversionBySlug,
-  isHelperConversionAllowed,
 } from "./formatMatrix";
+import {
+  DORMANT_NATIVE_CONVERSIONS,
+  HELPER_ALLOWLIST,
+  isHelperConversionAllowed,
+} from "./dormantFormatMatrix";
 
-describe("formatMatrix", () => {
-  it("covers every required conversion pair", () => {
+describe("public format matrix", () => {
+  it("contains only browser-local conversions", () => {
+    expect(FORMAT_MATRIX).toBe(PUBLIC_WEB_FORMAT_MATRIX);
+    expect(FORMAT_MATRIX.every((conversion) => conversion.status.startsWith("browser"))).toBe(true);
+    expect(FORMAT_MATRIX.map((conversion) => conversion.toolSlug)).toEqual([
+      "merge-pdf",
+      "split-pdf",
+      "compress-pdf",
+      "rotate-pdf",
+      "pdf-to-jpg",
+      "images-to-pdf",
+      "docx-to-pdf",
+    ]);
+  });
+
+  it("keeps the browser DOCX route honest about fidelity", () => {
+    const docx = getConversion("docx-to-pdf")!;
+    expect(docx.browser).toBe("beta");
+    expect(docx.status).toBe("browser-beta");
+    expect(docx.limitation).toMatch(/pagination/i);
+    expect(docx.limitation).toMatch(/complex/i);
+  });
+
+  it("keeps browser PDF and image tools fully local", () => {
+    for (const id of [
+      "merge-pdf",
+      "split-pdf",
+      "compress-pdf",
+      "rotate-pdf",
+      "pdf-to-jpg",
+      "images-to-pdf",
+    ]) {
+      const conversion = getConversion(id)!;
+      expect(conversion.browser).toBe("full");
+      expect(conversion.status).toBe("browser");
+    }
+  });
+
+  it("groups every public conversion exactly once", () => {
+    const seen = new Set<string>();
+    for (const category of HOMEPAGE_CATEGORIES) {
+      for (const conversion of conversionsByCategory(category)) {
+        expect(conversion.category).toBe(category);
+        expect(seen.has(conversion.id)).toBe(false);
+        seen.add(conversion.id);
+      }
+    }
+    expect(seen.size).toBe(PUBLIC_WEB_FORMAT_MATRIX.length);
+    for (const conversion of PUBLIC_WEB_FORMAT_MATRIX) {
+      expect(getConversion(conversion.id)).toBeDefined();
+      expect(getConversionBySlug(conversion.toolSlug)).toBeDefined();
+      expect(conversion.limitation.length).toBeGreaterThan(10);
+    }
+  });
+});
+
+describe("dormant native format matrix", () => {
+  it("keeps native pairs out of the public matrix", () => {
+    const publicIds = new Set(FORMAT_MATRIX.map((conversion) => conversion.id));
+    for (const conversion of DORMANT_NATIVE_CONVERSIONS) {
+      expect(publicIds.has(conversion.id)).toBe(false);
+    }
+  });
+
+  it("keeps the helper allowlist available only to dormant native code", () => {
     for (const pair of [
       "pages>pdf",
       "pages>docx",
@@ -25,98 +92,17 @@ describe("formatMatrix", () => {
       "xlsx>pdf",
       "xls>pdf",
     ]) {
-      expect(
-        HELPER_ALLOWLIST,
-        `missing helper pair ${pair}`,
-      ).toContain(pair);
+      expect(HELPER_ALLOWLIST).toContain(pair);
     }
-  });
-
-  it("has no duplicate tool slugs and every entry resolves", () => {
-    const slugs = FORMAT_MATRIX.map((c) => c.toolSlug);
-    expect(new Set(slugs).size).toBe(slugs.length);
-    for (const c of FORMAT_MATRIX) {
-      expect(getConversion(c.id)).toBeDefined();
-      expect(getConversionBySlug(c.toolSlug)).toBeDefined();
-    }
-  });
-
-  it("keeps v0.1 browser tools fully browser-local", () => {
-    for (const id of [
-      "merge-pdf",
-      "split-pdf",
-      "compress-pdf",
-      "rotate-pdf",
-      "pdf-to-jpg",
-      "images-to-pdf",
-    ]) {
-      const c = getConversion(id)!;
-      expect(c.browser).toBe("full");
-      expect(c.helperPair).toBeNull();
-      expect(c.requiresMac).toBe(false);
-    }
-  });
-
-  it("marks iWork conversions as mac-only with native engines", () => {
-    const pages = getConversion("pages-to-pdf")!;
-    expect(pages.requiresMac).toBe(true);
-    expect(pages.nativeEngine).toBe("pages");
-    expect(pages.fallbackEngine).toBeNull(); // never fake iWork via LibreOffice
-    const key = getConversion("key-to-pptx")!;
-    expect(key.nativeEngine).toBe("keynote");
-    const numbers = getConversion("numbers-to-xlsx")!;
-    expect(numbers.nativeEngine).toBe("numbers");
-  });
-
-  it("keeps both Keynote routes explicitly deferred and unvalidated", () => {
-    for (const id of ["key-to-pdf", "key-to-pptx"]) {
-      const conversion = getConversion(id)!;
-      expect(conversion.status).toBe("helper-beta");
-      expect(conversion.limitation).toMatch(/not validated/i);
-      expect(conversion.limitation).toMatch(/Automation/i);
-    }
-  });
-
-  it("gives Office conversions an honest LibreOffice fallback", () => {
-    expect(getConversion("docx-to-pdf")!.fallbackEngine).toBe("libreoffice");
-    expect(getConversion("pptx-to-pdf")!.fallbackEngine).toBe("libreoffice");
-    expect(getConversion("xlsx-to-pdf")!.fallbackEngine).toBe("libreoffice");
-  });
-
-  it("exposes an honest allowlist check", () => {
-    expect(isHelperConversionAllowed("pages", "pdf")).toBe(true);
     expect(isHelperConversionAllowed("PAGES", "PDF")).toBe(true);
     expect(isHelperConversionAllowed("pdf", "exe")).toBe(false);
   });
 
-  it("never mislabels engines", () => {
-    expect(engineDisplayName("libreoffice")).toBe("LibreOffice");
-    expect(engineDisplayName("word")).toBe("Microsoft Word");
-    expect(engineDisplayName("pages")).toBe("Pages");
-  });
-
-  it("groups homepage categories without duplication", () => {
-    const cats = [
-      "PDF",
-      "Documents",
-      "Presentations",
-      "Spreadsheets",
-      "Images",
-    ] as const;
-    const seen = new Set<string>();
-    for (const cat of cats) {
-      for (const c of conversionsByCategory(cat)) {
-        expect(c.category).toBe(cat);
-        expect(seen.has(c.id)).toBe(false);
-        seen.add(c.id);
-      }
-    }
-    expect(seen.size).toBe(FORMAT_MATRIX.length);
-  });
-
-  it("documents a limitation for every conversion", () => {
-    for (const c of FORMAT_MATRIX) {
-      expect(c.limitation.length).toBeGreaterThan(10);
+  it("keeps Keynote explicitly deferred", () => {
+    for (const id of ["key-to-pdf", "key-to-pptx"]) {
+      const conversion = DORMANT_NATIVE_CONVERSIONS.find((item) => item.id === id)!;
+      expect(conversion.status).toBe("helper-beta");
+      expect(conversion.limitation).toMatch(/deferred|unvalidated/i);
     }
   });
 });

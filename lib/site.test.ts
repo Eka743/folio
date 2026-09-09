@@ -51,7 +51,6 @@ describe("public release configuration", () => {
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://example.test/");
     vi.stubEnv("NEXT_PUBLIC_OWNER_NAME", "Example Operator");
     vi.stubEnv("NEXT_PUBLIC_OWNER_CONTACT", "privacy@example.test");
-    vi.stubEnv("NEXT_PUBLIC_MAC_DOWNLOAD_URL", "https://downloads.example.test/folio.dmg");
     vi.stubEnv("NEXT_PUBLIC_SOURCE_REPOSITORY_URL", "https://github.com/example/folio");
     vi.stubEnv("NEXT_PUBLIC_SOURCE_REPOSITORY_PUBLIC", "true");
     vi.stubEnv("NEXT_PUBLIC_LEGAL_UPDATED_AT", "2026-09-08");
@@ -60,7 +59,6 @@ describe("public release configuration", () => {
       siteUrl: "https://example.test",
       ownerName: "Example Operator",
       ownerContact: "privacy@example.test",
-      macDownloadUrl: "https://downloads.example.test/folio.dmg",
       sourceRepositoryUrl: "https://github.com/example/folio",
       sourceRepositoryPublic: true,
       policyUpdatedAt: "2026-09-08",

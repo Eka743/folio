@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 const LEGAL_LINKS = [
-  { href: "/mac", label: "Folio for Mac" },
   { href: "/terms", label: "Terms" },
   { href: "/cookies", label: "Cookies" },
   { href: "/legal", label: "Legal" },
@@ -17,7 +16,7 @@ export function Footer() {
           <p className="font-medium text-ink-900">Folio</p>
           <p className="mt-1 max-w-md">
             Free, privacy-first document tools. Your files are processed in
-            your browser or locally on your Mac, and never uploaded.
+            your browser and never uploaded.
           </p>
         </div>
         <nav className="flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="Footer">

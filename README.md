@@ -1,88 +1,56 @@
 # Folio
 
-Folio is a free, simple, privacy-first web toolkit for everyday document and
-PDF operations. Open it, pick a tool, drop files, download the result, leave.
+Folio is a free, simple, privacy-first browser toolkit for everyday document
+and PDF operations. Open it, pick a tool, select a file, download the result.
 No account, no uploads, no trackers.
 
-“Folio understands the files you actually use on Mac.”
+## Public web tools
 
-## Current tools (v0.2)
+Every public tool below processes files locally in the browser. Results are
+generated in the current tab and downloaded by your browser.
 
-PDF, image and browser tools run **entirely in the browser**. Office and
-iWork conversions run **locally on your Mac** via the Folio for Mac helper
-(see `apps/macos-helper`) — never in the cloud.
-
-| Tool | Route | What it does | Engine |
+| Tool | Route | What it does | Status |
 | ---- | ----- | ------------ | ------ |
-| Merge PDF | `/tools/merge-pdf` | Combine 2–20 PDFs in your order (drag to reorder) | Browser |
-| Split PDF | `/tools/split-pdf` | Extract pages via `1-3,5,8-10` syntax with validation | Browser |
-| JPG/PNG → PDF | `/tools/images-to-pdf` | Up to 30 images, reorderable, one per A4 page | Browser |
-| Word → PDF | `/tools/docx-to-pdf` | Browser Beta, or high fidelity with Word on Mac | Browser Beta / Word |
-| Word (.doc) → PDF | `/tools/word-to-pdf` | `.doc`/`.docx` via Word on your Mac | Word (LibreOffice fallback) |
-| Pages → PDF | `/tools/pages-to-pdf` | `.pages` via Pages on your Mac | Pages |
-| Pages → Word | `/tools/pages-to-word` | `.pages` → `.docx` via Pages on your Mac | Pages |
-| PowerPoint → PDF | `/tools/powerpoint-to-pdf` | `.ppt`/`.pptx` via PowerPoint on your Mac | PowerPoint (LibreOffice fallback) |
-| Keynote → PDF (Beta / known limitation) | `/tools/keynote-to-pdf` | `.key` via Keynote on your Mac; not validated | Keynote |
-| Keynote → PowerPoint (Beta / known limitation) | `/tools/keynote-to-powerpoint` | `.key` → `.pptx` via Keynote on your Mac; not validated | Keynote |
-| Excel → PDF | `/tools/excel-to-pdf` | `.xls`/`.xlsx` via Excel on your Mac | Excel (LibreOffice fallback) |
-| Numbers → PDF | `/tools/numbers-to-pdf` | `.numbers` via Numbers on your Mac | Numbers |
-| Numbers → Excel | `/tools/numbers-to-excel` | `.numbers` → `.xlsx` via Numbers on your Mac | Numbers |
-| PDF → JPG | `/tools/pdf-to-jpg` | Per-page JPGs; single download or ZIP for multi-page | Browser |
-| Rotate PDF | `/tools/rotate-pdf` | All pages or selected pages, 90/180/270° clockwise | Browser |
-| Compress PDF | `/tools/compress-pdf` | Object-stream rewrite; always shows before/after sizes | Browser |
+| Merge PDF | `/tools/merge-pdf` | Combine 2–20 PDFs in your order | Browser |
+| Split PDF | `/tools/split-pdf` | Extract pages with `1-3,5,8-10` syntax | Browser |
+| JPG/PNG → PDF | `/tools/images-to-pdf` | Convert up to 30 images, one per A4 page | Browser |
+| Word → PDF | `/tools/docx-to-pdf` | Convert `.docx` in the browser | Browser Beta |
+| PDF → JPG | `/tools/pdf-to-jpg` | Render pages as JPGs, one download or ZIP | Browser |
+| Rotate PDF | `/tools/rotate-pdf` | Rotate all or selected pages | Browser |
+| Compress PDF | `/tools/compress-pdf` | Rewrite PDFs and show honest size changes | Browser |
 
-**Intentionally omitted:** browser-only PPTX/XLSX conversion. Reliable
-conversion needs the native desktop app or LibreOffice — both impossible in
-a serverless static deployment. Shipping a fake would violate the “no fake
-tools” principle. These formats convert locally via Folio for Mac instead.
-See “Known limitations”.
+Historical native conversion experiments remain in the repository for future
+work, but they are dormant and are not part of the public website, navigation,
+sitemap or release process.
 
 ## Privacy model
 
-- No database, no auth, no accounts, no analytics SDKs. The hosting provider
-  may still receive ordinary technical request metadata such as IP address,
-  timestamps, and security logs.
-- Browser tools: document bytes never leave the browser tab.
-- Mac tools: the website talks to Folio for Mac over encrypted localhost only
-  (`127.0.0.1:17392` in production; `17391` is development-only); conversions run in your installed desktop apps and
-  every result names the engine that ran it. No document bytes reach Folio
-  servers, Vercel functions, or any conversion SaaS.
-- Zero third-party runtime requests: the pdf.js worker used by PDF → JPG
-  is self-hosted same-origin (`/pdf.worker.min.mjs`, copied from the
-  installed `pdfjs-dist` package at install/build time via
-  `scripts/copy-pdf-worker.mjs`). The generated worker file is gitignored
-  and never committed.
-- Filenames are sanitized before download; inputs are type/size validated.
+- No database, auth, accounts, analytics SDKs, telemetry or document uploads.
+- Selected files stay in the browser tab. Folio does not receive document
+  bytes and has no cloud processing fallback.
+- No third-party runtime requests. The pdf.js worker for PDF → JPG is
+  self-hosted same-origin and copied from the installed dependency at build
+  time.
+- Filenames are sanitized before download, and inputs are type and size
+  validated.
+
+The hosting provider may still receive ordinary technical request metadata such
+as IP address, timestamps, paths and security logs under its own policies.
 
 ## Architecture
 
-- **Next.js 16 (App Router) + React 19 + TypeScript (strict) + Tailwind 3**,
-  deployable to Vercel’s free tier as a static-friendly app with no backend.
-- **Folio for Mac helper** (`apps/macos-helper`, Swift, zero dependencies):
-  localhost-only bridge (`https://127.0.0.1:17392` in production;
-  `http://127.0.0.1:17391` for localhost development) driving Pages/Keynote/Numbers/
-  Word/PowerPoint/Excel via AppleScript plus an honestly-labeled
-  LibreOffice fallback for Office formats. See its README for the security
-  model, build/test instructions, and manual-validation checklist.
-- Shared workflow per tool: select/drop → validate → configure → process →
-  result/download → start over (`components/ToolRunner.tsx`, `Dropzone.tsx`,
-  `tool-ui.tsx`).
-- Document logic in `lib/`:
-  - `pdfOps.ts` — pdf-lib (merge/split/rotate/optimize/images), pdf.js
-    (render via self-hosted same-origin worker), mammoth + html2canvas +
-    jsPDF (DOCX), JSZip (archives).
-    Heavy libs are dynamically imported so the homepage stays light.
-  - `formatMatrix.ts` — the single source of truth for every conversion
-    (inputs, outputs, engines, status, limitations). UI state is generated
-    from it; compatibility rules are never duplicated in components.
-  - `helper.ts` — localhost helper client: discovery, capabilities,
-    engine route selection (`resolveConversionRoute`), filename
-    sanitization, human-readable errors. Pure logic is Vitest-covered.
-  - `pageRanges.ts` — range parsing/validation (tested).
-  - `files.ts` — validation, size formatting, safe filenames (tested).
-  - `tools.ts` — tool registry; adding a tool = one entry + one runner case.
-- SEO: title/description/Open Graph metadata, `robots.ts`, `sitemap.ts`,
-  SVG favicon, semantic HTML, keyboard-accessible dropzone fallback.
+- **Next.js 16 + React 19 + TypeScript + Tailwind 3**, deployable to Vercel
+  without a document-processing backend.
+- **Public tool allowlist:** `lib/tools.ts` and `lib/formatMatrix.ts` define
+  only browser-local tools. `lib/dormantFormatMatrix.ts` is isolated from the
+  public runtime and documents historical native pairs for repository work.
+- **Document logic:** `lib/pdfOps.ts` uses pdf-lib, pdf.js, mammoth, html2canvas,
+  jsPDF and JSZip. Heavy libraries are dynamically imported so the homepage
+  stays light.
+- **Shared workflow:** select/drop → validate → configure → process →
+  result/download → start over.
+- **SEO:** title/description/Open Graph metadata, robots, sitemap, SVG favicon
+  and keyboard-accessible dropzone fallback.
 
 ## Local development
 
@@ -93,76 +61,47 @@ npm run typecheck  # tsc --noEmit
 npm run lint       # eslint .
 npm test           # vitest run
 npm run build      # production build
+npm audit
+npm run release:check
 ```
 
-Node 20.19+ required by the current Next.js/tooling release.
+Node 20.19+ is required by the current Next.js/tooling release.
 
-```bash
-cd apps/macos-helper
-swift build
-swift test
-```
+## Deployment
 
-## Vercel deployment
+1. Import this repository in Vercel with the Next.js framework preset.
+2. Use `npm run build` as the build command.
+3. No database or document-processing server configuration is needed.
+4. Run the validation commands above before publishing.
 
-1. Import this repository in Vercel (Framework preset: Next.js).
-2. Build command `npm run build`, output `.next` (defaults).
-3. No database or document-processing server config is needed. The approved
-   web-beta values are documented in `.env.example`; the GitHub repository is
-   public, so the open-source page links to it by default.
-4. Run `npm run release:check` before publishing. It reports **WEB BETA READY**
-   and **MAC PUBLIC DISTRIBUTION READY** independently. The web release is not
-   blocked by an unsigned Mac artifact when no Mac download is published;
-   Mac distribution remains blocked until a signed, notarized installer passes
-   clean-machine validation.
-
-## Known limitations (honest)
+## Known limitations
 
 - **DOCX → PDF (Beta):** headings, bold/italic, lists, tables and images are
-  preserved, but pagination, fonts, headers/footers, footnotes, text boxes
-  and tracked changes will differ from Word. Review before sharing.
-- **Compress PDF:** client-side optimization only (object streams + metadata
-  cleanup). Already-optimized PDFs may barely shrink; the UI says so instead
-  of inventing savings. Image-heavy scanned PDFs need server-side tools
-  (e.g. Ghostscript) for deep recompression — out of scope for v0.1.
-- **PDF → JPG:** fully self-contained via the same-origin worker;
-  very large PDFs may be slow or memory-heavy on low-end devices.
-- **File caps:** PDFs ≤ 100 MB (≤ 20 files for merge), images ≤ 25 MB,
-  DOCX ≤ 50 MB, Office ≤ 50 MB, iWork ≤ 100 MB — guards against browser
-  memory exhaustion (the helper enforces 100 MB per conversion).
-- Native iWork/Office fidelity is NOT validated in CI (runners lack the
-  desktop apps). Each helper adapter requires manual validation on a Mac
-  with the app installed — see `apps/macos-helper/README.md` and the latest
-  record in `docs/MAC_MANUAL_TEST_PLAN.md`. Nothing here
-  renames extensions or rebuilds documents from plain text.
-- **Keynote → PDF and Keynote → PPTX (deferred):** macOS Automation permission
-  for Keynote does not remain enabled reliably in the current release. Both
-  routes remain in the implementation for later compatibility work, but are
-  not validated or guaranteed and are excluded from the v0.2 release verdict.
+  supported, but pagination, fonts, headers/footers, footnotes, text boxes and
+  tracked changes may differ. Review before sharing.
+- **Compress PDF:** client-side optimization only. Already-optimized PDFs may
+  barely shrink, and image-heavy scans need deeper recompression outside this
+  project.
+- **PDF → JPG:** very large PDFs may be slow or memory-heavy on low-end devices.
+- **File caps:** PDFs ≤ 100 MB, images ≤ 25 MB, DOCX ≤ 50 MB.
 
 ## Public release compliance
 
-- The public legal configuration is centralized in `lib/site.ts` and checked by
+- Public legal configuration is centralized in `lib/site.ts` and checked by
   `npm run release:check` without printing environment values.
-- `/privacy`, `/cookies`, `/terms`, `/legal`, `/security`, `/open-source`, and
-  `/mac` describe the current local-first architecture and release limitations.
+- `/privacy`, `/cookies`, `/terms`, `/legal`, `/security` and `/open-source`
+  describe the current web-only product.
+- `/mac` and retired native tool routes redirect to the web product so old
+  bookmarks do not show obsolete setup instructions.
 - Direct dependency notices are recorded in `docs/THIRD_PARTY_NOTICES.md`.
-- The GitHub repository is public, and the Open Source page links to the
-  canonical source repository when the release configuration confirms it.
 
-## Dependency notes
+## How to add a web tool
 
-- `jspdf` is kept at v4+ (v2.x has known critical issues).
-- The current Next.js 16.3.4 dependency pins a patched PostCSS release. Run
-  `npm audit` during release review and do not publish with unresolved
-  production advisories.
-
-## How to add a new Folio tool
-
-1. Add an entry to `TOOLS` in `lib/tools.ts` (slug, accepts, limits).
-2. Add a case in `run()` in `components/ToolRunner.tsx`, with the heavy
-   work in a new `lib/` function (dynamically imported).
-3. Only expose it in the UI when it genuinely works end-to-end — never ship
-   a placeholder that renames extensions.
-4. Add tests for any deterministic logic (parsing, validation, transforms).
-5. Update this README’s tool table and any affected privacy notes.
+1. Add the tool to the explicit browser-local allowlist in `lib/tools.ts` and
+   `lib/formatMatrix.ts`.
+2. Add a case in `run()` in `components/ToolRunner.tsx`, with heavy work in a
+   new dynamically imported `lib/` function.
+3. Prove it works end-to-end in the browser. Never ship a placeholder that
+   only renames extensions.
+4. Add regression tests for parsing, validation or transforms.
+5. Update this README and affected privacy copy.

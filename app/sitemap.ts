@@ -14,7 +14,6 @@ export default function Sitemap(): Array<{
     "legal",
     "security",
     "open-source",
-    "mac",
   ];
   return [
     { url: base, lastModified: now },

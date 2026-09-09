@@ -69,9 +69,8 @@ export default function LegalPage() {
           <h2 className="font-semibold text-ink-950">Service and jurisdiction</h2>
           <p className="mt-2">
             Folio is a free web toolkit. Its browser tools process documents in
-            the browser, while optional native conversions use Folio for Mac on
-            the user&apos;s Mac. The Terms, Privacy, and Cookie Policies explain
-            the service and its limitations.
+            the browser. The Terms, Privacy, and Cookie Policies explain the
+            service and its limitations.
           </p>
           <p className="mt-2">
             The applicable governing law and jurisdiction depend on the offering
@@ -89,16 +88,6 @@ export default function LegalPage() {
           </p>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 p-5">
-          <h2 className="font-semibold text-ink-950">Trademarks</h2>
-          <p className="mt-2">
-            Apple, Pages, Keynote, Numbers, and macOS are trademarks of Apple
-            Inc. Microsoft Word, PowerPoint, and Excel are trademarks of the
-            Microsoft group of companies. LibreOffice is a trademark of The
-            Document Foundation. Folio is not affiliated with or endorsed by any
-            of them.
-          </p>
-        </section>
       </div>
     </div>
   );
