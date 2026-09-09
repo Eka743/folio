@@ -56,7 +56,7 @@ See “Known limitations”.
 
 ## Architecture
 
-- **Next.js 15 (App Router) + React 19 + TypeScript (strict) + Tailwind 3**,
+- **Next.js 16 (App Router) + React 19 + TypeScript (strict) + Tailwind 3**,
   deployable to Vercel’s free tier as a static-friendly app with no backend.
 - **Folio for Mac helper** (`apps/macos-helper`, Swift, zero dependencies):
   localhost-only bridge (`https://127.0.0.1:17392` in production;
@@ -95,7 +95,7 @@ npm test           # vitest run
 npm run build      # production build
 ```
 
-Node 20.9+ required by the current Next.js release.
+Node 20.19+ required by the current Next.js/tooling release.
 
 ```bash
 cd apps/macos-helper
@@ -107,16 +107,14 @@ swift test
 
 1. Import this repository in Vercel (Framework preset: Next.js).
 2. Build command `npm run build`, output `.next` (defaults).
-3. No database or document-processing server config is needed. Before public
-   release, configure the verified operator/contact values, site URL, legal
-   update date, public source repository state, and signed Mac download URL.
-4. Run `npm run release:check` with those values before publishing. Metadata,
-   sitemap and robots output use `NEXT_PUBLIC_SITE_URL`; the Legal Notice uses
-   `NEXT_PUBLIC_OWNER_NAME` and `NEXT_PUBLIC_OWNER_CONTACT`. Set
-   `NEXT_PUBLIC_SOURCE_REPOSITORY_PUBLIC=true` only after the repository is
-   actually public. `NEXT_PUBLIC_MAC_DOWNLOAD_URL` must point to a signed,
-   notarized installer.
-   `.env.example` lists the configuration keys without containing personal data.
+3. No database or document-processing server config is needed. The approved
+   web-beta values are documented in `.env.example`; the public source flag
+   must remain false until the GitHub repository is actually public.
+4. Run `npm run release:check` before publishing. It reports **WEB BETA READY**
+   and **MAC PUBLIC DISTRIBUTION READY** independently. The web release is not
+   blocked by an unsigned Mac artifact when no Mac download is published;
+   Mac distribution remains blocked until a signed, notarized installer passes
+   clean-machine validation.
 
 ## Known limitations (honest)
 
@@ -134,7 +132,8 @@ swift test
   memory exhaustion (the helper enforces 100 MB per conversion).
 - Native iWork/Office fidelity is NOT validated in CI (runners lack the
   desktop apps). Each helper adapter requires manual validation on a Mac
-  with the app installed — see `apps/macos-helper/README.md`. Nothing here
+  with the app installed — see `apps/macos-helper/README.md` and the latest
+  record in `docs/MAC_MANUAL_TEST_PLAN.md`. Nothing here
   renames extensions or rebuilds documents from plain text.
 - **Keynote → PDF and Keynote → PPTX (deferred):** macOS Automation permission
   for Keynote does not remain enabled reliably in the current release. Both

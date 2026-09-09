@@ -43,6 +43,7 @@ describe("isMacPlatform", () => {
 describe("isAllowedOrigin", () => {
   it("allows Folio origins and rejects attackers", () => {
     expect(isAllowedOrigin("https://folio.tools")).toBe(true);
+    expect(isAllowedOrigin("https://foliotools.vercel.app")).toBe(true);
     expect(isAllowedOrigin("http://localhost:3000")).toBe(true);
     expect(isAllowedOrigin("https://evil.example")).toBe(false);
     expect(isAllowedOrigin(null)).toBe(false);

@@ -29,6 +29,7 @@ export const HELPER_TLS_BASE = `https://${HELPER_HOST}:${HELPER_TLS_PORT}`;
 
 /** Origins the helper trusts. The Swift helper enforces the same list. */
 export const ALLOWED_FOLIO_ORIGINS = [
+  "https://foliotools.vercel.app",
   "https://folio.tools",
   "https://www.folio.tools",
   "http://localhost:3000",

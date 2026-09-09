@@ -46,6 +46,7 @@ final class HardeningTests: XCTestCase {
     func testExactOriginsStillAllowed() {
         XCTAssertTrue(HelperSecurity.isAllowedOrigin("https://folio.tools"))
         XCTAssertTrue(HelperSecurity.isAllowedOrigin("https://www.folio.tools"))
+        XCTAssertTrue(HelperSecurity.isAllowedOrigin("https://foliotools.vercel.app"))
         XCTAssertTrue(HelperSecurity.isAllowedOrigin("http://localhost:3000"))
     }
 

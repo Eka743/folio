@@ -224,7 +224,7 @@ export const FORMAT_MATRIX: FormatConversion[] = [
     fallbackEngine: null,
     status: "helper-native",
     limitation:
-      ".pages is a proprietary bundle format; there is no reliable browser parser. Conversion uses Pages.app export. Requires manual validation on a Mac with Pages installed.",
+      ".pages is a proprietary bundle format; there is no reliable browser parser. Conversion uses Pages.app export and has passed the current synthetic Mac validation. Complex layouts still require review.",
     helperPair: "pages>pdf",
     requiresMac: true,
     requiresApp: "Pages",
@@ -243,7 +243,7 @@ export const FORMAT_MATRIX: FormatConversion[] = [
     fallbackEngine: null,
     status: "helper-native",
     limitation:
-      "Uses Pages.app export to Word. Complex layouts may shift; review in Word. Requires manual validation on a Mac with Pages installed.",
+      "Uses Pages.app export to Word and has passed the current synthetic Mac validation. Complex layouts may shift; review in Word.",
     helperPair: "pages>docx",
     requiresMac: true,
     requiresApp: "Pages",
@@ -340,7 +340,7 @@ export const FORMAT_MATRIX: FormatConversion[] = [
     fallbackEngine: null,
     status: "helper-native",
     limitation:
-      ".numbers is proprietary; conversion uses Numbers.app export. Requires manual validation on a Mac with Numbers installed.",
+      ".numbers is proprietary; conversion uses Numbers.app export and has passed the current synthetic Mac validation. Review pagination and charts.",
     helperPair: "numbers>pdf",
     requiresMac: true,
     requiresApp: "Numbers",
@@ -359,7 +359,7 @@ export const FORMAT_MATRIX: FormatConversion[] = [
     fallbackEngine: null,
     status: "helper-native",
     limitation:
-      "Uses Numbers.app export to Excel. Formulas, charts and formatting may shift; review in Excel. Requires manual validation.",
+      "Uses Numbers.app export to Excel and has passed the current synthetic Mac validation. Formulas, charts and formatting may shift; review in Excel.",
     helperPair: "numbers>xlsx",
     requiresMac: true,
     requiresApp: "Numbers",

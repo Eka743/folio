@@ -35,6 +35,7 @@ describe("preview origin tradeoff", () => {
 
   it("accepts www folio origin", () => {
     expect(isAllowedOrigin("https://www.folio.tools")).toBe(true);
+    expect(isAllowedOrigin("https://foliotools.vercel.app")).toBe(true);
   });
 
   it("rejects suffix spoofing", () => {
@@ -61,7 +62,7 @@ describe("site configuration", () => {
     expect(typeof siteUrl()).toBe("string");
   });
 
-  it("reports owner placeholders as unset by default", () => {
-    expect(hasOwnerPlaceholders()).toBe(true);
+  it("uses the approved public operator configuration by default", () => {
+    expect(hasOwnerPlaceholders()).toBe(false);
   });
 });

@@ -39,8 +39,15 @@ public final class BridgeProcess: ObservableObject {
     }
 
     public func stop() {
-        task?.terminate()
+        let child = task
         task = nil
+        if let child, child.isRunning {
+            child.terminate()
+            // The menu-bar app is about to quit. Wait for the bundled helper
+            // to release both loopback listeners so a relaunch cannot race a
+            // stale bridge process or inherit its ports.
+            child.waitUntilExit()
+        }
         running = false
     }
 }

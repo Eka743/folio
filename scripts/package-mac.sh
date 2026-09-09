@@ -17,6 +17,7 @@ else
 fi
 APP="${OUT}/Folio.app"
 ENTITLEMENTS="${ROOT}/scripts/folio-automation.entitlements"
+APP_BUNDLE_ID="tools.folio.mac"
 
 if [[ ! -f "${ENTITLEMENTS}" ]]; then
   echo "Missing entitlements file: ${ENTITLEMENTS}" >&2
@@ -87,6 +88,7 @@ if [[ -n "${DEVELOPER_ID_APP:-}" ]]; then
   ditto --norsrc --noextattr --noqtn --noacl "${APP}" "${SIGNING_APP}"
   xattr -cr "${SIGNING_APP}" 2>/dev/null || true
   codesign --force --options runtime --timestamp \
+    --identifier "${APP_BUNDLE_ID}" \
     --entitlements "${ENTITLEMENTS}" \
     --sign "${DEVELOPER_ID_APP}" \
     "${SIGNING_APP}/Contents/MacOS/FolioHelper"

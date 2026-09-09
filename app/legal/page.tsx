@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { contactHref, publicSiteConfig } from "@/lib/site";
+import { contactHref, hasOwnerPlaceholders, publicSiteConfig } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Legal Notice",
@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 export default function LegalPage() {
   const config = publicSiteConfig();
   const contact = contactHref(config.ownerContact);
-  const complete = Boolean(config.ownerName && config.ownerContact);
+  const complete = !hasOwnerPlaceholders();
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-12">
@@ -25,7 +25,7 @@ export default function LegalPage() {
           {complete ? (
             <dl className="mt-2 space-y-1">
               <div>
-                <dt className="inline font-medium">Name: </dt>
+                <dt className="inline font-medium">Public operator label: </dt>
                 <dd className="inline">{config.ownerName}</dd>
               </div>
               <div>
@@ -53,11 +53,12 @@ export default function LegalPage() {
             </div>
           )}
           <p className="mt-3 text-[15px] text-ink-500">
-            The operator should add any additional information required by the
-            applicable Spain/EU rules for the actual operator, such as a postal
-            address, registration details, or tax identifier where applicable.
-            Folio does not invent or require company-only fields for an individual
-            operator.
+            This public label is intentionally not a full legal name. The
+            operator must still confirm any additional information required by
+            applicable Spain/EU rules, such as a postal address, registration
+            details, tax identifier, governing law, or jurisdiction, before a
+            production launch. Folio does not invent or require company-only
+            fields for an individual operator.
           </p>
           <p className="mt-3 text-[15px] text-ink-500">
             Website: <code>{config.siteUrl}</code>

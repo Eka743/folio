@@ -35,6 +35,7 @@ public enum HelperConfig {
     public static let maxBase64Chars = 140_000_000
 
     public static let allowedOrigins: Set<String> = [
+        "https://foliotools.vercel.app",
         "https://folio.tools",
         "https://www.folio.tools",
         "http://localhost:3000",

@@ -89,7 +89,7 @@ public func corsHeaders(for origin: String?) -> [String: String] {
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, X-Folio-Token",
         "Access-Control-Max-Age": "600",
-        // Chrome Private Network Access: allow https://folio.tools to reach
+        // Chrome Private Network Access: allow the HTTPS Folio site to reach
         // the loopback bridge after preflight. Harmless elsewhere.
         "Access-Control-Allow-Private-Network": "true",
     ]

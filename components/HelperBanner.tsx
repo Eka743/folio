@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { HelperUiState } from "./useHelper";
 
 /**
@@ -58,12 +59,15 @@ export function HelperBanner({
       </p>
       {!compact && (
         <p className="mt-1">
-          Install the lightweight Folio for Mac helper
+          Install Folio for Mac from the
+          <Link href="/mac" className="mx-1 text-accent-600 underline">
+            Mac setup page
+          </Link>
           {requiresApp ? ` (plus ${requiresApp}) ` : " "}
-          to convert this file locally — no uploads, no cloud.{" "}
+          to convert this file locally — no uploads, no cloud. No Terminal is
+          required for a published app build.{" "}
           <span className="text-ink-500">
-            See <code className="rounded bg-slate-100 px-1">apps/macos-helper</code> in
-            the Folio repository for the helper source and setup.
+            Developer build instructions are in the Folio repository.
           </span>
         </p>
       )}

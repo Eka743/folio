@@ -83,6 +83,9 @@ export default function HomePage() {
           Word, PowerPoint and Excel. Keynote routes are currently Beta and
           unvalidated.
         </p>
+        <p className="mx-auto mt-3 text-[13px] font-medium text-ink-400">
+          Free and AGPL-licensed · local-first Beta · no cloud document processing
+        </p>
       </section>
 
       {/* Categorized tool grid */}

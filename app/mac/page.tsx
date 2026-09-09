@@ -33,9 +33,10 @@ export default function MacPage() {
         </a>
       ) : (
         <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="note">
-          The signed Mac installer link is not configured yet. A site operator
-          must set <code>NEXT_PUBLIC_MAC_DOWNLOAD_URL</code> before normal users
-          can download Folio for Mac.
+          The signed Mac installer is not published yet. A site operator must
+          set <code>NEXT_PUBLIC_MAC_DOWNLOAD_URL</code> after a signed,
+          notarized build passes clean-Mac validation. Developers can build from
+          source, but normal users should not need Terminal.
         </p>
       )}
       <div className="mt-8 space-y-6 text-[16px] leading-relaxed text-ink-700">

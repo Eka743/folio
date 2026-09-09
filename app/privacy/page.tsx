@@ -28,10 +28,10 @@ export default function PrivacyPage() {
         <section className="rounded-2xl border border-slate-200 p-5">
           <h2 className="font-semibold text-ink-950">1. Operator and scope</h2>
           <p className="mt-2">
-            Folio is operated by the person or organisation identified in the
-            Legal Notice. The operator must provide accurate identity and
-            contact details before public release; no identity is inferred or
-            fabricated by this application.
+            Folio is operated by the person identified by the public operator
+            label in the Legal Notice. The current public label is not a full
+            legal name; the operator must review any additional identity and
+            controller details required before a production launch.
           </p>
           <p className="mt-2">
             This policy covers the Folio website, its browser tools, and the

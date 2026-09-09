@@ -53,3 +53,24 @@ Terminal use.
 Keynote Automation permission is a known unresolved macOS/TCC limitation. Do
 not spend this validation pass debugging it, and do not include either Keynote
 route in the v0.2 release acceptance result.
+
+## Latest non-Keynote validation record
+
+Validated on 2026-09-09 on the local macOS test machine with synthetic,
+disposable fixtures generated in Pages and Numbers. The web UI was exercised
+through the HTTPS loopback bridge using the configured
+`https://foliotools.vercel.app` Origin (and the Pages route was also completed
+from the local web UI):
+
+| Route | Engine | Output evidence |
+| --- | --- | --- |
+| Pages → PDF | Pages | Valid PDF, 1 page, `Creator: Pages` |
+| Pages → DOCX | Pages | Valid Microsoft Word 2007+ ZIP container; document XML contained the fixture text |
+| Numbers → PDF | Numbers | Valid PDF, 1 page, `Creator: Numbers` |
+| Numbers → XLSX | Numbers | Valid Microsoft Excel 2007+ ZIP container; worksheet contained the fixture values |
+
+All four requests returned HTTP 200, non-empty claimed-format output, and the
+helper's returned engine matched the native app. No conversion temp directory
+remained after the requests. This is machine-level compatibility evidence, not
+a claim that every macOS or app version has identical fidelity; repeat it when
+the native apps or packaging change.

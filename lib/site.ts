@@ -1,13 +1,9 @@
-/**
- * Public release configuration.
- *
- * Legal identity is deliberately not supplied in source control. Production
- * release checks require the operator to provide the real values through the
- * public build environment. Development and preview builds remain usable and
- * show an explicit release-readiness notice instead of fake identity data.
- */
+/** Public release configuration shared by metadata and legal pages. */
 
-export const DEFAULT_SITE_URL = "https://folio.tools";
+export const DEFAULT_SITE_URL = "https://foliotools.vercel.app";
+/** Public label approved for the current individual operator; not a legal name. */
+export const DEFAULT_OWNER_NAME = "Independent developer in Spain";
+export const DEFAULT_OWNER_CONTACT = "ekaitzrockandroll@gmail.com";
 export const DEFAULT_SOURCE_REPOSITORY_URL = "https://github.com/Eka743/folio";
 export const DEFAULT_POLICY_UPDATED_AT = "2026-09-08";
 
@@ -40,11 +36,11 @@ export function siteUrl(): string {
 }
 
 export function ownerName(): string | null {
-  return optionalEnv("NEXT_PUBLIC_OWNER_NAME");
+  return optionalEnv("NEXT_PUBLIC_OWNER_NAME") ?? DEFAULT_OWNER_NAME;
 }
 
 export function ownerContact(): string | null {
-  return optionalEnv("NEXT_PUBLIC_OWNER_CONTACT");
+  return optionalEnv("NEXT_PUBLIC_OWNER_CONTACT") ?? DEFAULT_OWNER_CONTACT;
 }
 
 export function macDownloadUrl(): string | null {
@@ -78,7 +74,12 @@ export function publicSiteConfig(): PublicSiteConfig {
 
 /** True when legally-required operator values are still unset. */
 export function hasOwnerPlaceholders(): boolean {
-  return ownerName() === null || ownerContact() === null;
+  return (
+    ownerName() === null ||
+    ownerContact() === null ||
+    isPlaceholder(ownerName()) ||
+    isPlaceholder(ownerContact())
+  );
 }
 
 export function isHttpsUrl(value: string | null): boolean {
@@ -101,4 +102,8 @@ export function contactHref(value: string | null): string | null {
   return value.includes("@") && !value.startsWith("http")
     ? `mailto:${value}`
     : value;
+}
+
+function isPlaceholder(value: string | null): boolean {
+  return Boolean(value && /^(todo|placeholder|replace(?:[-_ ]?me)?)\b/i.test(value.trim()));
 }

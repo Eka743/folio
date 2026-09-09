@@ -30,7 +30,8 @@ Folio Web (browser)
   (`NSAppleScript`, no GUI clicking, no keystrokes, paths POSIX-quoted).
 - Hardened file handling: random 0700 temp dir per conversion, sanitized
   filenames, traversal confinement, 100 MB cap, cleanup on success + failure.
-- Origin allowlist (`https://folio.tools`, `http://localhost:3000`,
+- Origin allowlist (`https://foliotools.vercel.app`, legacy
+  `https://folio.tools` / `https://www.folio.tools`, `http://localhost:3000`,
   `http://127.0.0.1:3000`) + short-lived pairing token (`X-Folio-Token`).
 
 ## Validation status

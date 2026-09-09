@@ -26,12 +26,11 @@ The Automation flow must use one consistently signed hardened-runtime app.
 
 1. `codesign` with a Developer ID Application certificate (hardened runtime).
 2. `notarytool submit` + `staple` for the DMG.
-3. `SPCTL` / Gatekeeper verification on a clean Mac.
+3. `spctl` / Gatekeeper verification on a clean Mac.
 
 ## Entitlements
 
-Folio requests Keynote access from the foreground user-facing app, and the
-helper drives desktop apps via AppleScript. Both signed executables carry
+The helper drives desktop apps via AppleScript. Both signed executables carry
 `com.apple.security.automation.apple-events`; macOS still requires the user
 to approve each target app through TCC. Sandbox restrictions are intentionally
 avoided: sandboxing would break AppleScript export to Pages/Keynote/Numbers.

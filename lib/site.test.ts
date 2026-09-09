@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_OWNER_CONTACT,
+  DEFAULT_OWNER_NAME,
   contactHref,
   hasOwnerPlaceholders,
   isContactValue,
@@ -12,12 +14,12 @@ afterEach(() => {
 });
 
 describe("public release configuration", () => {
-  it("does not expose fake operator identity when unset", () => {
+  it("uses the approved public operator label and contact when unset", () => {
     vi.stubEnv("NEXT_PUBLIC_OWNER_NAME", "");
     vi.stubEnv("NEXT_PUBLIC_OWNER_CONTACT", "");
-    expect(publicSiteConfig().ownerName).toBeNull();
-    expect(publicSiteConfig().ownerContact).toBeNull();
-    expect(hasOwnerPlaceholders()).toBe(true);
+    expect(publicSiteConfig().ownerName).toBe(DEFAULT_OWNER_NAME);
+    expect(publicSiteConfig().ownerContact).toBe(DEFAULT_OWNER_CONTACT);
+    expect(hasOwnerPlaceholders()).toBe(false);
   });
 
   it("reads all public release fields from one configuration surface", () => {
@@ -38,6 +40,12 @@ describe("public release configuration", () => {
       sourceRepositoryPublic: true,
       policyUpdatedAt: "2026-09-08",
     });
+  });
+
+  it("treats placeholder identity values as incomplete", () => {
+    vi.stubEnv("NEXT_PUBLIC_OWNER_NAME", "TODO: add name");
+    vi.stubEnv("NEXT_PUBLIC_OWNER_CONTACT", "placeholder@example.test");
+    expect(hasOwnerPlaceholders()).toBe(true);
   });
 
   it("accepts only secure public URLs and usable contacts", () => {
