@@ -77,6 +77,7 @@ export function Dropzone({
         accept={accepts}
         multiple={multiple}
         disabled={disabled}
+        aria-label={`Select ${accepts} files`}
         className="hidden"
         onChange={(e) => {
           const files = [...(e.target.files ?? [])];
