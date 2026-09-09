@@ -82,7 +82,7 @@ export function HelperBanner({
       </p>
       {!compact && (
         <p className="mt-1">
-          Install Folio for Mac from the
+          Install Folio for Mac from the{" "}
           <Link href="/mac" className="mx-1 text-accent-600 underline">
             Mac setup page
           </Link>

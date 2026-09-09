@@ -19,6 +19,7 @@ export const metadata: Metadata = {
       "Merge, split, rotate, compress and convert PDFs and images. Free, no account, files stay on your device.",
     type: "website",
     siteName: "Folio",
+    url: siteUrl(),
   },
   robots: { index: true, follow: true },
 };

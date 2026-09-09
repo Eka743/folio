@@ -30,8 +30,8 @@ export default function PrivacyPage() {
           <p className="mt-2">
             Folio is operated by the person identified by the public operator
             label in the Legal Notice. The current public label is not a full
-            legal name; the operator must review any additional identity and
-            controller details required before a production launch.
+            legal name, and this page does not invent additional identity or
+            controller details.
           </p>
           <p className="mt-2">
             This policy covers the Folio website, its browser tools, and the
@@ -151,8 +151,8 @@ export default function PrivacyPage() {
             as access, correction, deletion, restriction, objection, and
             complaint to a supervisory authority. The appropriate controller,
             legal basis, and response process depend on the operator and actual
-            hosting arrangement; the operator must complete those details before
-            launch.
+            hosting arrangement. The public contact below is the available
+            channel for questions and requests.
           </p>
           {contact && config.ownerContact ? (
             <p className="mt-2">

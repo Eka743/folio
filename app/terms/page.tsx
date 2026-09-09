@@ -132,9 +132,10 @@ export default function TermsPage() {
         <section className="rounded-2xl border border-slate-200 p-5">
           <h2 className="font-semibold text-ink-950">9. Law and contact</h2>
           <p className="mt-2">
-            The operator should publish the applicable identity, contact, law, and
-            jurisdiction details in the Legal Notice before public launch. Any
-            applicable mandatory consumer or data-protection rights remain
+            The Legal Notice provides the current public operator label and
+            contact. Applicable identity, governing-law, and jurisdiction details
+            may need to be supplemented for a particular offering or legal
+            requirement; mandatory consumer and data-protection rights remain
             unaffected by these terms.
           </p>
           <p className="mt-2">

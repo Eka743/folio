@@ -54,10 +54,10 @@ export default function LegalPage() {
           )}
           <p className="mt-3 text-[15px] text-ink-500">
             This public label is intentionally not a full legal name. The
-            operator must still confirm any additional information required by
-            applicable Spain/EU rules, such as a postal address, registration
-            details, tax identifier, governing law, or jurisdiction, before a
-            production launch. Folio does not invent or require company-only
+            operator should supplement this notice if applicable Spain/EU rules
+            require additional information, such as a postal address,
+            registration details, tax identifier, governing law, or jurisdiction.
+            Folio does not invent or require company-only
             fields for an individual operator.
           </p>
           <p className="mt-3 text-[15px] text-ink-500">
@@ -74,9 +74,9 @@ export default function LegalPage() {
             the service and its limitations.
           </p>
           <p className="mt-2">
-            The operator must confirm and publish the applicable governing law and
-            jurisdiction before release. Mandatory consumer and privacy rights
-            are not removed by the site terms.
+            The applicable governing law and jurisdiction depend on the offering
+            and legal requirements. Mandatory consumer and privacy rights are not
+            removed by the site terms.
           </p>
         </section>
 

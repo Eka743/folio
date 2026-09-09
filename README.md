@@ -147,9 +147,8 @@ swift test
 - `/privacy`, `/cookies`, `/terms`, `/legal`, `/security`, `/open-source`, and
   `/mac` describe the current local-first architecture and release limitations.
 - Direct dependency notices are recorded in `docs/THIRD_PARTY_NOTICES.md`.
-- The GitHub repository is currently private. The Open Source page deliberately
-  does not claim public source availability until the repository is made public
-  and the release configuration confirms it.
+- The GitHub repository is public, and the Open Source page links to the
+  canonical source repository when the release configuration confirms it.
 
 ## Dependency notes
 

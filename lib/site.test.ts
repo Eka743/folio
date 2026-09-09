@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_OWNER_CONTACT,
   DEFAULT_OWNER_NAME,
+  DEFAULT_SITE_URL,
   contactHref,
   hasOwnerPlaceholders,
   isContactValue,
   isHttpsUrl,
   publicSiteConfig,
+  siteUrl,
 } from "./site";
 
 afterEach(() => {
@@ -25,6 +27,24 @@ describe("public release configuration", () => {
   it("treats the now-public source repository as public by default", () => {
     vi.unstubAllEnvs();
     expect(publicSiteConfig().sourceRepositoryPublic).toBe(true);
+  });
+
+  it("keeps production metadata on the public domain", () => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("VERCEL_URL", "folio-preview.vercel.app");
+    vi.stubEnv("NODE_ENV", "production");
+
+    expect(siteUrl()).toBe(DEFAULT_SITE_URL);
+  });
+
+  it("uses the deployment hostname for preview metadata when no public URL is configured", () => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("VERCEL_URL", "folio-preview.vercel.app");
+    vi.stubEnv("NODE_ENV", "production");
+
+    expect(siteUrl()).toBe("https://folio-preview.vercel.app");
   });
 
   it("reads all public release fields from one configuration surface", () => {

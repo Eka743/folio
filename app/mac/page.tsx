@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 };
 
 const STEPS = [
-  { title: "1. Download", body: "Download the signed, notarized Folio-for-Mac.dmg from the published link below and drag Folio to Applications." },
+  { title: "1. Get the signed installer", body: "When the public release is available, download the signed and notarized Folio-for-Mac.dmg and drag Folio to Applications." },
   { title: "2. Open Folio for Mac", body: "Open Folio from Applications. It starts the secure local bridge automatically and shows which supported engines (Pages, Numbers, Word, …) are installed." },
   { title: "3. Approve macOS prompts", body: "Folio guides the one-time secure connection setup. When a conversion needs Pages or Numbers, macOS may ask for Automation permission; Folio explains the request immediately beforehand. Keychain Access and Terminal are not required." },
   { title: "4. Convert", body: "Return to Folio in Safari, pick e.g. Pages → PDF, drag your file, and click Convert. The PDF downloads; temporary files are deleted." },
@@ -33,8 +33,9 @@ export default function MacPage() {
         </a>
       ) : (
         <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="note">
-          The signed, notarized installer is being prepared. Download will be
-          enabled here after it passes clean-Mac Gatekeeper validation.
+          Public download is not available yet. The signed and notarized
+          installer will be linked here after it passes clean-Mac Gatekeeper
+          validation.
         </p>
       )}
       <div className="mt-8 space-y-6 text-[16px] leading-relaxed text-ink-700">
