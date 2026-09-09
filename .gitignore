@@ -18,3 +18,10 @@ next-env.d.ts
 # Generated pdf.js worker — copied from node_modules at install/build time.
 # Served same-origin at /pdf.worker.min.mjs; never commit the binary.
 public/pdf.worker.min.mjs
+
+# Swift package build artifacts (Folio for Mac helper).
+apps/macos-helper/.build/
+.swiftpm/
+
+# Folio for Mac companion build artifacts.
+apps/folio-mac/.build/

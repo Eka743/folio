@@ -15,9 +15,15 @@ export async function generateMetadata({
   const { slug } = await params;
   const tool = getTool(slug);
   if (!tool) return { title: "Tool not found" };
+  const where =
+    tool.processing === "mac-helper"
+      ? "Processed locally on your Mac by Folio for Mac."
+      : tool.processing === "hybrid"
+        ? "Free, no account — browser conversion, or high fidelity with Word on Mac."
+        : "Free, no account — processed in your browser.";
   return {
     title: tool.name,
-    description: `${tool.description} Free, no account — processed in your browser.`,
+    description: `${tool.description} ${where}`,
   };
 }
 

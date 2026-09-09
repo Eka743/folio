@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dropzone, FileList, type ListedFile } from "@/components/Dropzone";
+import { EngineBadge, HelperBanner } from "@/components/HelperBanner";
+import { useHelper } from "@/components/useHelper";
 import {
   FieldLabel,
   PrimaryButton,
@@ -17,9 +19,19 @@ import {
   validateFiles,
   withExtension,
 } from "@/lib/files";
+import {
+  appMissingMessage,
+  base64ToBytes,
+  convertViaHelper,
+  extensionOf,
+  helperErrorMessage,
+  isMacPlatform,
+  resolveConversionRoute,
+} from "@/lib/helper";
 import { parsePageRanges, summarizePages } from "@/lib/pageRanges";
 import type { RotationDegrees } from "@/lib/pdfOpsTypes";
 import type { FolioTool, ToolSlug } from "@/lib/tools";
+import { getConversion } from "@/lib/formatMatrix";
 
 let idCounter = 0;
 function nextId(): string {
@@ -33,6 +45,18 @@ type Result =
   | { kind: "images"; pages: Array<{ page: number; url: string; size: number }> }
   | null;
 
+const HELPER_TOOLS: ToolSlug[] = [
+  "word-to-pdf",
+  "pages-to-pdf",
+  "pages-to-word",
+  "powerpoint-to-pdf",
+  "keynote-to-pdf",
+  "keynote-to-powerpoint",
+  "excel-to-pdf",
+  "numbers-to-pdf",
+  "numbers-to-excel",
+];
+
 export function ToolRunner({ tool }: { tool: FolioTool }) {
   const [files, setFiles] = useState<ListedFile[]>([]);
   const [complaints, setComplaints] = useState<string[]>([]);
@@ -41,12 +65,24 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [engineUsed, setEngineUsed] = useState<string | null>(null);
 
   // Per-tool options
   const [rangeText, setRangeText] = useState("1-3,5");
   const [rotateMode, setRotateMode] = useState<"all" | "pages">("all");
   const [degrees, setDegrees] = useState<RotationDegrees>(90);
   const [zipMeta, setZipMeta] = useState<{ name: string; size: number } | null>(null);
+  // Hybrid DOCX tool: user picks engine when both are available.
+  const [helperChoice, setHelperChoice] = useState<"auto" | "browser" | "mac">(
+    "auto",
+  );
+
+  const { state: helperState, refresh: refreshHelper, isMac } = useHelper();
+  const needsHelper =
+    tool.processing === "mac-helper" || tool.processing === "hybrid";
+  const matrixConversion = tool.conversionId
+    ? getConversion(tool.conversionId)
+    : undefined;
 
   const fileObjs = useMemo(() => files.map((f) => f.file), [files]);
 
@@ -77,6 +113,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
     setResult(null);
     setError(null);
     setZipMeta(null);
+    setEngineUsed(null);
   }, [revokeAllUrls]);
 
   function blobUrl(bytes: Uint8Array, mime: string): string {
@@ -130,6 +167,69 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
     setComplaints([]);
   }, [resetResults]);
 
+  /** Run a conversion through Folio for Mac and materialize the download. */
+  async function runHelperConversion(
+    file: File,
+    from: string,
+    to: string,
+    outExt: string,
+    outMime: string,
+  ): Promise<void> {
+    const appName =
+      from === "pages"
+        ? "Pages"
+        : from === "numbers"
+          ? "Numbers"
+          : null;
+    setProgress(
+      appName
+        ? `Folio needs permission to ask ${appName} to export this document. The document stays on this Mac.`
+        : "Connecting to Folio for Mac…",
+    );
+    let res: Awaited<ReturnType<typeof convertViaHelper>>;
+    try {
+      res = await convertViaHelper({
+        from,
+        to,
+        file,
+        permissionMessage: appName
+          ? `Folio needs permission to ask ${appName} to export this document. The document stays on this Mac.`
+          : undefined,
+        onProgress: (stage) => setProgress(stage),
+      });
+    } catch (conversionError) {
+      // A helper can become ready while this page is open, or it can restart
+      // after a native app permission change. The hook's polling will recover;
+      // this immediate refresh makes the next state actionable as well.
+      refreshHelper();
+      throw conversionError;
+    }
+    const bytes = base64ToBytes(res.contentBase64);
+    if (bytes.length === 0) {
+      throw new Error("The converted file could not be created.");
+    }
+    // Never trust the helper's filename for path purposes; sanitize again.
+    const safeBase = safeFileName(file.name);
+    const name = withExtension(
+      res.outputFilename
+        ? safeFileName(res.outputFilename)
+        : `${safeBase}-converted`,
+      outExt,
+    );
+    const url = blobUrl(bytes, outMime);
+    setResultUrl(url);
+    setEngineUsed(res.engine);
+    setResult({
+      kind: "file",
+      fileName: name,
+      sizeBytes: bytes.length,
+      note:
+        res.engine === "libreoffice"
+          ? "Converted locally using LibreOffice — quality may differ from the native app."
+          : `Converted locally with ${res.engine} — your document never left this Mac.`,
+    });
+  }
+
   async function run(): Promise<void> {
     setError(null);
     resetResults();
@@ -148,6 +248,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           );
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
+          setEngineUsed("browser");
           setResult({ kind: "file", fileName: name, sizeBytes: bytes.length });
           break;
         }
@@ -168,6 +269,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           );
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
+          setEngineUsed("browser");
           setResult({
             kind: "file",
             fileName: name,
@@ -189,22 +291,101 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           );
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
+          setEngineUsed("browser");
           setResult({ kind: "file", fileName: name, sizeBytes: bytes.length });
           break;
         }
         case "docx-to-pdf": {
           const file = needSingle(fileObjs);
+          const helperCaps =
+            helperState.kind === "connected" ? helperState.capabilities : null;
+          const wantMac =
+            helperChoice === "mac" ||
+            (helperChoice === "auto" &&
+              helperCaps !== null &&
+              helperCaps.word);
+          if (wantMac) {
+            if (helperState.kind !== "connected" || !helperCaps?.word) {
+              throw new Error(
+                helperState.kind === "non-mac"
+                  ? "This format requires macOS."
+                  : helperErrorMessage("helper_unreachable"),
+              );
+            }
+            await runHelperConversion(file, "docx", "pdf", "pdf", "application/pdf");
+            break;
+          }
           const { docxToPdf } = await import("@/lib/pdfOps");
           const bytes = await docxToPdf(file, (stage) => setProgress(stage));
           const name = withExtension(safeFileName(file.name), "pdf");
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
+          setEngineUsed("browser");
           setResult({
             kind: "file",
             fileName: name,
             sizeBytes: bytes.length,
-            note: "Converted locally with formatting preserved as faithfully as browser conversion allows — check pagination before sharing.",
+            note: "Converted in your browser — check pagination before sharing. On a Mac with Word + Folio for Mac, choose High Fidelity for Word-quality output.",
           });
+          break;
+        }
+        case "word-to-pdf":
+        case "pages-to-pdf":
+        case "pages-to-word":
+        case "powerpoint-to-pdf":
+        case "keynote-to-pdf":
+        case "keynote-to-powerpoint":
+        case "excel-to-pdf":
+        case "numbers-to-pdf":
+        case "numbers-to-excel": {
+          const file = needSingle(fileObjs);
+          const from = extensionOf(file.name) || tool.helperFrom || "";
+          const to = tool.helperTo || "";
+          // Gate with the shared route logic so UI copy and behavior agree.
+          const caps =
+            helperState.kind === "connected" ? helperState.capabilities : null;
+          const mac =
+            isMac ||
+            (typeof navigator !== "undefined" &&
+              isMacPlatform(navigator.platform));
+          const decision = resolveConversionRoute({
+            conversionId: tool.conversionId ?? tool.slug,
+            from,
+            to,
+            browserAvailable: false,
+            helperConnected: helperState.kind === "connected",
+            isMac: mac,
+            capabilities: caps,
+            nativeEngine: tool.nativeEngine ?? null,
+            fallbackToBrowser: false,
+          });
+          if (decision.via === "blocked") {
+            // Prefer app-specific copy when the blocker is a missing app.
+            if (decision.engine === null && tool.requiresApp) {
+              const need = (tool.nativeEngine ?? "").toLowerCase();
+              const hasApp =
+                (need === "pages" && caps?.pages) ||
+                (need === "keynote" && caps?.keynote) ||
+                (need === "numbers" && caps?.numbers) ||
+                (need === "word" && caps?.word) ||
+                (need === "powerpoint" && caps?.powerpoint) ||
+                (need === "excel" && caps?.excel);
+              if (helperState.kind === "connected" && !hasApp) {
+                throw new Error(appMissingMessage(tool.requiresApp));
+              }
+            }
+            throw new Error(decision.message);
+          }
+          const outExt = to === "pdf" ? "pdf" : to;
+          const outMime =
+            to === "pdf"
+              ? "application/pdf"
+              : to === "docx"
+                ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                : to === "pptx"
+                  ? "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                  : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+          await runHelperConversion(file, from, to, outExt, outMime);
           break;
         }
         case "pdf-to-jpg": {
@@ -251,6 +432,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
             });
             setZipMeta({ name: `${base}-pages.zip`, size: zipBlob.size });
           }
+          setEngineUsed("browser");
           break;
         }
         case "rotate-pdf": {
@@ -278,6 +460,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           );
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
+          setEngineUsed("browser");
           setResult({ kind: "file", fileName: name, sizeBytes: bytes.length });
           break;
         }
@@ -289,6 +472,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           const name = withExtension(`${safeFileName(file.name)}-optimized`, "pdf");
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
+          setEngineUsed("browser");
           setResult({ kind: "compress", fileName: name, before: beforeBytes, after: afterBytes });
           break;
         }
@@ -309,13 +493,30 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
         ? fileObjs.length >= 1
         : fileObjs.length === 1);
 
+  const helperConnected =
+    helperState.kind === "connected" ? helperState.capabilities : null;
+  const showHelperBanner = needsHelper;
+  const showEngineChoice =
+    tool.slug === "docx-to-pdf" && helperConnected?.word === true;
+
   return (
     <div className="mx-auto max-w-3xl px-5 py-10">
       <ToolHeader
         name={tool.name}
         description={tool.longDescription}
         accepts={tool.accepts}
+        processing={tool.processing}
       />
+
+      {showHelperBanner && (
+        <div className="mt-6">
+          <HelperBanner
+            state={helperState}
+            requiresApp={tool.requiresApp}
+            onRetry={refreshHelper}
+          />
+        </div>
+      )}
 
       <div className="mt-8 space-y-4">
         <Dropzone
@@ -324,6 +525,52 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           disabled={busy}
           onFiles={addFiles}
         />
+
+        {tool.processing === "mac-helper" && tool.nativeEngine && (
+          <StatusBox kind="info">
+            Uses {tool.nativeEngine} on your Mac
+            {tool.requiresApp ? ` (${tool.requiresApp} must be installed)` : ""}.
+            Your document never leaves this Mac.
+          </StatusBox>
+        )}
+
+        {matrixConversion?.status === "helper-beta" && (
+          <StatusBox kind="info">
+            <strong>Known limitation:</strong> {matrixConversion.limitation}
+          </StatusBox>
+        )}
+
+        {tool.slug === "docx-to-pdf" && showEngineChoice && (
+          <fieldset className="rounded-2xl border border-slate-200 p-4">
+            <legend className="px-1 text-sm font-medium text-ink-900">
+              Conversion quality
+            </legend>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Conversion engine">
+              {(
+                [
+                  ["auto", "Auto (prefer Word)"],
+                  ["mac", "High Fidelity — Microsoft Word"],
+                  ["browser", "Fast Browser Conversion — Beta"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setHelperChoice(value)}
+                  aria-pressed={helperChoice === value}
+                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
+                    helperChoice === value
+                      ? "border-ink-950 bg-ink-950 text-white"
+                      : "border-slate-300 bg-white text-ink-700 hover:bg-slate-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        )}
 
         {complaints.length > 0 && (
           <StatusBox kind="error">
@@ -422,12 +669,20 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           </StatusBox>
         )}
 
-        {tool.slug === "docx-to-pdf" && (
+        {tool.slug === "docx-to-pdf" && !showEngineChoice && (
           <StatusBox kind="info">
             Beta: headings, bold/italic, lists, tables and images are
             preserved, but pagination and advanced Word features (headers,
             footers, footnotes, text boxes) may differ from Word. Always
-            review the PDF before sharing.
+            review the PDF before sharing. On a Mac with Word + Folio for Mac,
+            high-fidelity Word conversion is used automatically when available.
+          </StatusBox>
+        )}
+
+        {HELPER_TOOLS.includes(tool.slug as ToolSlug) && (
+          <StatusBox kind="info">
+            This conversion runs locally on your Mac — no cloud, no uploads.
+            Temporary files are deleted automatically after conversion.
           </StatusBox>
         )}
 
@@ -453,6 +708,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               Done — {result.fileName} ({formatBytes(result.sizeBytes)})
             </p>
             {result.note && <p className="mt-1">{result.note}</p>}
+            {engineUsed && <EngineBadge engine={engineUsed} />}
             <div className="mt-3 flex flex-wrap gap-2">
               <a
                 href={resultUrl}
@@ -489,6 +745,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
                 </>
               )}
             </p>
+            {engineUsed && <EngineBadge engine={engineUsed} />}
             <div className="mt-3">
               <a
                 href={resultUrl}
@@ -559,7 +816,19 @@ function actionLabel(slug: string): string {
     case "images-to-pdf":
       return "Create PDF";
     case "docx-to-pdf":
+    case "word-to-pdf":
+    case "pages-to-pdf":
+    case "powerpoint-to-pdf":
+    case "keynote-to-pdf":
+    case "excel-to-pdf":
+    case "numbers-to-pdf":
       return "Convert to PDF";
+    case "pages-to-word":
+      return "Convert to Word";
+    case "keynote-to-powerpoint":
+      return "Convert to PowerPoint";
+    case "numbers-to-excel":
+      return "Convert to Excel";
     case "pdf-to-jpg":
       return "Convert to JPG";
     case "rotate-pdf":
