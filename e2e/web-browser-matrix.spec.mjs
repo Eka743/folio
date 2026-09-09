@@ -76,7 +76,7 @@ test("all seven browser-local tools produce valid results", async ({ page }) => 
   await page.locator('input[type="file"]').setInputFiles(fixtures.twoPage);
   await page.locator("#folio-pages").fill("1,,2");
   await page.getByRole("button", { name: "Extract pages" }).click();
-  await expect(page.getByRole("alert")).toContainText("Empty page or range found");
+  await expect(page.locator('div[role="alert"]').filter({ hasText: "Empty page or range found" })).toBeVisible();
   await page.locator("#folio-pages").fill("1-2");
   const split = await downloadFromResult(page, "Extract pages", /^Download /);
   expectPdf(split);
@@ -125,7 +125,7 @@ test("malformed input recovers, double-clicks stay single-result, and conversion
   await page.goto("/tools/split-pdf");
   await page.locator('input[type="file"]').setInputFiles(fixtures.corruptPdf);
   await page.getByRole("button", { name: "Extract pages" }).click();
-  const error = page.getByRole("alert");
+  const error = page.locator('div[role="alert"]').filter({ hasText: "Could not read this PDF" });
   await expect(error).toContainText("Could not read this PDF");
   await expect(error).not.toContainText(/TypeError|stack|undefined/i);
 
