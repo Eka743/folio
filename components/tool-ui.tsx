@@ -4,19 +4,11 @@ export function ToolHeader({
   name,
   description,
   accepts,
-  processing,
 }: {
   name: string;
   description: string;
   accepts: string;
-  processing?: "local" | "mac-helper" | "hybrid";
 }) {
-  const privacyLine =
-    processing === "mac-helper"
-      ? "Processed locally on your Mac by Folio for Mac — files never leave your device"
-      : processing === "hybrid"
-        ? "Browser conversion, or high fidelity with Word on your Mac"
-        : "Processed in your browser — files never leave your device";
   return (
     <div>
       <Link
@@ -33,12 +25,22 @@ export function ToolHeader({
       </p>
       <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-[13px] font-medium text-emerald-800">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-        {privacyLine}
+        Processed in your browser, files never leave your device
       </p>
       <p className="mt-2 text-[13px] text-ink-400">
         Accepts {accepts}
       </p>
     </div>
+  );
+}
+
+export function EngineBadge({ engine }: { engine: string }) {
+  const label =
+    engine === "browser" ? "Processed inside your browser" : `Processed with ${engine}`;
+  return (
+    <p className="mt-2 text-[13px] text-ink-500" role="status">
+      {label} · your document never left this device.
+    </p>
   );
 }
 

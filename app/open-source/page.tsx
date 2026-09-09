@@ -38,8 +38,7 @@ export default function OpenSourcePage() {
               >
                 {config.sourceRepositoryUrl}
               </a>
-              . It contains the web app, Folio for Mac sources, security policy,
-              and release documentation.
+              . It contains the web app, security policy and release documentation.
             </p>
           ) : (
             <div className="mt-2 rounded-lg bg-amber-50 p-3 text-[15px] text-amber-900" role="note">

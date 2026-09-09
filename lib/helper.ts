@@ -12,7 +12,7 @@
  *    convertViaHelper). Only invoked from client components.
  */
 
-import { isHelperConversionAllowed } from "./formatMatrix";
+import { isHelperConversionAllowed } from "./dormantFormatMatrix";
 
 export const HELPER_HOST = "127.0.0.1";
 export const HELPER_PORT = 17391;

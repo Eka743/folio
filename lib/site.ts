@@ -12,7 +12,6 @@ export interface PublicSiteConfig {
   siteUrl: string;
   ownerName: string | null;
   ownerContact: string | null;
-  macDownloadUrl: string | null;
   sourceRepositoryUrl: string;
   sourceRepositoryPublic: boolean;
   policyUpdatedAt: string;
@@ -49,10 +48,6 @@ export function ownerContact(): string | null {
   return optionalEnv("NEXT_PUBLIC_OWNER_CONTACT") ?? DEFAULT_OWNER_CONTACT;
 }
 
-export function macDownloadUrl(): string | null {
-  return normalizedUrl(optionalEnv("NEXT_PUBLIC_MAC_DOWNLOAD_URL"));
-}
-
 export function sourceRepositoryUrl(): string {
   return normalizedUrl(optionalEnv("NEXT_PUBLIC_SOURCE_REPOSITORY_URL")) ??
     DEFAULT_SOURCE_REPOSITORY_URL;
@@ -74,7 +69,6 @@ export function publicSiteConfig(): PublicSiteConfig {
     siteUrl: siteUrl(),
     ownerName: ownerName(),
     ownerContact: ownerContact(),
-    macDownloadUrl: macDownloadUrl(),
     sourceRepositoryUrl: sourceRepositoryUrl(),
     sourceRepositoryPublic: sourceRepositoryIsPublic(),
     policyUpdatedAt: policyUpdatedAt(),

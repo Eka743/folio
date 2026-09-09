@@ -1,181 +1,127 @@
 import Link from "next/link";
-import { TOOLS, type ToolSlug } from "@/lib/tools";
-import {
-  HOMEPAGE_CATEGORIES,
-  conversionsByCategory,
-  getConversionBySlug,
-} from "@/lib/formatMatrix";
+import { TOOLS, type ToolCategory, type ToolSlug } from "@/lib/tools";
 
-const ICONS: Record<string, React.ReactNode> = {
+const CATEGORY_ORDER: ToolCategory[] = ["PDF", "Documents", "Images"];
+
+const ICONS: Record<ToolSlug, React.ReactNode> = {
   "merge-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v10"/><path d="m8 9 4 4 4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v10"/><path d="m8 9 4 4 4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
   ),
   "split-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8 7.5 20 19M8 16.5 20 5"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8 7.5 20 19M8 16.5 20 5"/></svg>
   ),
   "images-to-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.6"/><path d="m21 15-4.5-4.5L6 21"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.6"/><path d="m21 15-4.5-4.5L6 21"/></svg>
   ),
   "docx-to-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>
-  ),
-  "word-to-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
-  ),
-  "pages-to-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M9 12h6M9 16h6"/></svg>
-  ),
-  "pages-to-word": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M9 12h6M9 16h4"/><path d="M16 16l2 2 3-3"/></svg>
-  ),
-  "powerpoint-to-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
-  ),
-  "keynote-to-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="m10 8 5 4-5 4z"/></svg>
-  ),
-  "keynote-to-powerpoint": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="13" height="12" rx="2"/><rect x="14" y="8" width="7" height="8" rx="1.5"/></svg>
-  ),
-  "excel-to-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 14h16M10 3v18"/></svg>
-  ),
-  "numbers-to-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
-  ),
-  "numbers-to-excel": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="3" width="12" height="18" rx="2"/><path d="M16 9h4v12h-4"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>
   ),
   "pdf-to-jpg": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="13" height="13" rx="2"/><path d="M16 8h4a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-4"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="13" height="13" rx="2"/><path d="M16 8h4a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-4"/></svg>
   ),
   "rotate-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
   ),
   "compress-pdf": (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 14h6v6H4zM14 4h6v6h-6z"/><path d="M10 17h7a3 3 0 0 0 3-3v-1M14 7H7a3 3 0 0 0-3 3v1"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 14h6v6H4zM14 4h6v6h-6z"/><path d="M10 17h7a3 3 0 0 0 3-3v-1M14 7H7a3 3 0 0 0-3 3v1"/></svg>
   ),
 };
-
-function toolForSlug(slug: string) {
-  return TOOLS.find((t) => t.slug === slug);
-}
 
 export default function HomePage() {
   return (
     <div>
-      {/* Hero */}
-      <section className="mx-auto max-w-5xl px-5 pb-10 pt-14 text-center sm:pt-20">
-        <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-paper px-3 py-1 text-[13px] font-medium text-ink-700">
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
-          Free · No account · Files stay on your device
-        </p>
-        <h1 className="mx-auto max-w-2xl text-4xl font-semibold tracking-tight text-ink-950 sm:text-5xl">
-          Everyday PDF tools, minus the upload.
-        </h1>
-        <p className="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-ink-500">
-          Merge, split, rotate, compress and convert your documents right in
-          your browser — plus local Office and iWork conversion on Mac.
-          Nothing leaves your device.
-        </p>
-        <p className="mx-auto mt-3 max-w-xl text-[15px] text-ink-500">
-          Folio understands the files you actually use on Mac: Pages, Numbers,
-          Word, PowerPoint and Excel. Keynote routes are currently Beta and
-          unvalidated.
-        </p>
-        <p className="mx-auto mt-3 text-[13px] font-medium text-ink-400">
-          Free and AGPL-licensed · local-first Beta · no cloud document processing
-        </p>
+      <section className="mx-auto max-w-5xl px-5 pb-14 pt-14 sm:pt-20">
+        <div className="max-w-3xl">
+          <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-accent-100 bg-accent-50 px-3 py-1 text-[13px] font-semibold text-accent-700">
+            <span className="inline-block h-2 w-2 rounded-full bg-accent-600" aria-hidden="true" />
+            Free, private, browser-local
+          </p>
+          <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.035em] text-ink-950 sm:text-6xl sm:leading-[1.05]">
+            Everyday PDF tools, without uploading your files.
+          </h1>
+          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-500 sm:text-xl">
+            Merge, split, rotate, compress and convert documents in your
+            browser. No account, no cloud processing, and no document bytes
+            sent to Folio.
+          </p>
+          <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-medium text-ink-700">
+            <a href="#tools" className="inline-flex items-center gap-2 rounded-xl bg-ink-950 px-4 py-2.5 text-white shadow-sm transition hover:bg-ink-900">
+              Browse tools <span aria-hidden="true">↓</span>
+            </a>
+            <Link href="/privacy" className="rounded-lg px-2 py-2 text-accent-700 underline-offset-4 hover:underline">
+              How privacy works
+            </Link>
+          </div>
+        </div>
+        <div className="mt-12 grid max-w-4xl gap-3 border-t border-slate-200 pt-5 text-sm text-ink-500 sm:grid-cols-3">
+          <p><strong className="font-semibold text-ink-950">1.</strong> Select a file</p>
+          <p><strong className="font-semibold text-ink-950">2.</strong> Process it locally</p>
+          <p><strong className="font-semibold text-ink-950">3.</strong> Download the result</p>
+        </div>
       </section>
 
-      {/* Categorized tool grid */}
-      {HOMEPAGE_CATEGORIES.map((category) => {
-        const conversions = conversionsByCategory(category);
-        const tools = conversions
-          .map((c) => toolForSlug(c.toolSlug))
-          .filter((t): t is NonNullable<typeof t> => Boolean(t));
-        if (tools.length === 0) return null;
-        return (
-          <section
-            key={category}
-            id={`tools-${category.toLowerCase()}`}
-            className="mx-auto max-w-5xl scroll-mt-20 px-5 pb-10"
-            aria-label={`${category} tools`}
-          >
-            <h2 className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink-400">
-              {category === "PDF"
-                ? "PDF"
-                : category === "Images"
-                  ? "Images"
-                  : category}
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {tools.map((tool) => {
-                const conversion = getConversionBySlug(tool.slug);
-                const badge =
-                  conversion?.status === "helper-beta"
-                    ? "Beta / known limitation"
-                    : tool.badge;
-                return (
-                  <Link
-                    key={tool.slug}
-                    href={`/tools/${tool.slug}`}
-                    className="group relative flex flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_1px_2px_rgba(16,20,24,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_24px_rgba(16,20,24,0.08)]"
-                  >
-                    <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-accent-50 text-accent-600">
-                      {ICONS[tool.slug as ToolSlug]}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-[17px] font-semibold tracking-tight text-ink-950">
-                        {tool.name}
-                      </h3>
-                      {badge && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-ink-500">
-                          {badge}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 flex-1 text-[15px] leading-relaxed text-ink-500">
-                      {tool.description}
-                    </p>
-                    <span className="mt-3 text-sm font-medium text-accent-600 group-hover:underline">
-                      Open tool →
-                    </span>
-                  </Link>
-                );
-              })}
+      <section id="tools" className="scroll-mt-20 border-y border-slate-200 bg-paper" aria-labelledby="tools-heading">
+        <div className="mx-auto max-w-5xl px-5 py-12 sm:py-14">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent-700">The toolbox</p>
+              <h2 id="tools-heading" className="mt-2 text-2xl font-semibold tracking-tight text-ink-950 sm:text-3xl">
+                Small tools for everyday documents.
+              </h2>
             </div>
-          </section>
-        );
-      })}
+            <p className="max-w-sm text-sm leading-relaxed text-ink-500">
+              Everything below runs in this tab. Your file stays on your device.
+            </p>
+          </div>
 
-      {/* Privacy strip */}
-      <section className="border-t border-slate-200 bg-paper" aria-label="Privacy">
-        <div className="mx-auto grid max-w-5xl gap-8 px-5 py-14 sm:grid-cols-3">
-          <div>
-            <h2 className="font-semibold text-ink-950">Processed locally</h2>
-            <p className="mt-2 text-[15px] leading-relaxed text-ink-500">
-              PDF and image tools run entirely in your browser; Office and
-              iWork files convert locally on your Mac with Folio for Mac.
-              Folio has no server storage, no accounts and no document uploads.
-            </p>
+          <div className="mt-9 space-y-10">
+            {CATEGORY_ORDER.map((category) => {
+              const tools = TOOLS.filter((tool) => tool.category === category);
+              if (tools.length === 0) return null;
+              return (
+                <div key={category}>
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-ink-400">{category}</h3>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {tools.map((tool) => (
+                      <Link
+                        key={tool.slug}
+                        href={`/tools/${tool.slug}`}
+                        className="group flex min-h-44 flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_1px_2px_rgba(16,20,24,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_10px_28px_rgba(16,20,24,0.08)]"
+                      >
+                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-50 text-accent-600 [&>svg]:h-[22px] [&>svg]:w-[22px]">
+                          {ICONS[tool.slug]}
+                        </span>
+                        <span className="mt-5 flex items-center gap-2">
+                          <span className="text-[17px] font-semibold tracking-tight text-ink-950">{tool.name}</span>
+                          {tool.badge && <span className="rounded-full bg-accent-50 px-2 py-0.5 text-xs font-semibold text-accent-700">{tool.badge}</span>}
+                        </span>
+                        <span className="mt-1 flex-1 text-[15px] leading-relaxed text-ink-500">{tool.description}</span>
+                        <span className="mt-4 text-sm font-semibold text-accent-700 group-hover:underline">Open tool <span aria-hidden="true">→</span></span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div>
-            <h2 className="font-semibold text-ink-950">No trackers</h2>
-            <p className="mt-2 text-[15px] leading-relaxed text-ink-500">
-              No analytics SDKs, no ad scripts, no third-party tracking. All
-              libraries — including the PDF renderer — are served from Folio
-              itself.
-            </p>
-          </div>
-          <div>
-            <h2 className="font-semibold text-ink-950">Honest limits</h2>
-            <p className="mt-2 text-[15px] leading-relaxed text-ink-500">
-              Compression reports real before/after sizes, every conversion
-              names the engine that ran it, and unreliable conversions are
-              omitted, not faked. <Link href="/privacy" className="text-accent-600 hover:underline">Learn more</Link>
-            </p>
-          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto grid max-w-5xl gap-10 px-5 py-14 sm:grid-cols-3 sm:gap-8 sm:py-16" aria-label="Privacy promises">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-accent-700">Private by default</p>
+          <h2 className="mt-2 font-semibold text-ink-950">The file stays in your browser.</h2>
+          <p className="mt-2 text-[15px] leading-relaxed text-ink-500">Folio reads and processes selected files locally. There is no upload endpoint or document storage.</p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-accent-700">No hidden layer</p>
+          <h2 className="mt-2 font-semibold text-ink-950">No account. No analytics.</h2>
+          <p className="mt-2 text-[15px] leading-relaxed text-ink-500">No sign-in, ad scripts, tracking pixels or analytics SDKs. Just the tool you came for.</p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-accent-700">Honest Beta</p>
+          <h2 className="mt-2 font-semibold text-ink-950">Limits are labelled.</h2>
+          <p className="mt-2 text-[15px] leading-relaxed text-ink-500">Browser DOCX conversion is marked Beta so you can review complex layouts before sharing.</p>
         </div>
       </section>
     </div>
