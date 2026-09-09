@@ -19,6 +19,9 @@ public enum HelperConfig {
     public static let certFileName = "folio-bridge-cert.pem"
     public static let keyFileName = "folio-bridge-key.pem"
     public static let identityFileName = "folio-bridge-identity.p12"
+    /// Written only after the Folio for Mac UI has completed user trust setup.
+    /// It contains no credentials or document data.
+    public static let setupMarkerFileName = "setup-ready"
     public static let bridgeDirName = ".folio/bridge"
     /// Host header allowlist — DNS-rebinding mitigation. The server only
     /// answers when Host is a loopback literal (optionally with port).

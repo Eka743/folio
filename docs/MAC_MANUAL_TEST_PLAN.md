@@ -8,10 +8,10 @@ Terminal use.
 ## Setup
 
 - Install Folio.app from `Folio-for-Mac.dmg` into Applications; open it.
-- Complete one-time certificate trust (explained in-app). The imported
-  certificate is named **Folio Loopback Bridge (folio-bridge)** in Keychain
-  Access; set its SSL trust to **Always Trust**. Automation consent is
-  requested only when a supported native conversion needs it.
+- Complete the in-app one-time secure connection setup. Folio creates and
+  trusts its per-install loopback certificate through macOS Security APIs;
+  approve the normal macOS authentication prompt if shown. Automation consent
+  is requested only when a supported native conversion needs it.
 - Open the Folio PR preview in Safari.
 
 ## iWork matrix (each: simple text, images, formatting, multi-page/slides/sheets, tables, special chars, spaces + Unicode filenames, large file)
@@ -36,7 +36,7 @@ Terminal use.
 
 ## Failure states
 
-- Helper not running → "Folio for Mac isn't running."
+- Helper unavailable → "Folio for Mac isn't detected; open it from Applications."
 - Desktop app not installed → "Pages/Keynote/Numbers isn't installed."
 - Permission denied → actionable Automation-settings guidance, no prompt spam.
 - Corrupted input → "This document appears to be damaged."

@@ -67,9 +67,19 @@ export interface HelperCapabilities {
   platform?: string;
 }
 
+export type HelperSetupState = "ready" | "setup-required" | "starting" | "error";
+
+export interface HelperStatus {
+  name?: string;
+  version?: string;
+  platform?: string;
+  setup?: HelperSetupState;
+  error?: string;
+}
+
 export type HelperConnection =
   | { state: "unknown" }
-  | { state: "connected"; capabilities: HelperCapabilities }
+  | { state: "connected"; capabilities: HelperCapabilities; status?: HelperStatus }
   | { state: "disconnected" }
   | { state: "wrong-os" };
 
@@ -136,11 +146,12 @@ export function extensionOf(filename: string): string {
 
 export function helperErrorMessage(code: string, hint?: string): string {
   const map: Record<string, string> = {
-    helper_unreachable: "Folio for Mac isn't running.",
+    helper_unreachable:
+      "Folio for Mac isn't running or is still finishing setup. Open it from Applications; Folio will reconnect automatically.",
     not_mac: "This format requires macOS.",
     app_missing: "The required desktop app isn't installed.",
     permission_denied:
-      "macOS denied permission to control the desktop app. Open System Settings → Privacy & Security → Automation and allow Folio Helper, then try again.",
+      "Folio needs permission to ask the desktop app to export this document. Allow the macOS Automation prompt, then Folio will continue; the document stays on this Mac.",
     open_failed: "The desktop app couldn't open this document.",
     convert_failed: "The converted file could not be created.",
     damaged: "This document appears to be damaged.",
@@ -149,9 +160,9 @@ export function helperErrorMessage(code: string, hint?: string): string {
     bad_request: "The conversion request was invalid.",
     forbidden: "The helper refused this request.",
     secure_connection:
-      "Folio couldn't establish a secure connection with Folio for Mac. Make sure the app is running and its loopback certificate is trusted, then try again.",
+      "Folio for Mac is installed but its secure connection is not ready yet. Open Folio for Mac and finish the one-time setup; this page will reconnect automatically.",
     not_trusted:
-      "Your browser doesn't trust the Folio for Mac certificate yet. Open Folio for Mac and complete the one-time certificate trust step.",
+      "Folio for Mac needs to finish its one-time secure connection setup. Open Folio for Mac and choose Set up secure connection; Keychain Access is not required.",
   };
   const base = map[code] ?? "Something went wrong during conversion.";
   if (!hint) return base;
@@ -388,6 +399,27 @@ export async function probeHelper(port = HELPER_PORT): Promise<boolean> {
   return false;
 }
 
+/** Read the helper lifecycle state without touching document data. */
+export async function fetchHelperStatus(
+  port = HELPER_PORT,
+): Promise<HelperStatus | null> {
+  const bases =
+    port !== HELPER_PORT ? [`http://${HELPER_HOST}:${port}`] : pageBases();
+  for (const base of bases) {
+    try {
+      const res = await fetchWithTimeout(
+        `${base}/v1/status`,
+        { headers: { Origin: browserOrigin() } },
+      );
+      if (!res.ok) continue;
+      return (await res.json()) as HelperStatus;
+    } catch {
+      /* try next base */
+    }
+  }
+  return null;
+}
+
 export async function fetchCapabilities(
   port = HELPER_PORT,
 ): Promise<HelperCapabilities | null> {
@@ -420,6 +452,7 @@ export async function convertViaHelper(opts: {
   file: File;
   port?: number;
   token?: string;
+  permissionMessage?: string;
   onProgress?: (stage: string) => void;
 }): Promise<HelperConvertResult> {
   const bases =
@@ -427,7 +460,9 @@ export async function convertViaHelper(opts: {
       ? [`http://${HELPER_HOST}:${opts.port}`]
       : pageBases();
   let token = opts.token ?? getPairToken();
-  opts.onProgress?.("Uploading to Folio for Mac (localhost)…");
+  opts.onProgress?.(
+    opts.permissionMessage ?? "Uploading to Folio for Mac (localhost)…",
+  );
   const buffer = new Uint8Array(await opts.file.arrayBuffer());
   // Base64 without blowing the stack on large files.
   let binary = "";

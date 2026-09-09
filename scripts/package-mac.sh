@@ -18,6 +18,8 @@ fi
 APP="${OUT}/Folio.app"
 ENTITLEMENTS="${ROOT}/scripts/folio-automation.entitlements"
 APP_BUNDLE_ID="tools.folio.mac"
+SWIFT_SCRATCH_ROOT="${FOLIO_SWIFT_SCRATCH_ROOT:-/private/tmp/folio-swift-build}"
+mkdir -p "${SWIFT_SCRATCH_ROOT}"
 
 if [[ ! -f "${ENTITLEMENTS}" ]]; then
   echo "Missing entitlements file: ${ENTITLEMENTS}" >&2
@@ -31,13 +33,17 @@ if [[ -z "${DEVELOPER_ID_APP:-}" && "${FOLIO_ALLOW_UNSIGNED:-}" != "1" ]]; then
 fi
 
 echo "==> Building FolioHelper (release)"
-swift build -c release --package-path "${ROOT}/apps/macos-helper"
+swift build -c release \
+  --package-path "${ROOT}/apps/macos-helper" \
+  --scratch-path "${SWIFT_SCRATCH_ROOT}/helper"
 
 echo "==> Building FolioMac (release)"
-swift build -c release --package-path "${ROOT}/apps/folio-mac"
+swift build -c release \
+  --package-path "${ROOT}/apps/folio-mac" \
+  --scratch-path "${SWIFT_SCRATCH_ROOT}/folio-mac"
 
-HELPER_BIN="$(swift build -c release --package-path "${ROOT}/apps/macos-helper" --show-bin-path)/FolioHelper"
-MAC_BIN="$(swift build -c release --package-path "${ROOT}/apps/folio-mac" --show-bin-path)/FolioMac"
+HELPER_BIN="$(swift build -c release --package-path "${ROOT}/apps/macos-helper" --scratch-path "${SWIFT_SCRATCH_ROOT}/helper" --show-bin-path)/FolioHelper"
+MAC_BIN="$(swift build -c release --package-path "${ROOT}/apps/folio-mac" --scratch-path "${SWIFT_SCRATCH_ROOT}/folio-mac" --show-bin-path)/FolioMac"
 
 rm -rf "${APP}"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"

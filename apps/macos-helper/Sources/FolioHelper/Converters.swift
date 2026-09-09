@@ -34,7 +34,11 @@ public enum ConversionError: Error, Equatable {
         case .openFailed: return "The desktop app couldn't open this document. It may be damaged or in an unsupported format."
         case .convertFailed: return "The converted file could not be created."
         case .damaged: return "This document appears to be damaged."
-        case .permissionDenied(let a): return "macOS denied permission for Folio to control \(a). Open System Settings → Privacy & Security → Automation, expand Folio, turn on \(a), then try again."
+        case .permissionDenied(let a):
+            if a == "Pages" || a == "Numbers" {
+                return "Folio needs permission to ask \(a) to export this document. The document stays on this Mac. Allow the macOS prompt, then try again. If macOS has already denied it, open System Settings → Privacy & Security → Automation and turn on \(a) for Folio."
+            }
+            return "macOS denied permission for Folio to control \(a). Open System Settings → Privacy & Security → Automation, expand Folio, turn on \(a), then try again."
         }
     }
 }
@@ -222,6 +226,12 @@ public struct AppleScriptRunner {
     public init() {}
     @discardableResult
     public func run(appName: String, source: String) throws -> String {
+        // Ask for Automation consent before opening the user's document. This
+        // keeps the macOS prompt aligned with the web copy and means a granted
+        // prompt can continue the conversion without a second manual retry.
+        if appName == "Pages" || appName == "Numbers" {
+            try requestAutomationPermission(appName: appName)
+        }
         try ensureApplicationIsRunning(appName: appName)
         // NSAppleScript lives in Foundation on macOS.
         guard let script = NSAppleScript(source: source) else {
@@ -231,12 +241,33 @@ public struct AppleScriptRunner {
         let result = script.executeAndReturnError(&err)
         if let err {
             let msg = "\(err)"
-            if msg.localizedCaseInsensitiveContains("not authorized") || msg.localizedCaseInsensitiveContains("permission") {
+            if msg.localizedCaseInsensitiveContains("not authorized") ||
+                msg.localizedCaseInsensitiveContains("not permitted") ||
+                msg.localizedCaseInsensitiveContains("permission") {
                 throw ConversionError.permissionDenied(appName: appName)
             }
             throw ConversionError.openFailed
         }
         return result.stringValue ?? ""
+    }
+
+    /// Execute a fixed, document-free Apple Event solely to trigger the
+    /// supported macOS Automation prompt at the moment a conversion needs it.
+    private func requestAutomationPermission(appName: String) throws {
+        let script = "tell application \"\(appName)\" to get name"
+        guard let appleScript = NSAppleScript(source: script) else {
+            throw ConversionError.convertFailed
+        }
+        var error: NSDictionary?
+        _ = appleScript.executeAndReturnError(&error)
+        guard let error else { return }
+        let message = "\(error)"
+        if message.localizedCaseInsensitiveContains("not authorized") ||
+            message.localizedCaseInsensitiveContains("not permitted") ||
+            message.localizedCaseInsensitiveContains("permission") {
+            throw ConversionError.permissionDenied(appName: appName)
+        }
+        throw ConversionError.openFailed
     }
 
     /// `activate` is asynchronous on current iWork releases and an immediate

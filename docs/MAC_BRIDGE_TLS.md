@@ -17,8 +17,10 @@ mixed content kills the request before any of them matter.
   generated automatically by the helper (or manually by
   `scripts/provision-bridge-cert.sh`) using fixed openssl arguments, with the
   key and PKCS#12 identity set to 0600 in `~/.folio/bridge/`. The identity is
-  imported in memory on supported macOS releases. The user opens the
-  certificate from the app and trusts it once in Keychain Access.
+  imported in memory on supported macOS releases. Folio for Mac uses the
+  supported Security framework trust-settings API after explaining the
+  one-time approval; macOS may request authentication, but normal users do
+  not open Keychain Access or run Terminal commands.
 - Plain HTTP on **127.0.0.1:17391** is retained for `http://localhost`
   development only.
 - The web client probes **HTTPS-first** (`helperBasesForPage` in

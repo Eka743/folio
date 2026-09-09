@@ -36,6 +36,29 @@ export function HelperBanner({
       </div>
     );
   }
+  if (state.kind === "setup") {
+    return (
+      <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900">
+        <p className="font-medium">Folio for Mac is finishing its one-time setup.</p>
+        {!compact && (
+          <p className="mt-1">
+            Open Folio for Mac and choose <strong>Set up secure connection</strong>
+            if macOS asks for approval. This page will reconnect automatically;
+            Keychain Access and Terminal are not required.
+          </p>
+        )}
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[13px] font-medium hover:bg-amber-100"
+          >
+            Check again
+          </button>
+        )}
+      </div>
+    );
+  }
   if (state.kind === "non-mac") {
     return (
       <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900">
@@ -64,11 +87,9 @@ export function HelperBanner({
             Mac setup page
           </Link>
           {requiresApp ? ` (plus ${requiresApp}) ` : " "}
-          to convert this file locally — no uploads, no cloud. No Terminal is
-          required for a published app build.{" "}
-          <span className="text-ink-500">
-            Developer build instructions are in the Folio repository.
-          </span>
+          to convert this file locally — no uploads, no cloud. If it is already
+          installed, open it from Applications and this page will reconnect
+          automatically.
         </p>
       )}
       {onRetry && (

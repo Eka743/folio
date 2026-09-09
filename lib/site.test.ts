@@ -22,6 +22,11 @@ describe("public release configuration", () => {
     expect(hasOwnerPlaceholders()).toBe(false);
   });
 
+  it("treats the now-public source repository as public by default", () => {
+    vi.unstubAllEnvs();
+    expect(publicSiteConfig().sourceRepositoryPublic).toBe(true);
+  });
+
   it("reads all public release fields from one configuration surface", () => {
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://example.test/");
     vi.stubEnv("NEXT_PUBLIC_OWNER_NAME", "Example Operator");

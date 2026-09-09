@@ -24,6 +24,18 @@ final class ServerTests: XCTestCase {
         let res = routeRequest(req("GET", "/v1/status"), capabilities: caps, expectedToken: token)
         XCTAssertEqual(res.status, 200)
         XCTAssertEqual(res.json["platform"] as? String, "macOS")
+        XCTAssertEqual(res.json["setup"] as? String, "ready")
+    }
+
+    func testStatusReportsIncompleteSetup() {
+        let res = routeRequest(
+            req("GET", "/v1/status"),
+            capabilities: caps,
+            expectedToken: token,
+            setupState: "setup-required"
+        )
+        XCTAssertEqual(res.status, 200)
+        XCTAssertEqual(res.json["setup"] as? String, "setup-required")
     }
 
     func testCapabilitiesEndpoint() {

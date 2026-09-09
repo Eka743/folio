@@ -138,7 +138,18 @@ while true {
     }
     // Route validation first (origin, token, allowlist, sizes).
     let caps = detectCapabilities(prober: prober)
-    let routed = routeRequest(req, capabilities: caps, expectedToken: token)
+    let setupMarker = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        .appendingPathComponent(HelperConfig.bridgeDirName, isDirectory: true)
+        .appendingPathComponent(HelperConfig.setupMarkerFileName)
+    let setupState = FileManager.default.fileExists(atPath: setupMarker.path)
+        ? "ready"
+        : "setup-required"
+    let routed = routeRequest(
+        req,
+        capabilities: caps,
+        expectedToken: token,
+        setupState: setupState
+    )
 
     // The pure router returns {ok:true} for valid convert requests; perform I/O here.
     if req.path == "/v1/convert" && req.method == "POST",

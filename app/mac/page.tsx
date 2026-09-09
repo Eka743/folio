@@ -8,8 +8,8 @@ export const metadata: Metadata = {
 
 const STEPS = [
   { title: "1. Download", body: "Download the signed, notarized Folio-for-Mac.dmg from the published link below and drag Folio to Applications." },
-  { title: "2. Open Folio for Mac", body: "Launch it from Applications. It shows connection status and which supported engines (Pages, Numbers, Word, …) are installed." },
-  { title: "3. One-time setup", body: "Open the loopback certificate from Folio for Mac and set it to Always Trust in Keychain Access. Approve Automation access only for the named supported app when a conversion needs it. Keynote conversion remains a Beta / known limitation and is not validated in v0.2." },
+  { title: "2. Open Folio for Mac", body: "Open Folio from Applications. It starts the secure local bridge automatically and shows which supported engines (Pages, Numbers, Word, …) are installed." },
+  { title: "3. Approve macOS prompts", body: "Folio guides the one-time secure connection setup. When a conversion needs Pages or Numbers, macOS may ask for Automation permission; Folio explains the request immediately beforehand. Keychain Access and Terminal are not required." },
   { title: "4. Convert", body: "Return to Folio in Safari, pick e.g. Pages → PDF, drag your file, and click Convert. The PDF downloads; temporary files are deleted." },
 ];
 
@@ -33,10 +33,8 @@ export default function MacPage() {
         </a>
       ) : (
         <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="note">
-          The signed Mac installer is not published yet. A site operator must
-          set <code>NEXT_PUBLIC_MAC_DOWNLOAD_URL</code> after a signed,
-          notarized build passes clean-Mac validation. Developers can build from
-          source, but normal users should not need Terminal.
+          The signed, notarized installer is being prepared. Download will be
+          enabled here after it passes clean-Mac Gatekeeper validation.
         </p>
       )}
       <div className="mt-8 space-y-6 text-[16px] leading-relaxed text-ink-700">
@@ -49,10 +47,10 @@ export default function MacPage() {
         <section className="rounded-2xl border border-slate-200 p-5">
           <h2 className="font-semibold text-ink-950">Troubleshooting</h2>
           <ul className="mt-2 list-disc space-y-1 pl-5">
-            <li>“Folio for Mac isn&apos;t running.” — open the app from Applications.</li>
+            <li>“Folio for Mac isn&apos;t detected.” — open the app from Applications; the browser reconnects automatically.</li>
             <li>“Pages isn&apos;t installed.” — install Pages from the App Store, or use an Office format with the labeled LibreOffice fallback.</li>
-            <li>“Folio needs permission to use Pages.” — allow it once under System Settings → Privacy &amp; Security → Automation.</li>
-            <li>“Couldn&apos;t establish a secure connection.” — open Folio for Mac and complete the certificate trust step.</li>
+            <li>“Folio needs permission to ask Pages.” — allow the named macOS Automation prompt; the document stays on this Mac.</li>
+            <li>“Secure connection setup is incomplete.” — open Folio for Mac and choose Set up secure connection. macOS handles the approval; no Keychain Access step is needed.</li>
           </ul>
         </section>
         <section className="rounded-2xl border border-slate-200 p-5">
@@ -60,7 +58,8 @@ export default function MacPage() {
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>
               The loopback certificate encrypts the browser-to-helper connection
-              on this Mac. It does not grant Folio internet access, access to
+              on this Mac. Folio creates and trusts it through supported macOS
+              Security APIs. It does not grant Folio internet access, access to
               unrelated files, or a general remote-control channel.
             </li>
             <li>

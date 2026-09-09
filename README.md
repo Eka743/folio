@@ -108,8 +108,8 @@ swift test
 1. Import this repository in Vercel (Framework preset: Next.js).
 2. Build command `npm run build`, output `.next` (defaults).
 3. No database or document-processing server config is needed. The approved
-   web-beta values are documented in `.env.example`; the public source flag
-   must remain false until the GitHub repository is actually public.
+   web-beta values are documented in `.env.example`; the GitHub repository is
+   public, so the open-source page links to it by default.
 4. Run `npm run release:check` before publishing. It reports **WEB BETA READY**
    and **MAC PUBLIC DISTRIBUTION READY** independently. The web release is not
    blocked by an unsigned Mac artifact when no Mac download is published;

@@ -12,6 +12,7 @@ const defaults = {
   NEXT_PUBLIC_SITE_URL: "https://foliotools.vercel.app",
   NEXT_PUBLIC_SOURCE_REPOSITORY_URL: "https://github.com/Eka743/folio",
   NEXT_PUBLIC_LEGAL_UPDATED_AT: "2026-09-08",
+  NEXT_PUBLIC_SOURCE_REPOSITORY_PUBLIC: "true",
 };
 
 function valueOf(name) {
@@ -46,7 +47,7 @@ required(webFailures, "NEXT_PUBLIC_SITE_URL", httpsUrl);
 required(webFailures, "NEXT_PUBLIC_SOURCE_REPOSITORY_URL", httpsUrl);
 required(webFailures, "NEXT_PUBLIC_LEGAL_UPDATED_AT", (value) => /^\d{4}-\d{2}-\d{2}$/.test(value));
 
-if (!/^(1|true|yes)$/i.test(process.env.NEXT_PUBLIC_SOURCE_REPOSITORY_PUBLIC?.trim() ?? "")) {
+if (!/^(1|true|yes)$/i.test(valueOf("NEXT_PUBLIC_SOURCE_REPOSITORY_PUBLIC"))) {
   webFailures.push("NEXT_PUBLIC_SOURCE_REPOSITORY_PUBLIC=true (after the GitHub repository is public)");
 }
 

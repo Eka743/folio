@@ -122,7 +122,12 @@ public func errorResponse(_ error: ConversionError, status: Int? = nil) -> HttpR
 
 /// Route a parsed request. Pure except for `capabilities` + token inputs.
 /// Conversion I/O happens in main.swift after validation succeeds.
-public func routeRequest(_ req: HttpRequest, capabilities: HelperCapabilities, expectedToken: String) -> HttpResponse {
+public func routeRequest(
+    _ req: HttpRequest,
+    capabilities: HelperCapabilities,
+    expectedToken: String,
+    setupState: String = "ready"
+) -> HttpResponse {
     // DNS-rebinding defense: reject requests whose Host header is not a
     // loopback literal (an attacker domain resolving to 127.0.0.1 still
     // sends its own Host). Checked before any endpoint logic.
@@ -140,6 +145,7 @@ public func routeRequest(_ req: HttpRequest, capabilities: HelperCapabilities, e
             "name": HelperConfig.name,
             "version": HelperConfig.version,
             "platform": "macOS",
+            "setup": setupState,
         ])
     }
     if req.path == "/v1/pair", req.method == "GET" {

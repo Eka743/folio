@@ -24,6 +24,7 @@ import {
   base64ToBytes,
   convertViaHelper,
   extensionOf,
+  helperErrorMessage,
   isMacPlatform,
   resolveConversionRoute,
 } from "@/lib/helper";
@@ -174,13 +175,35 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
     outExt: string,
     outMime: string,
   ): Promise<void> {
-    setProgress("Connecting to Folio for Mac…");
-    const res = await convertViaHelper({
-      from,
-      to,
-      file,
-      onProgress: (stage) => setProgress(stage),
-    });
+    const appName =
+      from === "pages"
+        ? "Pages"
+        : from === "numbers"
+          ? "Numbers"
+          : null;
+    setProgress(
+      appName
+        ? `Folio needs permission to ask ${appName} to export this document. The document stays on this Mac.`
+        : "Connecting to Folio for Mac…",
+    );
+    let res: Awaited<ReturnType<typeof convertViaHelper>>;
+    try {
+      res = await convertViaHelper({
+        from,
+        to,
+        file,
+        permissionMessage: appName
+          ? `Folio needs permission to ask ${appName} to export this document. The document stays on this Mac.`
+          : undefined,
+        onProgress: (stage) => setProgress(stage),
+      });
+    } catch (conversionError) {
+      // A helper can become ready while this page is open, or it can restart
+      // after a native app permission change. The hook's polling will recover;
+      // this immediate refresh makes the next state actionable as well.
+      refreshHelper();
+      throw conversionError;
+    }
     const bytes = base64ToBytes(res.contentBase64);
     if (bytes.length === 0) {
       throw new Error("The converted file could not be created.");
@@ -286,7 +309,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               throw new Error(
                 helperState.kind === "non-mac"
                   ? "This format requires macOS."
-                  : "Folio for Mac isn't running.",
+                  : helperErrorMessage("helper_unreachable"),
               );
             }
             await runHelperConversion(file, "docx", "pdf", "pdf", "application/pdf");

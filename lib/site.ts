@@ -5,6 +5,7 @@ export const DEFAULT_SITE_URL = "https://foliotools.vercel.app";
 export const DEFAULT_OWNER_NAME = "Independent developer in Spain";
 export const DEFAULT_OWNER_CONTACT = "ekaitzrockandroll@gmail.com";
 export const DEFAULT_SOURCE_REPOSITORY_URL = "https://github.com/Eka743/folio";
+export const DEFAULT_SOURCE_REPOSITORY_PUBLIC = true;
 export const DEFAULT_POLICY_UPDATED_AT = "2026-09-08";
 
 export interface PublicSiteConfig {
@@ -53,7 +54,10 @@ export function sourceRepositoryUrl(): string {
 }
 
 export function sourceRepositoryIsPublic(): boolean {
-  return /^(1|true|yes)$/i.test(process.env.NEXT_PUBLIC_SOURCE_REPOSITORY_PUBLIC?.trim() ?? "");
+  const configured = process.env.NEXT_PUBLIC_SOURCE_REPOSITORY_PUBLIC?.trim();
+  return configured == null
+    ? DEFAULT_SOURCE_REPOSITORY_PUBLIC
+    : /^(1|true|yes)$/i.test(configured);
 }
 
 export function policyUpdatedAt(): string {
