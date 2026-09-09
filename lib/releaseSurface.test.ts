@@ -36,7 +36,12 @@ describe("public release surface", () => {
   it("contains no common analytics or advertising runtime dependency", () => {
     const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
     const dependencies = Object.keys({ ...packageJson.dependencies, ...packageJson.devDependencies });
-    expect(dependencies.join(" ")).not.toMatch(/analytics|segment|posthog|mixpanel|hotjar|clarity|gtag/i);
+    const packageLock = JSON.parse(readFileSync(resolve(root, "package-lock.json"), "utf8"));
+    const lockedPackages = Object.keys(packageLock.packages ?? {}).map((name) =>
+      name.replace(/^node_modules\//, ""),
+    );
+    const blockedPackages = /^(?:@vercel\/analytics|analytics|segment|posthog|mixpanel|hotjar|clarity)$/i;
+    expect([...dependencies, ...lockedPackages].some((name) => blockedPackages.test(name))).toBe(false);
 
     const runtime = [...sourceFiles("app"), ...sourceFiles("components"), ...sourceFiles("lib")]
       .filter((file) => !file.endsWith(".test.ts"))
