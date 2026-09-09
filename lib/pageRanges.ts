@@ -27,13 +27,13 @@ export function parsePageRanges(
     return { pages: [], error: "This PDF has no readable pages." };
   }
 
-  const parts = trimmed
-    .split(",")
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
+  const parts = trimmed.split(",").map((p) => p.trim());
 
-  if (parts.length === 0) {
-    return { pages: [], error: "Enter at least one page or range, e.g. 1-3,5." };
+  if (parts.some((p) => p.length === 0)) {
+    return {
+      pages: [],
+      error: "Empty page or range found. Use numbers like 1-3,5,8-10.",
+    };
   }
 
   const collected = new Set<number>();

@@ -42,6 +42,11 @@ describe("parsePageRanges", () => {
     expect(parsePageRanges("abc", 10).error).toMatch(/not a valid page/);
     expect(parsePageRanges("1--2", 10).error).toMatch(/not a valid page/);
   });
+
+  it("rejects empty comma-separated segments", () => {
+    expect(parsePageRanges("1,,2", 10).error).toMatch(/empty page or range/i);
+    expect(parsePageRanges("1, ,2", 10).error).toMatch(/empty page or range/i);
+  });
 });
 
 describe("summarizePages", () => {

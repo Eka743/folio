@@ -9,7 +9,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
-      "connect-src 'self' https://127.0.0.1:17392 http://127.0.0.1:17391 http://localhost:3000 https://localhost:3000",
+      "connect-src 'self'",
       "frame-ancestors 'self'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -25,7 +25,6 @@ const securityHeaders = [
 ];
 
 if (!isDevelopment) {
-  // Do not teach browsers to upgrade the plain HTTP localhost development app.
   securityHeaders.push({
     key: "Strict-Transport-Security",
     value: "max-age=63072000; includeSubDomains; preload",
@@ -38,8 +37,6 @@ const nextConfig = {
     return [
       {
         source: "/:path*",
-        // Loopback bridge must stay reachable: connect-src allows https and
-        // http loopback explicitly; nothing else is whitelisted globally.
         headers: securityHeaders,
       },
     ];

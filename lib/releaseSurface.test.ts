@@ -91,6 +91,9 @@ describe("public release surface", () => {
 
   it("has no server document API surface", () => {
     expect(existsSync(resolve(root, "app/api"))).toBe(false);
+    const nextConfig = readFileSync(resolve(root, "next.config.mjs"), "utf8");
+    expect(nextConfig).toContain("connect-src 'self'");
+    expect(nextConfig).not.toMatch(/localhost|127\.0\.0\.1/);
     const helperClient = readFileSync(resolve(root, "lib/helper.ts"), "utf8");
     expect(helperClient).toContain("127.0.0.1");
     expect(helperClient).not.toMatch(/fetch\(\s*[`"']https?:\/\//);
