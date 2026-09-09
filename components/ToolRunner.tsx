@@ -434,9 +434,9 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
         {tool.slug === "docx-to-pdf" && (
           <StatusBox kind="info">
             Beta: headings, bold/italic, lists, tables and images are
-            preserved, but pagination and advanced Word features (headers,
-            footers, footnotes and text boxes may differ. Always review the PDF
-            before sharing.
+            preserved, but pagination and advanced Word features, including headers,
+            footers, footnotes and text boxes may differ. Always review the
+            PDF before sharing.
           </StatusBox>
         )}
 
