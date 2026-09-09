@@ -73,6 +73,12 @@ describe("public release surface", () => {
     expect(publicRuntime).not.toMatch(/Folio for Mac|localhost|127\.0\.0\.1|helper/i);
   });
 
+  it("keeps the footer social links pointed at the canonical profiles", () => {
+    const footer = readFileSync(resolve(root, "components/Footer.tsx"), "utf8");
+    expect(footer).toContain('href="https://x.com/ItsEkAItzV"');
+    expect(footer).toContain('href="https://github.com/Eka743/folio"');
+  });
+
   it("contains no common analytics or advertising runtime dependency", () => {
     const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
     const dependencies = Object.keys({ ...packageJson.dependencies, ...packageJson.devDependencies });
