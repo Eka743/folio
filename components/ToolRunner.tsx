@@ -35,8 +35,16 @@ type Result =
   | { kind: "images"; pages: Array<{ page: number; url: string; size: number }> }
   | null;
 
-export function ToolRunner({ tool }: { tool: FolioTool }) {
-  const [files, setFiles] = useState<ListedFile[]>([]);
+export function ToolRunner({
+  tool,
+  initialFiles = [],
+}: {
+  tool: FolioTool;
+  initialFiles?: File[];
+}) {
+  const [files, setFiles] = useState<ListedFile[]>(() =>
+    initialFiles.map((file) => ({ file, id: nextId() })),
+  );
   const [complaints, setComplaints] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
@@ -385,7 +393,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               autoComplete="off"
               placeholder="1-3,5,8-10"
               aria-describedby="range-help"
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-mono text-[15px] text-ink-900 placeholder:text-ink-400 focus:border-accent-600"
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-mono text-[15px] text-ink-900 placeholder:text-ink-400 focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-600 focus:ring-offset-1"
             />
             <p id="range-help" className="mt-1.5 text-[13px] text-ink-500">
               Page numbers start at 1. Use commas to combine pages and dashes
@@ -482,7 +490,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               <a
                 href={resultUrl}
                 download={result.fileName}
-                className="inline-flex items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                className="inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2"
               >
                 Download {result.fileName}
               </a>
@@ -519,7 +527,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               <a
                 href={resultUrl}
                 download={result.fileName}
-                className="inline-flex items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                className="inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2"
               >
                 Download {result.fileName}
               </a>
@@ -537,7 +545,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               <a
                 href={resultUrl}
                 download={zipMeta.name}
-                className="mt-3 inline-flex items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2"
               >
                 Download all as ZIP ({formatBytes(zipMeta.size)})
               </a>
@@ -557,7 +565,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
                       `${safeFileName(files[0]?.file.name ?? "page", "page")}-p${p.page}`,
                       "jpg",
                     )}
-                    className="font-medium text-accent-600 hover:underline"
+                    className="rounded-lg px-2 py-2 font-medium text-accent-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600"
                   >
                     Download JPG
                   </a>

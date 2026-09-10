@@ -13,7 +13,7 @@ export function ToolHeader({
     <div>
       <Link
         href="/#tools"
-        className="text-sm font-medium text-accent-600 hover:underline"
+        className="rounded-lg px-2 py-2 text-sm font-medium text-accent-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2"
       >
         ← All tools
       </Link>
@@ -68,7 +68,7 @@ export function PrimaryButton({
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-xl bg-ink-950 px-5 py-2.5 text-[15px] font-medium text-white transition hover:bg-ink-900 disabled:cursor-not-allowed disabled:opacity-40 ${props.className ?? ""}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-ink-950 px-5 py-2.5 text-[15px] font-medium text-white transition hover:bg-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 ${props.className ?? ""}`}
     >
       {children}
     </button>
@@ -82,7 +82,7 @@ export function SecondaryButton({
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-ink-900 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 ${props.className ?? ""}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-ink-900 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 ${props.className ?? ""}`}
     >
       {children}
     </button>

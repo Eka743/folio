@@ -56,7 +56,7 @@ export function Dropzone({
         if (dragDepth.current === 0) setDragging(false);
       }}
       onDrop={handleDrop}
-      className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${
+      className={`flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 ${
         dragging
           ? "border-accent-600 bg-accent-50"
           : "border-slate-300 bg-paper hover:border-slate-400 hover:bg-slate-50"
@@ -133,7 +133,7 @@ export function FileList({
                 disabled={disabled || i === 0}
                 onClick={() => onMove(item.id, -1)}
                 aria-label={`Move ${item.file.name} up`}
-                className="rounded-lg border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-30"
+                className="min-h-11 min-w-11 rounded-lg border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 disabled:opacity-30"
               >
                 ↑
               </button>
@@ -142,7 +142,7 @@ export function FileList({
                 disabled={disabled || i === items.length - 1}
                 onClick={() => onMove(item.id, 1)}
                 aria-label={`Move ${item.file.name} down`}
-                className="rounded-lg border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-30"
+                className="min-h-11 min-w-11 rounded-lg border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 disabled:opacity-30"
               >
                 ↓
               </button>
@@ -153,7 +153,7 @@ export function FileList({
             disabled={disabled}
             onClick={() => onRemove(item.id)}
             aria-label={`Remove ${item.file.name}`}
-            className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-sm text-red-700 hover:bg-red-50"
+            className="min-h-11 shrink-0 rounded-lg border border-slate-200 px-3 py-1 text-sm text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 disabled:opacity-40"
           >
             Remove
           </button>

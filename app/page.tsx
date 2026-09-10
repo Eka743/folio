@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { UniversalDrop } from "@/components/UniversalDrop";
 import { TOOLS, type ToolCategory, type ToolSlug } from "@/lib/tools";
 
 const CATEGORY_ORDER: ToolCategory[] = ["PDF", "Documents", "Images"];
@@ -59,6 +60,8 @@ export default function HomePage() {
           <p><strong className="font-semibold text-ink-950">3.</strong> Download the result</p>
         </div>
       </section>
+
+      <UniversalDrop />
 
       <section id="tools" className="scroll-mt-20 border-y border-slate-200 bg-paper" aria-labelledby="tools-heading">
         <div className="mx-auto max-w-5xl px-5 py-12 sm:py-14">

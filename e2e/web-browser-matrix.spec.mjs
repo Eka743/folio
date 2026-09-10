@@ -34,6 +34,7 @@ test.beforeAll(async () => {
   const onePage = await makePdf(1);
   const twoPage = await makePdf(2);
   const docx = await makeDocx();
+  const pages = await makePages(onePage);
 
   fixtures = {
     onePage: writeFixture("one-page.pdf", onePage),
@@ -41,7 +42,11 @@ test.beforeAll(async () => {
     secondPage: writeFixture("second-page.pdf", onePage),
     image: writeFixture("pixel.png", ONE_PIXEL_PNG),
     docx: writeFixture("simple.docx", docx),
+    pages: writeFixture("proposal.pages", pages),
+    fakeApple: writeFixture("not-really.pages", await makeZip({ "notes.txt": "not an iWork document" })),
     corruptPdf: writeFixture("corrupt.pdf", Buffer.from("not a PDF")),
+    corruptImage: writeFixture("corrupt.png", Buffer.from("not an image")),
+    corruptDocx: writeFixture("corrupt.docx", Buffer.from("not a DOCX")),
   };
 });
 
@@ -140,6 +145,45 @@ test("same PDF selected twice survives a WebKit-style read failure", async ({ pa
   await expect(page.locator('[role="alert"]')).not.toContainText(/I\/O read operation failed/);
 });
 
+test("Universal Drop detects content and hands off to the existing tools", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /drop a document/i })).toBeVisible();
+
+  const drop = page.locator('section[aria-labelledby="universal-drop-heading"]');
+  await drop.locator('input[type="file"]').setInputFiles(fixtures.onePage);
+  await expect(drop).toContainText("Detected as PDF");
+  await expect(drop.getByRole("button", { name: "Merge PDFs" })).toBeVisible();
+  await drop.getByRole("button", { name: "Merge PDFs" }).click();
+  await expect(page.getByRole("heading", { name: "Merge PDF" })).toBeVisible();
+  const toolInput = page.locator('input[type="file"]');
+  await toolInput.setInputFiles(fixtures.onePage);
+  const merged = await downloadFromResult(page, "Merge PDFs", /^Download /);
+  await expectPdf(merged, 2);
+
+  await page.goto("/");
+  const universalInput = page.locator('section[aria-labelledby="universal-drop-heading"] input[type="file"]');
+  await universalInput.setInputFiles(fixtures.pages);
+  await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Apple Pages document");
+  await expect(page.getByText("Native Pages, Keynote and Numbers conversion is still under evaluation.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open embedded PDF preview", exact: true })).toBeVisible();
+
+  await page.goto("/");
+  await page.locator('section[aria-labelledby="universal-drop-heading"] input[type="file"]').setInputFiles(fixtures.fakeApple);
+  await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Unknown file");
+  await expect(page.getByText("This ZIP container is not a supported document format.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Merge PDFs" })).toHaveCount(0);
+});
+
+test("Universal Drop remains keyboard reachable on a narrow viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const drop = page.getByRole("button", { name: /Drop files here or press Enter/i });
+  await drop.focus();
+  await expect(drop).toBeFocused();
+  await expect(drop).toHaveAttribute("aria-disabled", "false");
+  await expect(page.getByRole("heading", { name: /drop a document/i })).toBeVisible();
+});
+
 test("malformed input recovers, double-clicks stay single-result, and conversion stays private", async ({ page }) => {
   const requests = [];
   page.on("request", (request) => requests.push(request));
@@ -175,6 +219,10 @@ test("malformed input recovers, double-clicks stay single-result, and conversion
   const doubleClickResult = await downloadFromLink(page, resultLinks.first());
   await expectPdf(doubleClickResult, 2);
 
+  await page.goto("/");
+  await page.locator('section[aria-labelledby="universal-drop-heading"] input[type="file"]').setInputFiles(fixtures.pages);
+  await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Apple Pages document");
+
   const externalRequests = requests.filter((request) => {
     const url = new URL(request.url());
     return ["http:", "https:"].includes(url.protocol) && url.origin !== BASE_ORIGIN;
@@ -185,6 +233,76 @@ test("malformed input recovers, double-clicks stay single-result, and conversion
   });
   expect(externalRequests).toEqual([]);
   expect(documentRequests).toEqual([]);
+});
+
+test("all seven tools recover from empty, wrong-extension and malformed files", async ({ page }) => {
+  const cases = [
+    { route: "merge-pdf", action: "Merge PDFs", malformed: [fixtures.corruptPdf, fixtures.corruptPdf], wrongSource: fixtures.corruptPdf, valid: [fixtures.onePage, fixtures.secondPage] },
+    { route: "split-pdf", action: "Extract pages", malformed: fixtures.corruptPdf, wrongSource: fixtures.corruptPdf, valid: fixtures.twoPage },
+    { route: "rotate-pdf", action: "Rotate PDF", malformed: fixtures.corruptPdf, wrongSource: fixtures.corruptPdf, valid: fixtures.twoPage },
+    { route: "compress-pdf", action: "Compress PDF", malformed: fixtures.corruptPdf, wrongSource: fixtures.corruptPdf, valid: fixtures.twoPage },
+    { route: "pdf-to-jpg", action: "Convert to JPG", malformed: fixtures.corruptPdf, wrongSource: fixtures.corruptPdf, valid: fixtures.twoPage },
+    { route: "images-to-pdf", action: "Create PDF", malformed: fixtures.corruptImage, wrongSource: fixtures.corruptImage, valid: fixtures.image },
+    { route: "docx-to-pdf", action: "Convert to PDF", malformed: fixtures.corruptDocx, wrongSource: fixtures.corruptDocx, valid: fixtures.docx },
+  ];
+
+  for (const item of cases) {
+    await page.goto(`/tools/${item.route}`);
+    const input = page.locator('input[type="file"]');
+    const emptyExtension = item.route === "images-to-pdf" ? "png" : item.route === "docx-to-pdf" ? "docx" : "pdf";
+    await input.setInputFiles({ name: `empty.${emptyExtension}`, mimeType: "application/octet-stream", buffer: Buffer.alloc(0) });
+    await expect(page.locator('div[role="alert"]').filter({ hasText: "0 bytes" })).toBeVisible();
+    await page.getByRole("button", { name: "Start over" }).click();
+    await expect(page.locator('div[role="alert"]').filter({ hasText: "0 bytes" })).toHaveCount(0);
+
+    await input.setInputFiles({ name: "wrong-extension.bin", mimeType: "application/octet-stream", buffer: readFileSync(item.wrongSource) });
+    await expect(page.locator('div[role="alert"]').filter({ hasText: "accepts" })).toBeVisible();
+    await page.getByRole("button", { name: "Start over" }).click();
+
+    await input.setInputFiles(item.malformed);
+    if (item.route === "split-pdf") await page.locator("#folio-pages").fill("1");
+    await page.getByRole("button", { name: item.action }).click();
+    await expect(page.locator('div[role="alert"]').filter({ hasText: /Could not read|image|DOCX|file/i })).toBeVisible();
+    await page.getByRole("button", { name: "Start over" }).click();
+    await input.setInputFiles(item.valid);
+    if (item.route === "split-pdf") await page.locator("#folio-pages").fill("1-2");
+    if (item.route === "pdf-to-jpg") {
+      await page.getByRole("button", { name: item.action }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Rendered 2 pages" })).toBeVisible();
+    } else {
+      const output = await downloadFromResult(page, item.action, /^Download /);
+      const expectedPages = ["merge-pdf", "split-pdf", "rotate-pdf", "compress-pdf"].includes(item.route) ? 2 : 1;
+      await expectPdf(output, expectedPages);
+    }
+  }
+});
+
+test("merge keeps drag-and-drop order and survives a retry", async ({ page }) => {
+  const first = readFileSync(fixtures.onePage).toString("base64");
+  const second = readFileSync(fixtures.secondPage).toString("base64");
+  await page.goto("/tools/merge-pdf");
+  const dropzone = page.getByRole("button", { name: /Drop files here or press Enter/i });
+  await dropzone.evaluate((element, payload) => {
+    const dataTransfer = new DataTransfer();
+    for (const file of payload) {
+      const binary = atob(file.base64);
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      dataTransfer.items.add(new File([bytes.buffer], file.name, { type: "application/pdf" }));
+    }
+    element.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer }));
+  }, [
+    { base64: first, name: "drag-first.pdf" },
+    { base64: second, name: "drag-second.pdf" },
+  ]);
+  await expect(page.getByRole("list", { name: "Selected files" }).locator("li").nth(0)).toContainText("drag-first.pdf");
+  await page.getByRole("button", { name: "Move drag-second.pdf up" }).click();
+  await expect(page.getByRole("list", { name: "Selected files" }).locator("li").nth(0)).toContainText("drag-second.pdf");
+  await page.getByRole("button", { name: "Merge PDFs" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Done" })).toBeVisible();
+  await page.getByRole("button", { name: "Start over" }).click();
+  await page.locator('input[type="file"]').setInputFiles([fixtures.onePage, fixtures.onePage]);
+  const retried = await downloadFromResult(page, "Merge PDFs", /^Download /);
+  await expectPdf(retried, 2);
 });
 
 function writeFixture(name, bytes) {
@@ -224,6 +342,20 @@ async function makeDocx() {
   <w:body><w:p><w:r><w:t>Folio browser matrix fixture</w:t></w:r></w:p><w:sectPr/></w:body>
 </w:document>`,
   );
+  return await zip.generateAsync({ type: "nodebuffer" });
+}
+
+async function makePages(previewBytes) {
+  return await makeZip({
+    "Index/Document.iwa": "binary iWork fixture",
+    "Metadata/Properties.plist": "com.apple.iWork.Pages",
+    "QuickLook/Preview.pdf": previewBytes,
+  });
+}
+
+async function makeZip(entries) {
+  const zip = new JSZip();
+  for (const [path, content] of Object.entries(entries)) zip.file(path, content);
   return await zip.generateAsync({ type: "nodebuffer" });
 }
 
