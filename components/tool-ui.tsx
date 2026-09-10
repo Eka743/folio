@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { forwardRef } from "react";
 
 export function ToolHeader({
   name,
@@ -25,7 +26,7 @@ export function ToolHeader({
       </p>
       <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-[13px] font-medium text-emerald-800">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-        Processed in your browser, files never leave your device
+        Document processing stays in this browser
       </p>
       <p className="mt-2 text-[13px] text-ink-400">
         Accepts {accepts}
@@ -39,7 +40,7 @@ export function EngineBadge({ engine }: { engine: string }) {
     engine === "browser" ? "Processed inside your browser" : `Processed with ${engine}`;
   return (
     <p className="mt-2 text-[13px] text-ink-500" role="status">
-      {label} · your document never left this device.
+      {label} · document processing stays in this browser.
     </p>
   );
 }
@@ -89,13 +90,11 @@ export function SecondaryButton({
   );
 }
 
-export function StatusBox({
-  kind,
-  children,
-}: {
+export const StatusBox = forwardRef<HTMLDivElement, {
   kind: "error" | "success" | "info";
   children: React.ReactNode;
-}) {
+  tabIndex?: number;
+}>(function StatusBox({ kind, children, tabIndex }, ref) {
   const styles =
     kind === "error"
       ? "border-red-200 bg-red-50 text-red-900"
@@ -104,11 +103,11 @@ export function StatusBox({
         : "border-slate-200 bg-paper text-ink-700";
   const role = kind === "error" ? "alert" : "status";
   return (
-    <div role={role} className={`rounded-xl border px-4 py-3 text-sm leading-relaxed ${styles}`}>
+    <div ref={ref} tabIndex={tabIndex} role={role} className={`rounded-xl border px-4 py-3 text-sm leading-relaxed ${styles}`}>
       {children}
     </div>
   );
-}
+});
 
 export function ProgressBar({ label }: { label: string }) {
   return (

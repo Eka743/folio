@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Dropzone } from "@/components/Dropzone";
 import { ToolRunner } from "@/components/ToolRunner";
 import { capabilityLabel, inspectFile, readEmbeddedPdfPreview, type FileCapabilityAction, type FileInspection } from "@/lib/fileIntelligence";
+import { formatBytes } from "@/lib/files";
 import { getTool, type FolioTool } from "@/lib/tools";
 
 const ACCEPTS = ".pdf,.jpg,.jpeg,.png,.docx,.pages,.key,.keynote,.numbers";
@@ -44,6 +45,8 @@ export function UniversalDrop() {
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const selectionCardRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
 
   const clearPreview = useCallback(() => {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -53,7 +56,31 @@ export function UniversalDrop() {
 
   useEffect(() => clearPreview, [clearPreview]);
 
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+    else if (inspection) selectionCardRef.current?.focus();
+  }, [error, inspection]);
+
+  const resetSelection = useCallback(() => {
+    clearPreview();
+    setActiveTool(null);
+    setSelectedFile(null);
+    setInspection(null);
+    setError(null);
+    setBusy(false);
+  }, [clearPreview]);
+
+  const handleDropIssue = useCallback((message: string) => {
+    resetSelection();
+    setError(message);
+  }, [resetSelection]);
+
   const inspectSelection = useCallback(async (files: File[]) => {
+    if (files.length > 1) {
+      resetSelection();
+      setError("Select one file at a time here.");
+      return;
+    }
     const file = files[0];
     if (!file) return;
     clearPreview();
@@ -70,7 +97,7 @@ export function UniversalDrop() {
     } finally {
       setBusy(false);
     }
-  }, [clearPreview]);
+  }, [clearPreview, resetSelection]);
 
   const chooseAction = useCallback(async (action: FileCapabilityAction) => {
     if (!selectedFile) return;
@@ -131,6 +158,7 @@ export function UniversalDrop() {
             multiple={false}
             disabled={busy}
             onFiles={inspectSelection}
+            onDropIssue={handleDropIssue}
           />
         </div>
 
@@ -141,13 +169,13 @@ export function UniversalDrop() {
         )}
 
         {error && (
-          <div className="mt-4 max-w-3xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+          <div ref={errorRef} tabIndex={-1} className="mt-4 max-w-3xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
             {error}
           </div>
         )}
 
         {inspection && selectedFile && (
-          <div className="mt-5 max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(16,20,24,0.04)]">
+          <div ref={selectionCardRef} tabIndex={-1} className="mt-5 max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(16,20,24,0.04)]" aria-label="Detected file">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
               <div className="min-w-0">
                 <p className="truncate text-[15px] font-semibold text-ink-950" title={selectedFile.name}>{selectedFile.name}</p>
@@ -155,6 +183,7 @@ export function UniversalDrop() {
                   Detected as <span className="font-medium text-ink-800">{inspection.formatLabel}</span>
                   {inspection.generation !== "unknown" && ` · ${inspection.generation} container`}
                 </p>
+                <p className="mt-1 text-sm text-ink-500">{formatBytes(selectedFile.size)}</p>
               </div>
               <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${inspection.valid && inspection.safety === "safe" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>
                 {inspection.valid && inspection.safety === "safe" ? "Recognized" : "Needs attention"}
@@ -193,8 +222,8 @@ export function UniversalDrop() {
 
             {inspection.kind === "pages" || inspection.kind === "keynote" || inspection.kind === "numbers" ? (
               <div className="mt-5 rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm leading-relaxed text-ink-700">
-                <p className="font-medium text-ink-950">Apple document support is intentionally limited for now.</p>
-                <p className="mt-1">Folio can identify this container locally{inspection.supportedActions.includes("embedded-pdf") ? " and open its embedded preview" : ""}. Native Pages, Keynote and Numbers conversion is still under evaluation.</p>
+                <p className="font-medium text-ink-950">Detected, but conversion is unavailable.</p>
+                <p className="mt-1">Folio identified this {inspection.formatLabel.toLowerCase()} locally. Native Pages, Keynote and Numbers conversion is still under evaluation{inspection.supportedActions.includes("embedded-pdf") ? "; an embedded PDF preview is available" : ""}.</p>
                 {inspection.supportedActions.includes("embedded-pdf") && (
                   <button
                     type="button"
@@ -202,12 +231,12 @@ export function UniversalDrop() {
                     disabled={busy}
                     className="mt-3 min-h-11 rounded-xl bg-ink-950 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 disabled:opacity-50"
                   >
-                    Open embedded PDF preview
+                    Prepare embedded PDF preview
                   </button>
                 )}
                 {previewUrl && (
                   <a href={previewUrl} target="_blank" rel="noreferrer" className="ml-3 text-sm font-semibold text-accent-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2">
-                    Open preview tab
+                    Open preview in a new tab
                   </a>
                 )}
               </div>
@@ -217,6 +246,17 @@ export function UniversalDrop() {
               <p className="mt-4 text-sm text-ink-700">Remove this file and select a valid document to continue.</p>
             )}
           </div>
+        )}
+
+        {(inspection || selectedFile || error) && (
+          <button
+            type="button"
+            onClick={resetSelection}
+            disabled={busy}
+            className="mt-4 min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-ink-900 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Start over
+          </button>
         )}
 
         <p className="mt-4 text-xs text-ink-400">Local inspection only · no account · no document upload</p>

@@ -8,11 +8,13 @@ export function Dropzone({
   multiple,
   disabled,
   onFiles,
+  onDropIssue,
 }: {
   accepts: string;
   multiple: boolean;
   disabled?: boolean;
   onFiles: (files: File[]) => void;
+  onDropIssue?: (message: string) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -24,10 +26,25 @@ export function Dropzone({
       dragDepth.current = 0;
       setDragging(false);
       if (disabled) return;
+      const hasDirectory = [...(e.dataTransfer?.items ?? [])].some((item) => {
+        const entry = (item as DataTransferItem & {
+          webkitGetAsEntry?: () => { isDirectory?: boolean } | null;
+        }).webkitGetAsEntry?.();
+        return entry?.isDirectory === true;
+      });
+      if (hasDirectory) {
+        onDropIssue?.("Folders aren’t supported here. Select a file instead.");
+        return;
+      }
       const files = [...(e.dataTransfer?.files ?? [])];
-      if (files.length > 0) onFiles(files);
+      if (files.length === 0) return;
+      if (!multiple && files.length > 1) {
+        onDropIssue?.("Select one file at a time here.");
+        return;
+      }
+      onFiles(files);
     },
-    [disabled, onFiles],
+    [disabled, multiple, onDropIssue, onFiles],
   );
 
   return (
@@ -103,16 +120,18 @@ export function FileList({
   disabled,
   onRemove,
   onMove,
+  listRef,
 }: {
   items: ListedFile[];
   reorderable: boolean;
   disabled?: boolean;
   onRemove: (id: string) => void;
   onMove: (id: string, dir: -1 | 1) => void;
+  listRef?: React.RefObject<HTMLOListElement | null>;
 }) {
   if (items.length === 0) return null;
   return (
-    <ol className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white" aria-label="Selected files">
+    <ol ref={listRef} tabIndex={-1} className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white" aria-label="Selected files">
       {items.map((item, i) => (
         <li key={item.id} className="flex items-center gap-3 px-4 py-3">
           {reorderable && (

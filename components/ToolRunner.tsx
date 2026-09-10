@@ -59,7 +59,35 @@ export function ToolRunner({
   const [degrees, setDegrees] = useState<RotationDegrees>(90);
   const [zipMeta, setZipMeta] = useState<{ name: string; size: number } | null>(null);
   const runGuardRef = useRef(false);
+  const fileListRef = useRef<HTMLOListElement>(null);
+  const selectionFocusPendingRef = useRef(false);
+  const complaintRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
   const fileObjs = useMemo(() => files.map((f) => f.file), [files]);
+
+  const handleDropIssue = useCallback((message: string) => {
+    setComplaints([message]);
+  }, []);
+
+  useEffect(() => {
+    if (selectionFocusPendingRef.current && files.length > 0) {
+      selectionFocusPendingRef.current = false;
+      fileListRef.current?.focus();
+    }
+  }, [files.length]);
+
+  useEffect(() => {
+    if (complaints.length > 0) complaintRef.current?.focus();
+  }, [complaints]);
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
+
+  useEffect(() => {
+    if (result) resultRef.current?.focus();
+  }, [result]);
 
   // Single registry for every object URL this component creates, so cleanup
   // never depends on stale state closures or double-revokes.
@@ -106,6 +134,7 @@ export function ToolRunner({
         files.length,
       );
       if (accepted.length > 0) {
+        selectionFocusPendingRef.current = true;
         const listed = accepted.map((file) => ({ file, id: nextId() }));
         setFiles((prev) =>
           tool.multiple ? [...prev, ...listed] : listed.slice(0, 1),
@@ -354,10 +383,11 @@ export function ToolRunner({
           multiple={tool.multiple}
           disabled={busy}
           onFiles={addFiles}
+          onDropIssue={handleDropIssue}
         />
 
         {complaints.length > 0 && (
-          <StatusBox kind="error">
+          <StatusBox ref={complaintRef} tabIndex={-1} kind="error">
             <ul className="list-disc pl-5">
               {complaints.map((c, i) => (
                 <li key={i}>{c}</li>
@@ -372,6 +402,7 @@ export function ToolRunner({
           disabled={busy}
           onRemove={removeFile}
           onMove={moveFile}
+          listRef={fileListRef}
         />
 
         {/* Per-tool options */}
@@ -449,7 +480,7 @@ export function ToolRunner({
         {tool.slug === "compress-pdf" && (
           <StatusBox kind="info">
             Folio rewrites the PDF with optimized object streams and cleans
-            redundant metadata — entirely offline. Already-optimized files may
+            redundant metadata in this browser. Already-optimized files may
             barely shrink; the result always shows honest before/after sizes.
           </StatusBox>
         )}
@@ -465,7 +496,7 @@ export function ToolRunner({
 
         {busy && <ProgressBar label={progress || "Working…"} />}
 
-        {error && <StatusBox kind="error">{error}</StatusBox>}
+        {error && <StatusBox ref={errorRef} tabIndex={-1} kind="error">{error}</StatusBox>}
 
         <div className="flex flex-wrap items-center gap-3">
           <PrimaryButton onClick={run} disabled={!canRun}>
@@ -480,7 +511,7 @@ export function ToolRunner({
 
         {/* Results */}
         {result?.kind === "file" && resultUrl && (
-          <StatusBox kind="success">
+          <StatusBox ref={resultRef} tabIndex={-1} kind="success">
             <p className="font-medium">
               Done — {result.fileName} ({formatBytes(result.sizeBytes)})
             </p>
@@ -499,7 +530,7 @@ export function ToolRunner({
         )}
 
         {result?.kind === "compress" && resultUrl && (
-          <StatusBox kind={result.after < result.before ? "success" : "info"}>
+          <StatusBox ref={resultRef} tabIndex={-1} kind={result.after < result.before ? "success" : "info"}>
             <p className="font-medium">
               {result.after < result.before ? (
                 <>

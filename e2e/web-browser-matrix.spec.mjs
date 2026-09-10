@@ -35,6 +35,8 @@ test.beforeAll(async () => {
   const twoPage = await makePdf(2);
   const docx = await makeDocx();
   const pages = await makePages(onePage);
+  const keynote = await makeAppleContainer("com.apple.iWork.Keynote", onePage);
+  const numbers = await makeAppleContainer("com.apple.iWork.Numbers", onePage);
 
   fixtures = {
     onePage: writeFixture("one-page.pdf", onePage),
@@ -43,6 +45,8 @@ test.beforeAll(async () => {
     image: writeFixture("pixel.png", ONE_PIXEL_PNG),
     docx: writeFixture("simple.docx", docx),
     pages: writeFixture("proposal.pages", pages),
+    keynote: writeFixture("presentation.key", keynote),
+    numbers: writeFixture("budget.numbers", numbers),
     fakeApple: writeFixture("not-really.pages", await makeZip({ "notes.txt": "not an iWork document" })),
     corruptPdf: writeFixture("corrupt.pdf", Buffer.from("not a PDF")),
     corruptImage: writeFixture("corrupt.png", Buffer.from("not an image")),
@@ -107,14 +111,14 @@ test("all seven browser-local tools produce valid results", async ({ page }) => 
   await expect(page.getByRole("status").filter({ hasText: "Rendered 2 pages" })).toBeVisible();
   const jpgLink = page.getByRole("link", { name: "Download JPG" }).first();
   const jpg = await downloadFromLink(page, jpgLink);
-  expectJpeg(jpg);
+  await expectJpeg(page, jpg);
   const zipLink = page.getByRole("link", { name: /Download all as ZIP/ });
   const zipBytes = await downloadFromLink(page, zipLink);
   const zip = await JSZip.loadAsync(zipBytes);
   const zipNames = Object.keys(zip.files).sort();
   expect(zipNames).toHaveLength(2);
   expect(zipNames.every((name) => name.endsWith(".jpg"))).toBe(true);
-  expectJpeg(await zip.file(zipNames[0]).async("nodebuffer"));
+  await expectJpeg(page, await zip.file(zipNames[0]).async("nodebuffer"));
 
   await page.goto("/tools/docx-to-pdf");
   await expect(page.locator("body")).toContainText("Beta");
@@ -164,14 +168,42 @@ test("Universal Drop detects content and hands off to the existing tools", async
   const universalInput = page.locator('section[aria-labelledby="universal-drop-heading"] input[type="file"]');
   await universalInput.setInputFiles(fixtures.pages);
   await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Apple Pages document");
-  await expect(page.getByText("Native Pages, Keynote and Numbers conversion is still under evaluation.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open embedded PDF preview", exact: true })).toBeVisible();
+  await expect(page.getByText("Detected, but conversion is unavailable.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Prepare embedded PDF preview", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start over", exact: true })).toBeVisible();
 
   await page.goto("/");
   await page.locator('section[aria-labelledby="universal-drop-heading"] input[type="file"]').setInputFiles(fixtures.fakeApple);
   await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Unknown file");
   await expect(page.getByText("This ZIP container is not a supported document format.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Merge PDFs" })).toHaveCount(0);
+});
+
+test("Universal Drop identifies images, DOCX and Apple containers without overpromising support", async ({ page }) => {
+  await page.goto("/");
+  const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
+  const input = section.locator('input[type="file"]');
+
+  await input.setInputFiles(fixtures.image);
+  await expect(section).toContainText("Detected as PNG image");
+  await expect(section.getByRole("button", { name: "Create a PDF" })).toBeVisible();
+  await section.getByRole("button", { name: "Create a PDF" }).click();
+  await expect(page.getByRole("heading", { name: "JPG / PNG to PDF" })).toBeVisible();
+
+  await page.goto("/");
+  await page.locator('section[aria-labelledby="universal-drop-heading"] input[type="file"]').setInputFiles(fixtures.docx);
+  await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Detected as Word document");
+  await page.getByRole("button", { name: "Convert to PDF" }).click();
+  await expect(page.getByRole("heading", { name: "Word to PDF" })).toBeVisible();
+
+  for (const [fixture, label] of [[fixtures.keynote, "Apple Keynote presentation"], [fixtures.numbers, "Apple Numbers spreadsheet"]]) {
+    await page.goto("/");
+    const universal = page.locator('section[aria-labelledby="universal-drop-heading"]');
+    await universal.locator('input[type="file"]').setInputFiles(fixture);
+    await expect(universal).toContainText(`Detected as ${label}`);
+    await expect(universal).toContainText("Detected, but conversion is unavailable.");
+    await expect(universal.getByRole("button", { name: "Prepare embedded PDF preview" })).toBeVisible();
+  }
 });
 
 test("Universal Drop remains keyboard reachable on a narrow viewport", async ({ page }) => {
@@ -182,6 +214,41 @@ test("Universal Drop remains keyboard reachable on a narrow viewport", async ({ 
   await expect(drop).toBeFocused();
   await expect(drop).toHaveAttribute("aria-disabled", "false");
   await expect(page.getByRole("heading", { name: /drop a document/i })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test("selection, errors and success states move focus to useful content", async ({ page }) => {
+  await page.goto("/tools/merge-pdf");
+  const input = page.locator('input[type="file"]');
+  await input.setInputFiles([fixtures.onePage, fixtures.onePage]);
+  await expect(page.getByRole("list", { name: "Selected files" })).toBeFocused();
+  await page.getByRole("button", { name: "Merge PDFs" }).click();
+  await expect(page.locator('div[role="status"]').filter({ hasText: "Done" })).toBeFocused();
+
+  await page.goto("/tools/split-pdf");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.corruptPdf);
+  await page.locator("#folio-pages").fill("1");
+  await page.getByRole("button", { name: "Extract pages" }).click();
+  await expect(page.locator('div[role="alert"]').filter({ hasText: "Could not read this PDF" })).toBeFocused();
+});
+
+test("Universal Drop rejects multi-file and keeps the viewport stable on tablet", async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.goto("/");
+  const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
+  const dropzone = section.getByRole("button", { name: /Drop files here or press Enter/i });
+  const first = readFileSync(fixtures.onePage).toString("base64");
+  await dropzone.evaluate((element, payload) => {
+    const dataTransfer = new DataTransfer();
+    for (const item of payload) {
+      const binary = atob(item.base64);
+      dataTransfer.items.add(new File([Uint8Array.from(binary, (char) => char.charCodeAt(0))], item.name, { type: "application/pdf" }));
+    }
+    element.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer }));
+  }, [{ base64: first, name: "one.pdf" }, { base64: first, name: "two.pdf" }]);
+  await expect(section.getByRole("alert")).toContainText("Select one file at a time here");
+  await expect(section).not.toContainText("Detected as PDF");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(768);
 });
 
 test("malformed input recovers, double-clicks stay single-result, and conversion stays private", async ({ page }) => {
@@ -346,9 +413,13 @@ async function makeDocx() {
 }
 
 async function makePages(previewBytes) {
+  return await makeAppleContainer("com.apple.iWork.Pages", previewBytes);
+}
+
+async function makeAppleContainer(marker, previewBytes) {
   return await makeZip({
     "Index/Document.iwa": "binary iWork fixture",
-    "Metadata/Properties.plist": "com.apple.iWork.Pages",
+    "Metadata/Properties.plist": marker,
     "QuickLook/Preview.pdf": previewBytes,
   });
 }
@@ -381,8 +452,16 @@ async function expectPdf(bytes, expectedPages) {
   if (expectedPages !== undefined) expect(pdf.getPageCount()).toBe(expectedPages);
 }
 
-function expectJpeg(bytes) {
+async function expectJpeg(page, bytes) {
   expect(bytes[0]).toBe(0xff);
   expect(bytes[1]).toBe(0xd8);
   expect(bytes[2]).toBe(0xff);
+  const dimensions = await page.evaluate((base64) => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => reject(new Error("Generated JPEG could not be decoded."));
+    image.src = `data:image/jpeg;base64,${base64}`;
+  }), bytes.toString("base64"));
+  expect(dimensions.width).toBeGreaterThan(0);
+  expect(dimensions.height).toBeGreaterThan(0);
 }
