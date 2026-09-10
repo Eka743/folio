@@ -29,12 +29,19 @@ const ONE_PIXEL_PNG = Buffer.from(
 async function expectNoUserHorizontalOverflow(page) {
   const overflow = await page.evaluate(() => {
     let rightmost = window.innerWidth;
+    let rightmostElement = "none";
     for (const element of document.querySelectorAll("body *")) {
       // Next's development overlay is outside Folio's page layout and can
       // report a false overflow on narrow CI viewports.
       if (element.closest("nextjs-portal")) continue;
       const rect = element.getBoundingClientRect();
-      if (rect.width > 0 && rect.right > rightmost) rightmost = rect.right;
+      if (rect.width > 0 && rect.right > rightmost) {
+        rightmost = rect.right;
+        rightmostElement = `${element.tagName}.${typeof element.className === "string" ? element.className : ""}`;
+      }
+    }
+    if (rightmost > window.innerWidth + 4) {
+      console.log("viewport overflow diagnostic", { innerWidth: window.innerWidth, rightmost, rightmostElement });
     }
     return Math.max(0, rightmost - window.innerWidth);
   });
