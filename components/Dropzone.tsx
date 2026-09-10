@@ -81,8 +81,11 @@ export function Dropzone({
         className="hidden"
         onChange={(e) => {
           const files = [...(e.target.files ?? [])];
-          e.target.value = "";
           if (files.length > 0) onFiles(files);
+          // Clear after dispatching the File objects. This preserves the
+          // native picker-backed handles long enough for callers to snapshot
+          // them on Safari before the input is reset.
+          e.target.value = "";
         }}
       />
     </div>
@@ -97,11 +100,13 @@ export interface ListedFile {
 export function FileList({
   items,
   reorderable,
+  disabled,
   onRemove,
   onMove,
 }: {
   items: ListedFile[];
   reorderable: boolean;
+  disabled?: boolean;
   onRemove: (id: string) => void;
   onMove: (id: string, dir: -1 | 1) => void;
 }) {
@@ -125,7 +130,7 @@ export function FileList({
             <div className="flex shrink-0 gap-1" role="group" aria-label={`Reorder ${item.file.name}`}>
               <button
                 type="button"
-                disabled={i === 0}
+                disabled={disabled || i === 0}
                 onClick={() => onMove(item.id, -1)}
                 aria-label={`Move ${item.file.name} up`}
                 className="rounded-lg border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-30"
@@ -134,7 +139,7 @@ export function FileList({
               </button>
               <button
                 type="button"
-                disabled={i === items.length - 1}
+                disabled={disabled || i === items.length - 1}
                 onClick={() => onMove(item.id, 1)}
                 aria-label={`Move ${item.file.name} down`}
                 className="rounded-lg border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-30"
@@ -145,6 +150,7 @@ export function FileList({
           )}
           <button
             type="button"
+            disabled={disabled}
             onClick={() => onRemove(item.id)}
             aria-label={`Remove ${item.file.name}`}
             className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-sm text-red-700 hover:bg-red-50"

@@ -48,6 +48,13 @@ describe("pdf engine", () => {
     expect([...out.slice(0, 5)]).toEqual([0x25, 0x50, 0x44, 0x46, 0x2d]);
   });
 
+  it("merges the same File object twice", async () => {
+    const source = await makePdf(2);
+    const out = await mergePdfs([source, source]);
+
+    expect(await getPdfPageCount(out)).toBe(4);
+  });
+
   it("splits out exactly the requested pages", async () => {
     const src = await makePdf(6);
     const out = await splitPdf(src, [1, 3, 5]);

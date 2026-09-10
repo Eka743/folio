@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatBytes,
   formatPercentChange,
+  readFileBytes,
   safeFileName,
   validateFiles,
   withExtension,
@@ -40,6 +41,30 @@ describe("safeFileName / withExtension", () => {
 
   it("falls back on hostile names", () => {
     expect(safeFileName("...")).toBe("folio-output");
+  });
+});
+
+describe("readFileBytes", () => {
+  it("returns an independent byte snapshot", async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], "sample.pdf");
+    const first = await readFileBytes(file);
+    first[0] = 99;
+    const second = await readFileBytes(file);
+
+    expect([...second]).toEqual([1, 2, 3]);
+  });
+
+  it("hides low-level read failures behind an actionable error", async () => {
+    const unreadable = {
+      arrayBuffer: async () => {
+        throw new DOMException("The I/O read operation failed.", "NotReadableError");
+      },
+    } as unknown as Blob;
+
+    await expect(readFileBytes(unreadable)).rejects.toMatchObject({
+      name: "FileReadError",
+      message: "We couldn’t read this file. Remove it and select it again.",
+    });
   });
 });
 

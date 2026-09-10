@@ -6,6 +6,8 @@
  * Heavy libraries are dynamically imported so the homepage stays light.
  */
 
+import { readFileBytes } from "./files";
+
 export async function getPdfPageCount(data: Uint8Array): Promise<number> {
   const doc = await loadPdfDocument(data);
   return doc.getPageCount();
@@ -64,7 +66,7 @@ export async function mergePdfs(files: File[]): Promise<Uint8Array> {
   const { PDFDocument } = await import("pdf-lib");
   const out = await PDFDocument.create();
   for (const file of files) {
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    const bytes = await readFileBytes(file);
     const src = await loadPdfDocument(bytes);
     const pages = await out.copyPages(src, src.getPageIndices());
     for (const p of pages) out.addPage(p);
@@ -77,7 +79,7 @@ export async function splitPdf(
   keepPages1Based: number[],
 ): Promise<Uint8Array> {
   const { PDFDocument } = await import("pdf-lib");
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  const bytes = await readFileBytes(file);
   const src = await loadPdfDocument(bytes);
   const out = await PDFDocument.create();
   const indices = [...new Set(keepPages1Based.map((p) => p - 1))]
@@ -98,7 +100,7 @@ export async function rotatePdf(
   degrees: RotationDegrees,
 ): Promise<Uint8Array> {
   const { degrees: toDegrees } = await import("pdf-lib");
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  const bytes = await readFileBytes(file);
   const doc = await loadPdfDocument(bytes);
   const count = doc.getPageCount();
   const targets =
@@ -129,7 +131,7 @@ export interface OptimizeResult {
  */
 export async function optimizePdf(file: File): Promise<OptimizeResult> {
   const beforeBytes = file.size;
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  const bytes = await readFileBytes(file);
   const doc = await loadPdfDocument(bytes);
   doc.setProducer("Folio");
   doc.setCreator("Folio (local processing)");
@@ -177,7 +179,7 @@ export async function imagesToPdf(files: File[]): Promise<Uint8Array> {
   const margin = 24;
 
   for (const file of files) {
-    const raw = new Uint8Array(await file.arrayBuffer());
+    const raw = await readFileBytes(file);
     const isPng =
       file.type === "image/png" || /\.png$/i.test(file.name);
     let embedded;
@@ -201,7 +203,7 @@ export async function imagesToPdf(files: File[]): Promise<Uint8Array> {
           canvas.toBlob(res, "image/jpeg", 0.92),
         );
         if (!blob) throw new Error(`Could not read ${file.name}.`);
-        const buf = new Uint8Array(await blob.arrayBuffer());
+        const buf = await readFileBytes(blob);
         embedded = await doc.embedJpg(buf);
       } finally {
         URL.revokeObjectURL(url);
@@ -255,7 +257,7 @@ export async function renderPdfPages(
     pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
   }
 
-  const data = new Uint8Array(await file.arrayBuffer());
+  const data = await readFileBytes(file);
   let pdf;
   try {
     const loading = pdfjs.getDocument({ data });
@@ -267,26 +269,28 @@ export async function renderPdfPages(
   }
   const out: RenderedPage[] = [];
   const scale = opts.scale ?? 2;
-
-  for (let n = 1; n <= pdf.numPages; n++) {
-    const page = await pdf.getPage(n);
-    const viewport = page.getViewport({ scale });
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas unavailable in this browser.");
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    const blob = await new Promise<Blob | null>((res) =>
-      canvas.toBlob(res, "image/jpeg", 0.92),
-    );
-    if (!blob) throw new Error(`Could not render page ${n}.`);
-    out.push({ pageNumber: n, blob, width: canvas.width, height: canvas.height });
-    opts.onProgress?.(n, pdf.numPages);
-    page.cleanup();
+  try {
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const page = await pdf.getPage(n);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas unavailable in this browser.");
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const blob = await new Promise<Blob | null>((res) =>
+        canvas.toBlob(res, "image/jpeg", 0.92),
+      );
+      if (!blob) throw new Error(`Could not render page ${n}.`);
+      out.push({ pageNumber: n, blob, width: canvas.width, height: canvas.height });
+      opts.onProgress?.(n, pdf.numPages);
+      page.cleanup();
+    }
+    return out;
+  } finally {
+    await pdf.destroy();
   }
-  await pdf.destroy();
-  return out;
 }
 
 /**
@@ -310,10 +314,11 @@ export async function docxToPdf(
     import("html2canvas").then((m) => m.default),
   ]);
 
-  const buffer = await file.arrayBuffer();
+  const buffer = await readFileBytes(file);
+  const arrayBuffer = buffer.buffer as ArrayBuffer;
   let html: string;
   try {
-    const result = await convertToHtml({ arrayBuffer: buffer });
+    const result = await convertToHtml({ arrayBuffer });
     html = result.value;
   } catch {
     throw new Error(

@@ -45,6 +45,66 @@ export function withExtension(base: string, ext: string): string {
 }
 
 /**
+ * Read a local Blob/File into an independent byte snapshot.
+ *
+ * Safari can reject Blob.arrayBuffer() with NotReadableError for some
+ * picker-backed files. FileReader uses a separate compatibility path and
+ * keeps the low-level browser exception out of the user-facing UI. The copy
+ * also means downstream parsers never share a browser-owned buffer.
+ */
+export async function readFileBytes(blob: Blob): Promise<Uint8Array> {
+  let nativeError: unknown;
+  try {
+    const buffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const copy = new Uint8Array(bytes.length);
+    copy.set(bytes);
+    return copy;
+  } catch (error) {
+    nativeError = error;
+  }
+
+  if (typeof FileReader === "function") {
+    try {
+      const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+          else reject(new Error("The browser returned no readable file data."));
+        };
+        reader.onerror = () => reject(reader.error ?? new Error("FileReader failed."));
+        reader.onabort = () => reject(new Error("The file read was aborted."));
+        reader.readAsArrayBuffer(blob);
+      });
+      const bytes = new Uint8Array(buffer);
+      const copy = new Uint8Array(bytes.length);
+      copy.set(bytes);
+      return copy;
+    } catch (fallbackError) {
+      throw new FileReadError(
+        "We couldn’t read this file. Remove it and select it again.",
+        { nativeError, fallbackError },
+      );
+    }
+  }
+
+  throw new FileReadError(
+    "We couldn’t read this file. Remove it and select it again.",
+    nativeError,
+  );
+}
+
+export class FileReadError extends Error {
+  readonly cause: unknown;
+
+  constructor(message: string, cause: unknown) {
+    super(message);
+    this.name = "FileReadError";
+    this.cause = cause;
+  }
+}
+
+/**
  * Validate candidate files against a tool's rules.
  * Returns the accepted files plus human-readable complaints.
  */
