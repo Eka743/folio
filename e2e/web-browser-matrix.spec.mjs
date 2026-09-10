@@ -26,6 +26,23 @@ const ONE_PIXEL_PNG = Buffer.from(
   "base64",
 );
 
+async function expectNoUserHorizontalOverflow(page) {
+  const overflow = await page.evaluate(() => {
+    let rightmost = window.innerWidth;
+    for (const element of document.querySelectorAll("body *")) {
+      // Next's development overlay is outside Folio's page layout and can
+      // report a false overflow on narrow CI viewports.
+      if (element.closest("nextjs-portal")) continue;
+      const rect = element.getBoundingClientRect();
+      if (rect.width > 0 && rect.right > rightmost) rightmost = rect.right;
+    }
+    return Math.max(0, rightmost - window.innerWidth);
+  });
+  // Linux browser scroll metrics can round the viewport edge by a few CSS px;
+  // reject meaningful overflow without making this a platform-specific test.
+  expect(overflow).toBeLessThanOrEqual(4);
+}
+
 let fixtureDir;
 let fixtures;
 
@@ -284,12 +301,7 @@ test("Universal Drop remains usable at release mobile and tablet viewports", asy
     await expect(page.getByRole("heading", { name: /drop a document/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Small tools for everyday documents." })).toBeVisible();
     await expect(page.locator("footer")).toBeVisible();
-    const horizontalOverflow = await page.evaluate(() =>
-      Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
-    );
-    // Linux browser scroll metrics can round the viewport edge by a few CSS px;
-    // reject meaningful overflow without making this a platform-specific test.
-    expect(horizontalOverflow).toBeLessThanOrEqual(4);
+    await expectNoUserHorizontalOverflow(page);
     await drop.focus();
     await expect(drop).toBeFocused();
     await expect(drop).toHaveAttribute("aria-disabled", "false");
