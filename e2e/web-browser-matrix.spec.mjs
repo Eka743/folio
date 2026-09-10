@@ -210,11 +210,11 @@ test("Universal Drop remains keyboard reachable on a narrow viewport", async ({ 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   const drop = page.getByRole("button", { name: /Drop files here or press Enter/i });
+  await expect(page.getByRole("heading", { name: /drop a document/i })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await drop.focus();
   await expect(drop).toBeFocused();
   await expect(drop).toHaveAttribute("aria-disabled", "false");
-  await expect(page.getByRole("heading", { name: /drop a document/i })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
 test("selection, errors and success states move focus to useful content", async ({ page }) => {
