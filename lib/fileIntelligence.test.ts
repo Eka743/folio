@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
-import { inspectFile } from "./fileIntelligence";
+import { inspectFile, readEmbeddedPdfPreview } from "./fileIntelligence";
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.length);
@@ -9,9 +9,9 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
-async function pdfFile(name = "sample.pdf"): Promise<File> {
+async function pdfFile(name = "sample.pdf", pageCount = 1): Promise<File> {
   const document = await PDFDocument.create();
-  document.addPage([300, 400]);
+  for (let i = 0; i < pageCount; i++) document.addPage([300, 400]);
   return new File([toArrayBuffer(await document.save())], name, { type: "application/pdf" });
 }
 
@@ -86,6 +86,22 @@ describe("content-based file intelligence", () => {
     expect(result.valid).toBe(true);
     expect(result.supportedActions).toEqual(["embedded-pdf"]);
     expect(result.warnings).toContain("renderer-evaluation-pending");
+  });
+
+  it("extracts the exact QuickLook PDF instead of choosing another ZIP PDF", async () => {
+    const preview = await pdfFile("preview.pdf");
+    const largerDecoy = await pdfFile("decoy.pdf", 2);
+    const pages = await zipFile("proposal.pages", {
+      "Index/Document.iwa": "binary",
+      "Metadata/Properties.plist": "com.apple.iWork.Pages",
+      "QuickLook/Preview.pdf": new Uint8Array(await preview.arrayBuffer()),
+      "Data/decoy.pdf": new Uint8Array(await largerDecoy.arrayBuffer()),
+    });
+
+    const bytes = await readEmbeddedPdfPreview(pages);
+    expect(new TextDecoder().decode(bytes.subarray(0, 5))).toBe("%PDF-");
+    const output = await PDFDocument.load(bytes);
+    expect(output.getPageCount()).toBe(1);
   });
 
   it("does not treat an arbitrary ZIP renamed to an Apple format as valid", async () => {
