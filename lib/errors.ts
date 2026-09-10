@@ -50,7 +50,7 @@ function knownMessage(message: string): { code: UserErrorCode; message: string }
   if (/^Could not read this PDF|invalid PDF structure|not a valid PDF/i.test(message)) {
     return {
       code: "invalid-pdf",
-      message: "We couldn’t read this PDF. It may be corrupted, password-protected, or not a valid PDF.",
+      message: "Could not read this PDF. It may be corrupted, password-protected, or not a valid PDF.",
     };
   }
   if (/^Could not read .+\.|^Could not render page|^Generated JPEG could not be decoded/i.test(message)) {
@@ -62,7 +62,7 @@ function knownMessage(message: string): { code: UserErrorCode; message: string }
   if (/Canvas unavailable|browser could not render/i.test(message)) {
     return { code: "browser-capability", message: "This browser couldn’t render the file. Try again or use another browser." };
   }
-  if (/^Add at least|^Add exactly|^No valid pages|^No images|^No readable content|^This Apple document has no embedded PDF preview|^The embedded PDF preview is not valid|^Only .+ allowed|^Select one file at a time/i.test(message)) {
+  if (/^Add at least|^Add exactly|^Empty page or range found|^No valid pages|^No images|^No readable content|^This Apple document has no embedded PDF preview|^The embedded PDF preview is not valid|^Only .+ allowed|^Select one file at a time/i.test(message)) {
     return { code: "input", message };
   }
   return null;
