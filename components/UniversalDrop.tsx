@@ -167,7 +167,8 @@ export function UniversalDrop() {
               </div>
             )}
 
-            {inspection.supportedActions.length > 0 && inspection.valid && (
+            {inspection.supportedActions.length > 0 && inspection.valid &&
+              !["pages", "keynote", "numbers"].includes(inspection.kind) && (
               <div className="mt-5">
                 <h3 className="text-sm font-semibold text-ink-950">Choose an action</h3>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
