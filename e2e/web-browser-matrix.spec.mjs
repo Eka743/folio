@@ -40,14 +40,16 @@ async function expectNoUserHorizontalOverflow(page) {
         rightmostElement = `${element.tagName}.${typeof element.className === "string" ? element.className : ""}`;
       }
     }
-    if (rightmost > window.innerWidth + 4) {
-      console.log("viewport overflow diagnostic", { innerWidth: window.innerWidth, rightmost, rightmostElement });
-    }
-    return Math.max(0, rightmost - window.innerWidth);
+    return {
+      overflow: Math.max(0, rightmost - window.innerWidth),
+      rightmostElement,
+      innerWidth: window.innerWidth,
+      rightmost,
+    };
   });
   // Linux browser scroll metrics can round the viewport edge by a few CSS px;
   // reject meaningful overflow without making this a platform-specific test.
-  expect(overflow).toBeLessThanOrEqual(4);
+  expect(overflow.overflow, JSON.stringify(overflow)).toBeLessThanOrEqual(4);
 }
 
 let fixtureDir;
