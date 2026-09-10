@@ -239,6 +239,7 @@ async function auditFixtures(resolved, fixtureDir) {
   const results = [];
   for (const fixture of files) {
     const bytes = readFileSync(fixture.absolutePath);
+    const startedAt = performance.now();
     try {
       const document = await parseIworkDocument(asArrayBuffer(bytes), fixture.kind);
       const summary = modelSummary(document);
@@ -248,6 +249,7 @@ async function auditFixtures(resolved, fixtureDir) {
         kind: fixture.kind,
         path: fixture.path,
         bytes: bytes.length,
+        parseMs: Number((performance.now() - startedAt).toFixed(2)),
         ok: true,
         structuralPass: expectation.pass,
         structuralFailures: expectation.failures,
@@ -259,6 +261,7 @@ async function auditFixtures(resolved, fixtureDir) {
         kind: fixture.kind,
         path: fixture.path,
         bytes: bytes.length,
+        parseMs: Number((performance.now() - startedAt).toFixed(2)),
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       });

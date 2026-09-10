@@ -19,6 +19,7 @@ import {
   validateFiles,
   withExtension,
 } from "@/lib/files";
+import { describeError } from "@/lib/errors";
 import { parsePageRanges, summarizePages } from "@/lib/pageRanges";
 import type { RotationDegrees } from "@/lib/pdfOpsTypes";
 import type { FolioTool } from "@/lib/tools";
@@ -348,12 +349,7 @@ export function ToolRunner({
         }
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Something went wrong.";
-      setError(
-        /I\/O read operation failed|NotReadableError/i.test(message)
-          ? "We couldn’t read this file. Remove it and select it again."
-          : message,
-      );
+      setError(describeError(e).message);
     } finally {
       runGuardRef.current = false;
       setBusy(false);

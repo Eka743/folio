@@ -170,6 +170,9 @@ test("Universal Drop detects content and hands off to the existing tools", async
   await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Apple Pages document");
   await expect(page.getByText("Detected, but conversion is unavailable.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Prepare embedded PDF preview", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Prepare embedded PDF preview", exact: true }).click();
+  const previewHref = await page.getByRole("link", { name: "Open preview in a new tab", exact: true }).getAttribute("href");
+  expect(previewHref).toMatch(/^blob:/);
   await expect(page.getByRole("button", { name: "Start over", exact: true })).toBeVisible();
 
   await page.goto("/");
@@ -177,6 +180,18 @@ test("Universal Drop detects content and hands off to the existing tools", async
   await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Unknown file");
   await expect(page.getByText("This ZIP container is not a supported document format.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Merge PDFs" })).toHaveCount(0);
+});
+
+test("Universal Drop detects a local PDF within the interaction budget", async ({ page }) => {
+  await page.goto("/");
+  const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
+  const input = section.locator('input[type="file"]');
+  const startedAt = await page.evaluate(() => performance.now());
+  await input.setInputFiles(fixtures.onePage);
+  await expect(section).toContainText("Detected as PDF");
+  const elapsedMs = await page.evaluate((start) => performance.now() - start, startedAt);
+  console.log(`Universal Drop PDF detection: ${elapsedMs.toFixed(1)} ms`);
+  expect(elapsedMs).toBeLessThanOrEqual(250);
 });
 
 test("Universal Drop identifies images, DOCX and Apple containers without overpromising support", async ({ page }) => {

@@ -193,6 +193,63 @@ Folio branch contains identification and a bounded embedded QuickLook PDF
 preview only. No candidate dependency, worker, network request, upload path or
 public iWork action was added.
 
+## Bundle and performance gates
+
+The candidate was not added to Folio's dependency graph. A production build
+comparison was made between `origin/main` at `e81a12a` and this branch after
+the Phase 2B changes:
+
+| Measurement | `origin/main` | This branch | Change |
+| --- | ---: | ---: | ---: |
+| All emitted client JavaScript | 24 files / 2,742,518 bytes | 26 files / 2,792,283 bytes | +49,765 bytes (+1.81%) |
+| Homepage initial client entry | 23,131 bytes | 70,633 bytes | +47,502 bytes |
+| Tool-route initial client entry | 45,028 bytes | 47,291 bytes | +2,263 bytes |
+| Candidate iWork parser + worker only | — | 8,458,396 bytes | not shipped |
+
+The homepage increase is the intentional Universal Drop surface; the tool
+route remains lazy for the heavy conversion libraries. The current lazy
+conversion chunks are approximately 396,701 bytes for `pdf-lib`, 330,657
+bytes for PDF.js, 418,911 bytes for jsPDF, 398,556 bytes for Mammoth and
+127,475 bytes for JSZip. No iWork lazy chunk exists because no iWork renderer
+was adopted. The candidate package declares no optional or bundled
+dependencies and publishes no source maps in its 25-file package inventory;
+tree-shaking effectiveness was not assumed from that metadata and requires a
+future integration build to measure.
+
+The isolated candidate dependency audit on 2026-09-10 reported **0**
+moderate-or-higher vulnerabilities across 24 production/optional resolved
+packages. This is evidence for the disposable candidate install only, not a
+license or adoption approval.
+
+Universal Drop PDF detection was measured by the browser E2E budget test after
+the page was loaded; it must stay at or below 250 ms in each required engine.
+The candidate parser harness records parse time per fixture. On this Mac,
+44 synthetic contract fixtures parsed in 0.23–6.03 ms (median 0.39 ms). A
+separate padded-input stress sample parsed 512 KiB in 8.63 ms, 5 MiB in
+11.65 ms and 25 MiB in 173.78 ms. Those padded files are not Apple documents
+and these are not real-device or customer-document performance guarantees.
+An extended large-document memory soak remains a Phase 2C gate.
+
+## PDF output decision
+
+The candidate returns a document model intended for its own HTML/SVG/canvas
+renderer; it does not provide a Folio-compatible PDF byte output contract.
+`window.print()` or browser print-to-PDF was not accepted as a conversion path:
+it is browser- and printer-profile-dependent, cannot provide deterministic
+download validation, and is not a safe substitute for native Apple fidelity.
+Folio's existing PDF engines cannot consume the candidate model without a new
+integration layer. Therefore no candidate-to-PDF route, rasterized PDF route,
+or public iWork conversion action was added.
+
+## Apple reference procedure
+
+The Mac used for this evaluation did not have Pages, Keynote or Numbers, so
+fresh Apple-generated reference outputs are unavailable. The exact capture
+procedure for a future Phase 2C run is recorded in
+[`docs/IWORK_REFERENCE_PROCEDURE.md`](IWORK_REFERENCE_PROCEDURE.md). Until
+that procedure produces a versioned native source/PDF pair, matching upstream
+PNGs is evidence only and cannot promote a renderer.
+
 Before any future adoption, Phase 2C would still need native Apple reference
 exports or an approved equivalent, semantic and fixed-font visual gates for
 each declared generation, representative large/complex files, worker

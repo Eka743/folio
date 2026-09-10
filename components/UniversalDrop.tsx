@@ -5,6 +5,7 @@ import { Dropzone } from "@/components/Dropzone";
 import { ToolRunner } from "@/components/ToolRunner";
 import { capabilityLabel, inspectFile, readEmbeddedPdfPreview, type FileCapabilityAction, type FileInspection } from "@/lib/fileIntelligence";
 import { formatBytes } from "@/lib/files";
+import { describeError } from "@/lib/errors";
 import { getTool, type FolioTool } from "@/lib/tools";
 
 const ACCEPTS = ".pdf,.jpg,.jpeg,.png,.docx,.pages,.key,.keynote,.numbers";
@@ -92,8 +93,7 @@ export function UniversalDrop() {
     try {
       setInspection(await inspectFile(file));
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "Folio could not inspect this file.";
-      setError(message);
+      setError(describeError(cause, "Folio couldn’t inspect this file. Check the file and try again.").message);
     } finally {
       setBusy(false);
     }
@@ -112,7 +112,7 @@ export function UniversalDrop() {
         previewUrlRef.current = url;
         setPreviewUrl(url);
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "The embedded preview could not be opened.");
+        setError(describeError(cause, "The embedded preview couldn’t be opened. Choose another file.").message);
       } finally {
         setBusy(false);
       }
