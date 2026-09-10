@@ -386,9 +386,13 @@ async function inspectZipContainer(
   }
 
   const extension = fileExtension(file.name);
-  if (!detectedKind && extension === ".pages") detectedKind = "pages";
-  if (!detectedKind && (extension === ".key" || extension === ".keynote")) detectedKind = "keynote";
-  if (!detectedKind && extension === ".numbers") detectedKind = "numbers";
+  // An extension can disambiguate a container only after it has supplied a
+  // legacy marker such as index.xml or an embedded QuickLook preview. An
+  // arbitrary ZIP containing Index/*.iwa must remain unknown even when it is
+  // renamed to an Apple document extension.
+  if (!detectedKind && hasLegacyMarker && extension === ".pages") detectedKind = "pages";
+  if (!detectedKind && hasLegacyMarker && (extension === ".key" || extension === ".keynote")) detectedKind = "keynote";
+  if (!detectedKind && hasLegacyMarker && extension === ".numbers") detectedKind = "numbers";
   if (!detectedKind) {
     return finishInspection(file, "unknown", {
       confidence: "low",

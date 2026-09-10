@@ -66,6 +66,40 @@ describe("readFileBytes", () => {
       message: "We couldn’t read this file. Remove it and select it again.",
     });
   });
+
+  it("reports when both browser read paths fail", async () => {
+    const originalReader = globalThis.FileReader;
+    class FailingReader {
+      result: ArrayBuffer | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+
+      readAsArrayBuffer(): void {
+        this.onerror?.();
+      }
+    }
+    Object.defineProperty(globalThis, "FileReader", {
+      configurable: true,
+      value: FailingReader,
+    });
+    try {
+      const unreadable = {
+        arrayBuffer: async () => {
+          throw new DOMException("The I/O read operation failed.", "NotReadableError");
+        },
+      } as unknown as Blob;
+      await expect(readFileBytes(unreadable)).rejects.toMatchObject({
+        name: "FileReadError",
+        message: "We couldn’t read this file. Remove it and select it again.",
+      });
+    } finally {
+      Object.defineProperty(globalThis, "FileReader", {
+        configurable: true,
+        value: originalReader,
+      });
+    }
+  });
 });
 
 describe("validateFiles", () => {

@@ -58,6 +58,21 @@ describe("safe archive inspection", () => {
     );
   });
 
+  it("rejects absolute, backslash and control-character paths", async () => {
+    for (const replacement of ["C:\\x.txt", "saf\0.txt"]) {
+      const bytes = await makeZip({ "safe.txt": "nope" });
+      const hostile = replaceAscii(bytes, "safe.txt", replacement);
+      expect(() => inspectZip(hostile)).toThrowError(
+        expect.objectContaining({ code: "ARCHIVE_UNSAFE_PATH" }),
+      );
+    }
+
+    const absolute = await makeZip({ "/safe.txt": "nope" });
+    expect(() => inspectZip(absolute)).toThrowError(
+      expect.objectContaining({ code: "ARCHIVE_UNSAFE_PATH" }),
+    );
+  });
+
   it("rejects duplicate paths, unsupported limits and truncated archives", async () => {
     const distinct = await makeZip({ "a.txt": "one", "b.txt": "two" });
     const duplicate = replaceAscii(distinct, "b.txt", "a.txt");

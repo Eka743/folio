@@ -62,6 +62,22 @@ describe("content-based file intelligence", () => {
     expect((await inspectFile(jpeg)).kind).toBe("jpeg");
   });
 
+  it("keeps content detection working with missing names and MIME types", async () => {
+    const pdf = await pdfFile("", 2);
+    Object.defineProperty(pdf, "type", { value: "text/plain" });
+    const pdfResult = await inspectFile(pdf);
+    expect(pdfResult.kind).toBe("pdf");
+    expect(pdfResult.valid).toBe(true);
+    expect(pdfResult.extensionMatch).toBe(false);
+    expect(pdfResult.mimeMatch).toBe(false);
+
+    const png = pngFile("");
+    Object.defineProperty(png, "type", { value: "application/octet-stream" });
+    const pngResult = await inspectFile(png);
+    expect(pngResult.kind).toBe("png");
+    expect(pngResult.valid).toBe(true);
+  });
+
   it("detects DOCX containers by their required entries", async () => {
     const docx = await zipFile("report.docx", {
       "[Content_Types].xml": "<Types>wordprocessingml.document</Types>",
@@ -112,6 +128,14 @@ describe("content-based file intelligence", () => {
     expect(result.safety).toBe("safe");
     expect(result.supportedActions).toEqual([]);
     expect(result.warnings).toContain("unsupported-container");
+  });
+
+  it("does not treat an untyped IWA entry as a valid Apple document", async () => {
+    const fake = await zipFile("not-really.pages", { "Index/Document.iwa": "binary" });
+    const result = await inspectFile(fake);
+    expect(result.kind).toBe("unknown");
+    expect(result.valid).toBe(false);
+    expect(result.supportedActions).toEqual([]);
   });
 
   it("surfaces malformed content and unsafe containers without leaking parser errors", async () => {

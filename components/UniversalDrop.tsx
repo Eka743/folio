@@ -48,6 +48,7 @@ export function UniversalDrop() {
   const previewUrlRef = useRef<string | null>(null);
   const selectionCardRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(true);
 
   const clearPreview = useCallback(() => {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -55,7 +56,14 @@ export function UniversalDrop() {
     setPreviewUrl(null);
   }, []);
 
-  useEffect(() => clearPreview, [clearPreview]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (error) errorRef.current?.focus();
@@ -91,11 +99,14 @@ export function UniversalDrop() {
     setError(null);
     setBusy(true);
     try {
-      setInspection(await inspectFile(file));
+      const nextInspection = await inspectFile(file);
+      if (mountedRef.current) setInspection(nextInspection);
     } catch (cause) {
-      setError(describeError(cause, "Folio couldn’t inspect this file. Check the file and try again.").message);
+      if (mountedRef.current) {
+        setError(describeError(cause, "Folio couldn’t inspect this file. Check the file and try again.").message);
+      }
     } finally {
-      setBusy(false);
+      if (mountedRef.current) setBusy(false);
     }
   }, [clearPreview, resetSelection]);
 
@@ -106,15 +117,18 @@ export function UniversalDrop() {
       setBusy(true);
       try {
         const bytes = await readEmbeddedPdfPreview(selectedFile);
+        if (!mountedRef.current) return;
         const copy = new Uint8Array(bytes.length);
         copy.set(bytes);
         const url = URL.createObjectURL(new Blob([copy.buffer], { type: "application/pdf" }));
         previewUrlRef.current = url;
         setPreviewUrl(url);
       } catch (cause) {
-        setError(describeError(cause, "The embedded preview couldn’t be opened. Choose another file.").message);
+        if (mountedRef.current) {
+          setError(describeError(cause, "The embedded preview couldn’t be opened. Choose another file.").message);
+        }
       } finally {
-        setBusy(false);
+        if (mountedRef.current) setBusy(false);
       }
       return;
     }

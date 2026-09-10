@@ -65,11 +65,8 @@ export function ToolRunner({
   const complaintRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(true);
   const fileObjs = useMemo(() => files.map((f) => f.file), [files]);
-
-  const handleDropIssue = useCallback((message: string) => {
-    setComplaints([message]);
-  }, []);
 
   useEffect(() => {
     if (selectionFocusPendingRef.current && files.length > 0) {
@@ -94,6 +91,10 @@ export function ToolRunner({
   // never depends on stale state closures or double-revokes.
   const urlsRef = useRef<Set<string>>(new Set());
   const trackUrl = useCallback((url: string): string => {
+    if (!mountedRef.current) {
+      URL.revokeObjectURL(url);
+      return url;
+    }
     urlsRef.current.add(url);
     return url;
   }, []);
@@ -104,8 +105,10 @@ export function ToolRunner({
 
   // Revoke any remaining object URLs on unmount only.
   useEffect(() => {
+    mountedRef.current = true;
     const registry = urlsRef.current;
     return () => {
+      mountedRef.current = false;
       for (const url of registry) URL.revokeObjectURL(url);
       registry.clear();
     };
@@ -120,6 +123,11 @@ export function ToolRunner({
     setEngineUsed(null);
   }, [revokeAllUrls]);
 
+  const handleDropIssue = useCallback((message: string) => {
+    resetResults();
+    setComplaints([message]);
+  }, [resetResults]);
+
   function blobUrl(bytes: Uint8Array, mime: string): string {
     const copy = new Uint8Array(bytes.length);
     copy.set(bytes);
@@ -128,7 +136,7 @@ export function ToolRunner({
 
   const addFiles = useCallback(
     (incoming: File[]) => {
-      setError(null);
+      resetResults();
       const { accepted, complaints: found } = validateFiles(
         tool,
         incoming,
@@ -140,7 +148,6 @@ export function ToolRunner({
         setFiles((prev) =>
           tool.multiple ? [...prev, ...listed] : listed.slice(0, 1),
         );
-        resetResults();
       }
       setComplaints(found.map((c) => `${c.fileName}: ${c.reason}`));
     },
@@ -190,6 +197,7 @@ export function ToolRunner({
           setProgress("Merging PDFs…");
           const { mergePdfs } = await import("@/lib/pdfOps");
           const bytes = await mergePdfs(fileObjs);
+          if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(fileObjs[0].name)}-merged`,
             "pdf",
@@ -211,6 +219,7 @@ export function ToolRunner({
           if (parsed.error) throw new Error(parsed.error);
           setProgress(`Extracting ${summarizePages(parsed.pages)}…`);
           const bytes = await splitPdf(file, parsed.pages);
+          if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(file.name)}-pages-${parsed.pages[0]}-${parsed.pages[parsed.pages.length - 1]}`,
             "pdf",
@@ -231,6 +240,7 @@ export function ToolRunner({
           setProgress(`Building PDF from ${fileObjs.length} image${fileObjs.length === 1 ? "" : "s"}…`);
           const { imagesToPdf } = await import("@/lib/pdfOps");
           const bytes = await imagesToPdf(fileObjs);
+          if (!mountedRef.current) return;
           const name = withExtension(
             fileObjs.length === 1
               ? `${safeFileName(fileObjs[0].name)}`
@@ -246,7 +256,10 @@ export function ToolRunner({
         case "docx-to-pdf": {
           const file = needSingle(fileObjs);
           const { docxToPdf } = await import("@/lib/pdfOps");
-          const bytes = await docxToPdf(file, (stage) => setProgress(stage));
+          const bytes = await docxToPdf(file, (stage) => {
+            if (mountedRef.current) setProgress(stage);
+          });
+          if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "pdf");
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
@@ -266,8 +279,9 @@ export function ToolRunner({
           const pages = await renderPdfPages(file, {
             scale: 2,
             onProgress: (done, total) =>
-              setProgress(`Rendering page ${done} of ${total}…`),
+              mountedRef.current && setProgress(`Rendering page ${done} of ${total}…`),
           });
+          if (!mountedRef.current) return;
           const withUrls = pages.map((p) => ({
             page: p.pageNumber,
             blob: p.blob,
@@ -325,6 +339,7 @@ export function ToolRunner({
             setProgress(`Rotating all pages by ${degrees}°…`);
           }
           const bytes = await rotatePdf(file, targets, degrees);
+          if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(file.name)}-rotated-${degrees}`,
             "pdf",
@@ -340,6 +355,7 @@ export function ToolRunner({
           setProgress("Optimizing PDF…");
           const { optimizePdf } = await import("@/lib/pdfOps");
           const { bytes, beforeBytes, afterBytes } = await optimizePdf(file);
+          if (!mountedRef.current) return;
           const name = withExtension(`${safeFileName(file.name)}-optimized`, "pdf");
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
@@ -349,11 +365,13 @@ export function ToolRunner({
         }
       }
     } catch (e) {
-      setError(describeError(e).message);
+      if (mountedRef.current) setError(describeError(e).message);
     } finally {
-      runGuardRef.current = false;
-      setBusy(false);
-      setProgress("");
+      if (mountedRef.current) {
+        runGuardRef.current = false;
+        setBusy(false);
+        setProgress("");
+      }
     }
   }
 

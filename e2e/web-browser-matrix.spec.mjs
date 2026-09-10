@@ -75,6 +75,24 @@ test("public surface and retired native routes stay web-only", async ({ page }) 
   }
 });
 
+test("public routes render successfully", async ({ page }) => {
+  const routes = [
+    "/",
+    "/privacy",
+    "/cookies",
+    "/terms",
+    "/legal",
+    "/security",
+    "/open-source",
+    ...PUBLIC_TOOLS,
+  ];
+  for (const route of routes) {
+    const response = await page.goto(route);
+    expect(response?.status(), route).toBe(200);
+    await expect(page.locator("main")).toBeVisible();
+  }
+});
+
 test("all seven browser-local tools produce valid results", async ({ page }) => {
   await page.goto("/tools/merge-pdf");
   await page.locator('input[type="file"]').setInputFiles([fixtures.onePage, fixtures.secondPage]);
@@ -149,6 +167,43 @@ test("same PDF selected twice survives a WebKit-style read failure", async ({ pa
   await expect(page.locator('[role="alert"]')).not.toContainText(/I\/O read operation failed/);
 });
 
+test("same File object can be dropped twice into Merge PDF", async ({ page }) => {
+  await page.goto("/tools/merge-pdf");
+  const bytes = readFileSync(fixtures.onePage).toString("base64");
+  const dropzone = page.getByRole("button", { name: /Drop files here or press Enter/i });
+  await dropzone.evaluate((element, base64) => {
+    const binary = atob(base64);
+    const file = new File(
+      [Uint8Array.from(binary, (char) => char.charCodeAt(0))],
+      "same-object.pdf",
+      { type: "application/pdf" },
+    );
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    dataTransfer.items.add(file);
+    element.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer }));
+  }, bytes);
+  await expect(page.getByRole("list", { name: "Selected files" }).locator("li")).toHaveCount(2);
+  const merged = await downloadFromResult(page, "Merge PDFs", /^Download /);
+  await expectPdf(merged, 2);
+});
+
+test("long Unicode filenames remain usable through a conversion", async ({ page }) => {
+  await page.goto("/tools/merge-pdf");
+  const firstName = "résumé — revisión final — ".repeat(8) + "uno.pdf";
+  const secondName = "合同書類 — versión 2.pdf";
+  const bytes = readFileSync(fixtures.onePage);
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: firstName, mimeType: "application/pdf", buffer: bytes },
+    { name: secondName, mimeType: "application/pdf", buffer: bytes },
+  ]);
+  const selected = page.getByRole("list", { name: "Selected files" });
+  await expect(selected).toContainText(firstName);
+  await expect(selected).toContainText(secondName);
+  const merged = await downloadFromResult(page, "Merge PDFs", /^Download /);
+  await expectPdf(merged, 2);
+});
+
 test("Universal Drop detects content and hands off to the existing tools", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /drop a document/i })).toBeVisible();
@@ -221,20 +276,28 @@ test("Universal Drop identifies images, DOCX and Apple containers without overpr
   }
 });
 
-test("Universal Drop remains keyboard reachable on a narrow viewport", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
-  const drop = page.getByRole("button", { name: /Drop files here or press Enter/i });
-  await expect(page.getByRole("heading", { name: /drop a document/i })).toBeVisible();
-  const horizontalOverflow = await page.evaluate(() =>
-    Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
-  );
-  // Linux browser scroll metrics can round the viewport edge by a few CSS px;
-  // reject meaningful overflow without making this a platform-specific test.
-  expect(horizontalOverflow).toBeLessThanOrEqual(4);
-  await drop.focus();
-  await expect(drop).toBeFocused();
-  await expect(drop).toHaveAttribute("aria-disabled", "false");
+test("Universal Drop remains usable at release mobile and tablet viewports", async ({ page }) => {
+  for (const [width, height] of [[375, 667], [390, 844], [430, 932], [768, 1024]]) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/");
+    const drop = page.getByRole("button", { name: /Drop files here or press Enter/i });
+    await expect(page.getByRole("heading", { name: /drop a document/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Small tools for everyday documents." })).toBeVisible();
+    await expect(page.locator("footer")).toBeVisible();
+    const horizontalOverflow = await page.evaluate(() =>
+      Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
+    );
+    // Linux browser scroll metrics can round the viewport edge by a few CSS px;
+    // reject meaningful overflow without making this a platform-specific test.
+    expect(horizontalOverflow).toBeLessThanOrEqual(4);
+    await drop.focus();
+    await expect(drop).toBeFocused();
+    await expect(drop).toHaveAttribute("aria-disabled", "false");
+
+    await page.goto("/tools/merge-pdf");
+    await expect(page.getByRole("heading", { name: "Merge PDF" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Drop files here or press Enter/i })).toBeVisible();
+  }
 });
 
 test("selection, errors and success states move focus to useful content", async ({ page }) => {
