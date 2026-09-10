@@ -29,7 +29,6 @@ const ONE_PIXEL_PNG = Buffer.from(
 async function expectNoUserHorizontalOverflow(page) {
   const overflow = await page.evaluate(() => {
     let rightmost = window.innerWidth;
-    let rightmostElement = "none";
     for (const element of document.querySelectorAll("body *")) {
       // Next's development overlay is outside Folio's page layout and can
       // report a false overflow on narrow CI viewports.
@@ -37,19 +36,13 @@ async function expectNoUserHorizontalOverflow(page) {
       const rect = element.getBoundingClientRect();
       if (rect.width > 0 && rect.right > rightmost) {
         rightmost = rect.right;
-        rightmostElement = `${element.tagName}.${typeof element.className === "string" ? element.className : ""}`;
       }
     }
-    return {
-      overflow: Math.max(0, rightmost - window.innerWidth),
-      rightmostElement,
-      innerWidth: window.innerWidth,
-      rightmost,
-    };
+    return Math.max(0, rightmost - window.innerWidth);
   });
   // Linux browser scroll metrics can round the viewport edge by a few CSS px;
   // reject meaningful overflow without making this a platform-specific test.
-  expect(overflow.overflow, JSON.stringify(overflow)).toBeLessThanOrEqual(4);
+  expect(overflow).toBeLessThanOrEqual(4);
 }
 
 let fixtureDir;

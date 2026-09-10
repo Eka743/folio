@@ -85,7 +85,7 @@ export function Dropzone({
       <p className="mt-3 font-medium text-ink-900">
         Drop files here or <span className="text-accent-600 underline">browse</span>
       </p>
-      <p className="mt-1 text-sm text-ink-500">
+      <p className="mt-1 break-words text-sm text-ink-500">
         {accepts} {multiple ? "· multiple files" : "· single file"}
       </p>
       <input
