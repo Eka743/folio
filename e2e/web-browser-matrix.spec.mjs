@@ -70,7 +70,7 @@ test("all seven browser-local tools produce valid results", async ({ page }) => 
   await page.goto("/tools/merge-pdf");
   await page.locator('input[type="file"]').setInputFiles([fixtures.onePage, fixtures.secondPage]);
   const merged = await downloadFromResult(page, "Merge PDFs", /^Download /);
-  expectPdf(merged);
+  await expectPdf(merged, 2);
 
   await page.goto("/tools/split-pdf");
   await page.locator('input[type="file"]').setInputFiles(fixtures.twoPage);
@@ -79,22 +79,22 @@ test("all seven browser-local tools produce valid results", async ({ page }) => 
   await expect(page.locator('div[role="alert"]').filter({ hasText: "Empty page or range found" })).toBeVisible();
   await page.locator("#folio-pages").fill("1-2");
   const split = await downloadFromResult(page, "Extract pages", /^Download /);
-  expectPdf(split);
+  await expectPdf(split, 2);
 
   await page.goto("/tools/rotate-pdf");
   await page.locator('input[type="file"]').setInputFiles(fixtures.twoPage);
   const rotated = await downloadFromResult(page, "Rotate PDF", /^Download /);
-  expectPdf(rotated);
+  await expectPdf(rotated, 2);
 
   await page.goto("/tools/compress-pdf");
   await page.locator('input[type="file"]').setInputFiles(fixtures.twoPage);
   const compressed = await downloadFromResult(page, "Compress PDF", /^Download /);
-  expectPdf(compressed);
+  await expectPdf(compressed, 2);
 
   await page.goto("/tools/images-to-pdf");
   await page.locator('input[type="file"]').setInputFiles(fixtures.image);
   const imagePdf = await downloadFromResult(page, "Create PDF", /^Download /);
-  expectPdf(imagePdf);
+  await expectPdf(imagePdf, 1);
 
   await page.goto("/tools/pdf-to-jpg");
   await page.locator('input[type="file"]').setInputFiles(fixtures.twoPage);
@@ -115,7 +115,29 @@ test("all seven browser-local tools produce valid results", async ({ page }) => 
   await expect(page.locator("body")).toContainText("Beta");
   await page.locator('input[type="file"]').setInputFiles(fixtures.docx);
   const docxPdf = await downloadFromResult(page, "Convert to PDF", /^Download /);
-  expectPdf(docxPdf);
+  await expectPdf(docxPdf, 1);
+});
+
+test("same PDF selected twice survives a WebKit-style read failure", async ({ page }) => {
+  await page.addInitScript(() => {
+    const nativeArrayBuffer = File.prototype.arrayBuffer;
+    let injected = false;
+    File.prototype.arrayBuffer = function () {
+      if (!injected) {
+        injected = true;
+        return Promise.reject(
+          new DOMException("The I/O read operation failed.", "NotReadableError"),
+        );
+      }
+      return nativeArrayBuffer.call(this);
+    };
+  });
+
+  await page.goto("/tools/merge-pdf");
+  await page.locator('input[type="file"]').setInputFiles([fixtures.onePage, fixtures.onePage]);
+  const merged = await downloadFromResult(page, "Merge PDFs", /^Download /);
+  await expectPdf(merged, 2);
+  await expect(page.locator('[role="alert"]')).not.toContainText(/I\/O read operation failed/);
 });
 
 test("malformed input recovers, double-clicks stay single-result, and conversion stays private", async ({ page }) => {
@@ -129,11 +151,21 @@ test("malformed input recovers, double-clicks stay single-result, and conversion
   await expect(error).toContainText("Could not read this PDF");
   await expect(error).not.toContainText(/TypeError|stack|undefined/i);
 
+  await page.goto("/tools/merge-pdf");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "wrong.png",
+    mimeType: "image/png",
+    buffer: readFileSync(fixtures.onePage),
+  });
+  await expect(page.getByRole("alert").filter({ hasText: "accepts .pdf" })).toBeVisible();
   await page.getByRole("button", { name: "Start over" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "accepts .pdf" })).toHaveCount(0);
+
+  await page.goto("/tools/split-pdf");
   await page.locator('input[type="file"]').setInputFiles(fixtures.twoPage);
   await page.locator("#folio-pages").fill("1");
   const recovered = await downloadFromResult(page, "Extract pages", /^Download /);
-  expectPdf(recovered);
+  await expectPdf(recovered, 1);
 
   await page.goto("/tools/merge-pdf");
   await page.locator('input[type="file"]').setInputFiles([fixtures.onePage, fixtures.secondPage]);
@@ -141,7 +173,7 @@ test("malformed input recovers, double-clicks stay single-result, and conversion
   const resultLinks = page.getByRole("link", { name: /^Download / });
   await expect(resultLinks).toHaveCount(1);
   const doubleClickResult = await downloadFromLink(page, resultLinks.first());
-  expectPdf(doubleClickResult);
+  await expectPdf(doubleClickResult, 2);
 
   const externalRequests = requests.filter((request) => {
     const url = new URL(request.url());
@@ -210,8 +242,11 @@ async function downloadFromLink(page, link) {
   return readFileSync(path);
 }
 
-function expectPdf(bytes) {
+async function expectPdf(bytes, expectedPages) {
   expect(bytes.subarray(0, 5).toString()).toBe("%PDF-");
+  expect(bytes.length).toBeGreaterThan(100);
+  const pdf = await PDFDocument.load(bytes);
+  if (expectedPages !== undefined) expect(pdf.getPageCount()).toBe(expectedPages);
 }
 
 function expectJpeg(bytes) {

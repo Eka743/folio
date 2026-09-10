@@ -14,6 +14,7 @@ import {
 import {
   formatBytes,
   formatPercentChange,
+  readFileBytes,
   safeFileName,
   validateFiles,
   withExtension,
@@ -49,6 +50,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
   const [rotateMode, setRotateMode] = useState<"all" | "pages">("all");
   const [degrees, setDegrees] = useState<RotationDegrees>(90);
   const [zipMeta, setZipMeta] = useState<{ name: string; size: number } | null>(null);
+  const runGuardRef = useRef(false);
   const fileObjs = useMemo(() => files.map((f) => f.file), [files]);
 
   // Single registry for every object URL this component creates, so cleanup
@@ -115,16 +117,20 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
     [resetResults],
   );
 
-  const moveFile = useCallback((id: string, dir: -1 | 1) => {
-    setFiles((prev) => {
-      const i = prev.findIndex((f) => f.id === id);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
-  }, []);
+  const moveFile = useCallback(
+    (id: string, dir: -1 | 1) => {
+      setFiles((prev) => {
+        const i = prev.findIndex((f) => f.id === id);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= prev.length) return prev;
+        const next = [...prev];
+        [next[i], next[j]] = [next[j], next[i]];
+        return next;
+      });
+      resetResults();
+    },
+    [resetResults],
+  );
 
   const startOver = useCallback(() => {
     resetResults();
@@ -133,6 +139,8 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
   }, [resetResults]);
 
   async function run(): Promise<void> {
+    if (runGuardRef.current) return;
+    runGuardRef.current = true;
     setError(null);
     resetResults();
     setBusy(true);
@@ -159,7 +167,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           setProgress("Reading PDF…");
           const { getPdfPageCount, splitPdf } = await import("@/lib/pdfOps");
           const count = await getPdfPageCount(
-            new Uint8Array(await file.arrayBuffer()),
+            await readFileBytes(file),
           );
           const parsed = parsePageRanges(rangeText, count);
           if (parsed.error) throw new Error(parsed.error);
@@ -267,7 +275,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           let targets: number[] | null = null;
           if (rotateMode === "pages") {
             const count = await getPdfPageCount(
-              new Uint8Array(await file.arrayBuffer()),
+              await readFileBytes(file),
             );
             const parsed = parsePageRanges(rangeText, count);
             if (parsed.error) throw new Error(parsed.error);
@@ -303,8 +311,14 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
+      const message = e instanceof Error ? e.message : "Something went wrong.";
+      setError(
+        /I\/O read operation failed|NotReadableError/i.test(message)
+          ? "We couldn’t read this file. Remove it and select it again."
+          : message,
+      );
     } finally {
+      runGuardRef.current = false;
       setBusy(false);
       setProgress("");
     }
@@ -319,7 +333,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
         : fileObjs.length === 1);
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-10">
+    <div className="mx-auto max-w-3xl px-5 py-10" aria-busy={busy}>
       <ToolHeader
         name={tool.name}
         description={tool.longDescription}
@@ -347,6 +361,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
         <FileList
           items={files}
           reorderable={tool.multiple && files.length > 1}
+          disabled={busy}
           onRemove={removeFile}
           onMove={moveFile}
         />
@@ -448,7 +463,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           <PrimaryButton onClick={run} disabled={!canRun}>
             {busy ? "Working…" : actionLabel(tool.slug)}
           </PrimaryButton>
-          {(files.length > 0 || result) && (
+          {(files.length > 0 || result || complaints.length > 0 || error) && (
             <SecondaryButton onClick={startOver} disabled={busy}>
               Start over
             </SecondaryButton>
