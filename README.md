@@ -21,6 +21,15 @@ generated in the current tab and downloaded by your browser.
 | Markdown → PDF | `/tools/markdown-to-pdf` | Render Markdown as a polished A4 PDF | Browser |
 | PDF → Markdown | `/tools/pdf-to-markdown` | Extract readable structure from text PDFs | Browser Beta |
 
+## Local selection previews
+
+Selected files show a small local preview before processing. PDFs render their
+first page with the existing self-hosted PDF.js worker, JPG/PNG files use a
+browser object URL, and DOCX, Markdown and recognized Apple containers use
+honest format cards when a content preview would overpromise. Preview failures
+never block conversion, and preview resources are released when files are
+removed or the workflow is reset.
+
 Historical native conversion experiments remain in the repository for future
 work, but they are dormant and are not part of the public website, navigation,
 sitemap or release process.

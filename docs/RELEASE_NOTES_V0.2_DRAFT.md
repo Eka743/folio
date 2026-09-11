@@ -20,6 +20,10 @@ your browser. It also adds two real Markdown conversion workflows.
 - Apple documents can be recognized and may expose a validated embedded PDF
   preview when the file contains one. Generic Pages, Keynote and Numbers
   conversion is not included.
+- Selected files now show local visual previews across the public tools:
+  first-page PDF thumbnails, JPG/PNG thumbnails, and honest DOCX, Markdown and
+  Apple format cards. Preview rendering is bounded and cancellable, and a
+  preview failure falls back without blocking the conversion workflow.
 - PPTX and XLSX conversion are not part of this release: no reliable
   browser-local implementation met the usefulness bar during this phase.
 - Files are processed locally. Folio does not upload document contents or add
