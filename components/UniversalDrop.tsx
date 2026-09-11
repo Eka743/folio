@@ -1,59 +1,88 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Dropzone } from "@/components/Dropzone";
-import { DocumentPreview } from "@/components/DocumentPreview";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Dropzone, FileList, type ListedFile } from "@/components/Dropzone";
 import { ToolRunner } from "@/components/ToolRunner";
-import { capabilityLabel, inspectFile, readEmbeddedPdfPreview, type FileCapabilityAction, type FileInspection } from "@/lib/fileIntelligence";
-import { formatBytes } from "@/lib/files";
+import {
+  actionsForKinds,
+  capabilityFormatForKind,
+  getCapability,
+  type CapabilityActionId,
+} from "@/lib/capabilityGraph";
+import {
+  capabilityLabel,
+  inspectFiles,
+  MAX_UNIVERSAL_FILES,
+  MAX_UNIVERSAL_TOTAL_BYTES,
+  readEmbeddedPdfPreview,
+  type FileInspection,
+} from "@/lib/fileIntelligence";
 import { describeError } from "@/lib/errors";
-import { getTool, type FolioTool } from "@/lib/tools";
+import { formatBytes } from "@/lib/files";
+import {
+  MAX_PDF_BYTES,
+  type FolioTool,
+  getTool,
+} from "@/lib/tools";
 
-const ACCEPTS = ".pdf,.jpg,.jpeg,.png,.docx,.md,.markdown,.pages,.key,.keynote,.numbers";
+const ACCEPTS = ".pdf,.jpg,.jpeg,.png,.docx,.md,.markdown,.pages,.key,.keynote,.numbers,.pptx,.xlsx";
 
-function toolForAction(action: FileCapabilityAction): FolioTool | undefined {
-  const slug = action === "image-to-pdf" ? "images-to-pdf" : action;
-  return getTool(slug);
+type UniversalItem = ListedFile & { inspection: FileInspection | null };
+
+let universalId = 0;
+function nextUniversalId(): string {
+  universalId++;
+  return `universal-${Date.now().toString(36)}-${universalId}`;
 }
 
-function actionDescription(action: FileCapabilityAction): string {
-  switch (action) {
-    case "merge-pdf":
-      return "Add more PDFs to combine them in your chosen order.";
-    case "split-pdf":
-      return "Choose the pages to keep in a new PDF.";
-    case "rotate-pdf":
-      return "Turn every page or a selected set of pages.";
-    case "compress-pdf":
-      return "Rewrite the PDF locally and compare the result honestly.";
-    case "pdf-to-jpg":
-      return "Render each page as a JPG image.";
-    case "pdf-to-markdown":
-      return "Extract readable text and conservative structure locally.";
-    case "image-to-pdf":
-      return "Add more images and place one on each PDF page.";
-    case "docx-to-pdf":
-      return "Convert this Word document locally. Beta.";
-    case "markdown-to-pdf":
-      return "Render this Markdown file into a polished A4 PDF.";
-    case "embedded-pdf":
-      return "Open the file’s own QuickLook PDF preview in a new tab.";
-    default:
-      return "Available locally in this browser.";
-  }
+function toolForAction(action: CapabilityActionId): FolioTool | undefined {
+  return getTool(action === "image-to-pdf" ? "images-to-pdf" : action);
+}
+
+function actionTitle(action: CapabilityActionId, count: number): string {
+  if (action === "merge-pdf") return count > 1 ? `Merge ${count} PDFs` : "Merge PDFs";
+  if (action === "image-to-pdf") return count > 1 ? `Create PDF from ${count} images` : "Create a PDF";
+  if (action === "docx-to-pdf") return count > 1 ? `Convert ${count} Word files to one PDF` : "Convert to PDF";
+  if (action === "combine-to-pdf") return `Combine ${count} document${count === 1 ? "" : "s"} into PDF`;
+  if (action === "embedded-pdf") return "Prepare embedded PDF preview";
+  if (action === "split-pdf") return "Extract PDF pages";
+  if (action === "pdf-to-jpg") return "Convert PDF to JPG";
+  if (action === "pdf-to-markdown") return "Convert PDF to Markdown";
+  if (action === "markdown-to-pdf") return "Convert Markdown to PDF";
+  return capabilityLabel(action);
+}
+
+function actionDescription(action: CapabilityActionId, count: number): string {
+  if (action === "merge-pdf") return "Add, reorder and merge the selected PDFs locally.";
+  if (action === "image-to-pdf") return "Place one image on each PDF page in your chosen order.";
+  if (action === "docx-to-pdf") return count > 1
+    ? "Convert each Word document locally, then join the PDF pages in order. Beta."
+    : "Convert this Word document locally. Beta.";
+  if (action === "combine-to-pdf") return "Normalize each supported source locally. Nothing is silently skipped.";
+  return getCapability(action)?.description ?? "Available locally in this browser.";
+}
+
+function selectionLabel(items: UniversalItem[]): string {
+  if (items.length === 1) return "1 document selected";
+  return `${items.length} documents selected`;
+}
+
+function inspectionKindLabel(inspection: FileInspection): string {
+  return inspection.formatLabel;
 }
 
 export function UniversalDrop() {
-  const [inspection, setInspection] = useState<FileInspection | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [activeTool, setActiveTool] = useState<{ tool: FolioTool; file: File } | null>(null);
+  const [items, setItems] = useState<UniversalItem[]>([]);
+  const [activeTool, setActiveTool] = useState<{ tool: FolioTool; files: File[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const selectionCardRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLOListElement>(null);
   const mountedRef = useRef(true);
+  const operationRef = useRef(0);
 
   const clearPreview = useCallback(() => {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -63,8 +92,10 @@ export function UniversalDrop() {
 
   useEffect(() => {
     mountedRef.current = true;
+    const operation = operationRef;
     return () => {
       mountedRef.current = false;
+      operation.current++;
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
     };
@@ -72,74 +103,126 @@ export function UniversalDrop() {
 
   useEffect(() => {
     if (error) errorRef.current?.focus();
-    else if (inspection) selectionCardRef.current?.focus();
-  }, [error, inspection]);
+    else if (!busy && items.length > 0) selectionCardRef.current?.focus();
+  }, [busy, error, items.length]);
 
   const resetSelection = useCallback(() => {
+    operationRef.current++;
     clearPreview();
     setActiveTool(null);
-    setSelectedFile(null);
-    setInspection(null);
+    setItems([]);
     setError(null);
     setBusy(false);
   }, [clearPreview]);
 
-  const handleDropIssue = useCallback((message: string) => {
-    resetSelection();
-    setError(message);
-  }, [resetSelection]);
-
-  const inspectSelection = useCallback(async (files: File[]) => {
-    if (files.length > 1) {
-      resetSelection();
-      setError("Select one file at a time here.");
+  const inspectSelection = useCallback(async (incoming: File[]) => {
+    const nextOperation = ++operationRef.current;
+    const existingBytes = items.reduce((total, item) => total + item.file.size, 0);
+    let totalBytes = existingBytes;
+    const accepted: File[] = [];
+    const complaints: string[] = [];
+    for (const file of incoming) {
+      if (items.length + accepted.length >= MAX_UNIVERSAL_FILES) {
+        complaints.push(`${file.name || "Unnamed file"}: Select no more than ${MAX_UNIVERSAL_FILES} documents.`);
+        continue;
+      }
+      if (file.size > MAX_PDF_BYTES) {
+        complaints.push(`${file.name || "Unnamed file"}: This file is larger than Folio’s 100 MB local limit.`);
+        continue;
+      }
+      if (totalBytes + file.size > MAX_UNIVERSAL_TOTAL_BYTES) {
+        complaints.push(`${file.name || "Unnamed file"}: The selection would exceed Folio’s 150 MB total local limit.`);
+        continue;
+      }
+      accepted.push(file);
+      totalBytes += file.size;
+    }
+    if (accepted.length === 0) {
+      if (mountedRef.current) setError(complaints.join(" ") || "No files were added.");
       return;
     }
-    const file = files[0];
-    if (!file) return;
+
     clearPreview();
     setActiveTool(null);
-    setSelectedFile(file);
-    setInspection(null);
-    setError(null);
+    setError(complaints.length > 0 ? complaints.join(" ") : null);
+    const nextItems = [
+      ...items,
+      ...accepted.map((file) => ({ file, id: nextUniversalId(), inspection: null })),
+    ];
+    setItems(nextItems);
     setBusy(true);
     try {
-      const nextInspection = await inspectFile(file);
-      if (mountedRef.current) setInspection(nextInspection);
+      const inspections = await inspectFiles(nextItems.map((item) => item.file));
+      if (!mountedRef.current || operationRef.current !== nextOperation) return;
+      setItems(nextItems.map((item, index) => ({ ...item, inspection: inspections[index] })));
     } catch (cause) {
-      if (mountedRef.current) {
-        setError(describeError(cause, "Folio couldn’t inspect this file. Check the file and try again.").message);
+      if (mountedRef.current && operationRef.current === nextOperation) {
+        setError(describeError(cause, "Folio couldn’t inspect these files. Check them and try again.").message);
       }
     } finally {
-      if (mountedRef.current) setBusy(false);
+      if (mountedRef.current && operationRef.current === nextOperation) setBusy(false);
     }
-  }, [clearPreview, resetSelection]);
+  }, [clearPreview, items]);
 
-  const chooseAction = useCallback(async (action: FileCapabilityAction) => {
-    if (!selectedFile) return;
+  const removeFile = useCallback((id: string) => {
+    operationRef.current++;
+    setItems((previous) => previous.filter((item) => item.id !== id));
+    clearPreview();
+    setError(null);
+  }, [clearPreview]);
+
+  const moveFile = useCallback((id: string, direction: -1 | 1) => {
+    setItems((previous) => {
+      const index = previous.findIndex((item) => item.id === id);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= previous.length) return previous;
+      const next = [...previous];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+    clearPreview();
+  }, [clearPreview]);
+
+  const ready = items.length > 0 && items.every((item) => item.inspection !== null);
+  const valid = ready && items.every((item) => item.inspection?.valid && item.inspection.safety === "safe");
+  const actions = useMemo(() => {
+    if (!valid) return [];
+    const kinds = items
+      .map((item) => capabilityFormatForKind(item.inspection!.kind))
+      .filter((kind): kind is NonNullable<typeof kind> => Boolean(kind));
+    if (kinds.length !== items.length) return [];
+    const hasEmbeddedPdf = items.length === 1 && items[0].inspection?.supportedActions.includes("embedded-pdf");
+    return actionsForKinds(kinds, { hasEmbeddedPdf });
+  }, [items, valid]);
+
+  const chooseAction = useCallback(async (action: CapabilityActionId) => {
+    if (!valid) return;
     setError(null);
     if (action === "embedded-pdf") {
+      const file = items[0]?.file;
+      if (!file) return;
+      const nextOperation = ++operationRef.current;
       setBusy(true);
       try {
-        const bytes = await readEmbeddedPdfPreview(selectedFile);
-        if (!mountedRef.current) return;
+        const bytes = await readEmbeddedPdfPreview(file);
+        if (!mountedRef.current || operationRef.current !== nextOperation) return;
         const copy = new Uint8Array(bytes.length);
         copy.set(bytes);
         const url = URL.createObjectURL(new Blob([copy.buffer], { type: "application/pdf" }));
         previewUrlRef.current = url;
         setPreviewUrl(url);
       } catch (cause) {
-        if (mountedRef.current) {
+        if (mountedRef.current && operationRef.current === nextOperation) {
           setError(describeError(cause, "The embedded preview couldn’t be opened. Choose another file.").message);
         }
       } finally {
-        if (mountedRef.current) setBusy(false);
+        if (mountedRef.current && operationRef.current === nextOperation) setBusy(false);
       }
       return;
     }
     const tool = toolForAction(action);
-    if (tool) setActiveTool({ tool, file: selectedFile });
-  }, [selectedFile]);
+    if (tool) setActiveTool({ tool, files: items.map((item) => item.file) });
+  }, [items, valid]);
 
   if (activeTool) {
     return (
@@ -153,7 +236,7 @@ export function UniversalDrop() {
             ← Choose another action
           </button>
         </div>
-        <ToolRunner tool={activeTool.tool} initialFiles={[activeTool.file]} />
+        <ToolRunner tool={activeTool.tool} initialFiles={activeTool.files} />
       </section>
     );
   }
@@ -162,28 +245,31 @@ export function UniversalDrop() {
     <section className="border-y border-slate-200 bg-paper" aria-labelledby="universal-drop-heading">
       <div className="mx-auto max-w-5xl px-5 py-12 sm:py-14">
         <div className="max-w-2xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent-700">New in Folio</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent-700">Universal Drop</p>
           <h2 id="universal-drop-heading" className="mt-2 text-2xl font-semibold tracking-tight text-ink-950 sm:text-3xl">
-            Drop a document. See what Folio can do.
+            Drop documents. See every local option.
           </h2>
           <p className="mt-3 text-[15px] leading-relaxed text-ink-500">
-            Folio checks the file’s content locally, then offers only actions that match what it actually found. Nothing is uploaded.
+            Folio checks each file’s content locally, then offers only actions it can actually complete. Add compatible files to work in one batch. Nothing is uploaded.
           </p>
         </div>
 
         <div className="mt-7 max-w-3xl">
           <Dropzone
             accepts={ACCEPTS}
-            multiple={false}
+            multiple
             disabled={busy}
             onFiles={inspectSelection}
-            onDropIssue={handleDropIssue}
+            onDropIssue={(message) => {
+              resetSelection();
+              setError(message);
+            }}
           />
         </div>
 
         {busy && (
           <p className="mt-4 text-sm font-medium text-ink-700" role="status" aria-live="polite">
-            Inspecting this file locally…
+            Inspecting {items.length || "these"} document{items.length === 1 ? "" : "s"} locally…
           </p>
         )}
 
@@ -193,88 +279,101 @@ export function UniversalDrop() {
           </div>
         )}
 
-        {inspection && selectedFile && (
-          <div ref={selectionCardRef} tabIndex={-1} className="mt-5 max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(16,20,24,0.04)]" aria-label="Detected file">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-5">
-              <div className="w-full max-w-[180px] shrink-0">
-                <DocumentPreview file={selectedFile} compact />
+        {items.length > 0 && (
+          <div
+            ref={selectionCardRef}
+            tabIndex={-1}
+            className="mt-5 max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(16,20,24,0.04)]"
+            aria-label="Selected documents"
+            data-universal-drop-selection="true"
+            data-universal-file-count={items.length}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-ink-950">{selectionLabel(items)}</p>
+                <p className="mt-1 text-sm text-ink-500">Reorder the cards to set the output order.</p>
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-                  <div className="min-w-0">
-                    <p className="truncate text-[15px] font-semibold text-ink-950" title={selectedFile.name}>{selectedFile.name}</p>
-                    <p className="mt-1 text-sm text-ink-500">
-                      Detected as <span className="font-medium text-ink-800">{inspection.formatLabel}</span>
-                      {inspection.generation !== "unknown" && ` · ${inspection.generation} container`}
-                    </p>
-                    <p className="mt-1 text-sm text-ink-500">{formatBytes(selectedFile.size)}</p>
-                  </div>
-                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${inspection.valid && inspection.safety === "safe" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>
-                    {inspection.valid && inspection.safety === "safe" ? "Recognized" : "Needs attention"}
-                  </span>
-                </div>
-              </div>
+              <span className="rounded-full bg-accent-50 px-2.5 py-1 text-xs font-semibold text-accent-700">
+                {formatBytes(items.reduce((total, item) => total + item.file.size, 0))}
+              </span>
             </div>
 
-            {inspection.warningMessages.length > 0 && (
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950">
-                {inspection.warningMessages.map((message) => <p key={message}>{message}</p>)}
-              </div>
-            )}
+            <div className="mt-4">
+              <FileList
+                items={items}
+                reorderable={items.length > 1}
+                disabled={busy}
+                accepts={ACCEPTS}
+                onRemove={removeFile}
+                onMove={moveFile}
+                onAddFiles={inspectSelection}
+                listRef={listRef}
+              />
+            </div>
 
-            {inspection.supportedActions.length > 0 && inspection.valid &&
-              !["pages", "keynote", "numbers"].includes(inspection.kind) && (
-              <div className="mt-5">
-                <h3 className="text-sm font-semibold text-ink-950">Choose an action</h3>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {inspection.supportedActions.map((action) => (
-                    <button
-                      key={action}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => chooseAction(action)}
-                      className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-3 text-left transition hover:border-accent-400 hover:bg-accent-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <span className="block text-sm font-semibold text-ink-950">{capabilityLabel(action)}</span>
-                      <span className="mt-0.5 block text-xs leading-relaxed text-ink-500">{actionDescription(action)}</span>
-                    </button>
-                  ))}
-                </div>
-                {inspection.kind === "pdf" && inspection.supportedActions.includes("merge-pdf") && (
-                  <p className="mt-3 text-xs text-ink-500">Merge starts with this PDF selected; you can add more and reorder them next.</p>
+            {ready && (
+              <div className="mt-5" data-universal-actions="true">
+                {items.length === 1 && ["pages", "keynote", "numbers"].includes(items[0].inspection!.kind) && (
+                  <div className="mb-4 rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm leading-relaxed text-ink-700">
+                    <p className="font-medium text-ink-950">Detected, but conversion is unavailable.</p>
+                    <p className="mt-1">Folio identified this Apple document locally. Native conversion is deferred until Folio can produce a validated target file. An embedded PDF preview, when present, is only a preview.</p>
+                  </div>
+                )}
+                {valid && actions.length > 0 ? (
+                  <>
+                    <h3 className="text-sm font-semibold text-ink-950">Available locally</h3>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {actions.map((action) => (
+                        <button
+                          key={action}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => chooseAction(action)}
+                          aria-label={actionTitle(action, items.length)}
+                          data-universal-action={action}
+                          className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-3 text-left transition hover:border-accent-400 hover:bg-accent-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <span className="block text-sm font-semibold text-ink-950">{actionTitle(action, items.length)}</span>
+                          <span className="mt-0.5 block text-xs leading-relaxed text-ink-500">{actionDescription(action, items.length)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : valid ? (
+                  <p className="rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm leading-relaxed text-ink-700">
+                    Folio recognized these files, but no shared browser-local conversion is enabled for this selection. Native Apple, PowerPoint and Excel conversion remains deferred until it can produce validated target files.
+                  </p>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm leading-relaxed text-ink-700">
+                    <p className="font-medium text-ink-950">Check these files before continuing.</p>
+                    <ul className="mt-2 space-y-1">
+                      {items.filter((item) => item.inspection && !item.inspection.valid).map((item) => (
+                        <li key={item.id}>{item.file.name || "Unnamed file"}: {item.inspection?.warningMessages[0] ?? "This file is not valid."}</li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
             )}
 
-            {inspection.kind === "pages" || inspection.kind === "keynote" || inspection.kind === "numbers" ? (
-              <div className="mt-5 rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm leading-relaxed text-ink-700">
-                <p className="font-medium text-ink-950">Detected, but conversion is unavailable.</p>
-                <p className="mt-1">Folio identified this {inspection.formatLabel.toLowerCase()} locally. Native Pages, Keynote and Numbers conversion is still under evaluation{inspection.supportedActions.includes("embedded-pdf") ? "; an embedded PDF preview is available" : ""}.</p>
-                {inspection.supportedActions.includes("embedded-pdf") && (
-                  <button
-                    type="button"
-                    onClick={() => chooseAction("embedded-pdf")}
-                    disabled={busy}
-                    className="mt-3 min-h-11 rounded-xl bg-ink-950 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 disabled:opacity-50"
-                  >
-                    Prepare embedded PDF preview
-                  </button>
-                )}
-                {previewUrl && (
-                  <a href={previewUrl} target="_blank" rel="noreferrer" className="ml-3 text-sm font-semibold text-accent-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2">
-                    Open preview in a new tab
-                  </a>
-                )}
-              </div>
-            ) : null}
+            {items.map((item) => item.inspection && (
+              <p key={`${item.id}-detail`} className="mt-3 text-xs text-ink-500">
+                {item.file.name || "Unnamed file"}: Detected as {inspectionKindLabel(item.inspection)}
+                {item.inspection.warningMessages.length > 0 && ` · ${item.inspection.warningMessages[0]}`}
+              </p>
+            ))}
 
-            {!inspection.valid && (
-              <p className="mt-4 text-sm text-ink-700">Remove this file and select a valid document to continue.</p>
+            {previewUrl && (
+              <p className="mt-4 text-sm">
+                <a href={previewUrl} target="_blank" rel="noreferrer" className="font-semibold text-accent-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600">
+                  Open preview in a new tab
+                </a>
+              </p>
             )}
           </div>
         )}
 
-        {(inspection || selectedFile || error) && (
+        {(items.length > 0 || error) && (
           <button
             type="button"
             onClick={resetSelection}

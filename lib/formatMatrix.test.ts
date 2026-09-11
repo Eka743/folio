@@ -27,6 +27,7 @@ describe("public format matrix", () => {
       "docx-to-pdf",
       "markdown-to-pdf",
       "pdf-to-markdown",
+      "combine-to-pdf",
     ]);
   });
 

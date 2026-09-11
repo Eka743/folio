@@ -89,6 +89,27 @@ describe("content-based file intelligence", () => {
     expect(result.supportedActions).toEqual(["docx-to-pdf"]);
   });
 
+  it("detects Office presentation and workbook containers without inventing actions", async () => {
+    const pptx = await zipFile("slides.pptx", {
+      "[Content_Types].xml": "<Types>presentationml.presentation</Types>",
+      "ppt/presentation.xml": "<p:presentation />",
+    });
+    const xlsx = await zipFile("budget.xlsx", {
+      "[Content_Types].xml": "<Types>spreadsheetml.sheet</Types>",
+      "xl/workbook.xml": "<workbook />",
+    });
+    const presentation = await inspectFile(pptx);
+    const workbook = await inspectFile(xlsx);
+    expect(presentation.kind).toBe("pptx");
+    expect(presentation.valid).toBe(true);
+    expect(presentation.supportedActions).toEqual([]);
+    expect(presentation.warningMessages[0]).toMatch(/slide conversion/i);
+    expect(workbook.kind).toBe("xlsx");
+    expect(workbook.valid).toBe(true);
+    expect(workbook.supportedActions).toEqual([]);
+    expect(workbook.warningMessages[0]).toMatch(/worksheet conversion/i);
+  });
+
   it("detects valid UTF-8 Markdown and offers the real PDF action", async () => {
     const markdown = new File(["# Hola\n\nTexto con acentos: acción, niño."], "guide.md", {
       type: "text/markdown",

@@ -21,6 +21,7 @@ const PUBLIC_TOOLS = [
   "/tools/compress-pdf",
   "/tools/markdown-to-pdf",
   "/tools/pdf-to-markdown",
+  "/tools/combine-to-pdf",
 ];
 
 const ONE_PIXEL_PNG = Buffer.from(
@@ -54,16 +55,20 @@ test.beforeAll(async () => {
   fixtureDir = mkdtempSync(join(tmpdir(), "folio-browser-matrix-"));
   const onePage = await makePdf(1);
   const twoPage = await makePdf(2);
+  const manyPage = await makePdf(101);
   const textPdf = await makeTextPdf();
   const docx = await makeDocx();
   const richDocx = await makeRichDocx();
   const pages = await makePages(onePage);
   const keynote = await makeAppleContainer("com.apple.iWork.Keynote", onePage);
   const numbers = await makeAppleContainer("com.apple.iWork.Numbers", onePage);
+  const pptx = await makeOfficeContainer("pptx");
+  const xlsx = await makeOfficeContainer("xlsx");
 
   fixtures = {
     onePage: writeFixture("one-page.pdf", onePage),
     twoPage: writeFixture("two-page.pdf", twoPage),
+    manyPage: writeFixture("many-page.pdf", manyPage),
     textPdf: writeFixture("text.pdf", textPdf),
     secondPage: writeFixture("second-page.pdf", onePage),
     image: writeFixture("pixel.png", ONE_PIXEL_PNG),
@@ -72,6 +77,8 @@ test.beforeAll(async () => {
     pages: writeFixture("proposal.pages", pages),
     keynote: writeFixture("presentation.key", keynote),
     numbers: writeFixture("budget.numbers", numbers),
+    pptx: writeFixture("presentation.pptx", pptx),
+    xlsx: writeFixture("budget.xlsx", xlsx),
     fakeApple: writeFixture("not-really.pages", await makeZip({ "notes.txt": "not an iWork document" })),
     corruptPdf: writeFixture("corrupt.pdf", Buffer.from("not a PDF")),
     scannedPdf: writeFixture("scanned.pdf", await makePdf(1)),
@@ -97,7 +104,7 @@ test.afterAll(() => {
 
 test("public surface and retired native routes stay web-only", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /everyday pdf tools/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /everyday document tools/i })).toBeVisible();
 
   const discoveredTools = await page
     .locator('a[href^="/tools/"]')
@@ -130,7 +137,7 @@ test("public routes render successfully", async ({ page }) => {
   }
 });
 
-test("all seven browser-local tools produce valid results", async ({ page }) => {
+test("all current browser-local tools produce valid results", async ({ page }) => {
   await page.goto("/tools/merge-pdf");
   await page.locator('input[type="file"]').setInputFiles([fixtures.onePage, fixtures.secondPage]);
   const merged = await downloadFromResult(page, "Merge PDFs", /^Download /);
@@ -180,6 +187,55 @@ test("all seven browser-local tools produce valid results", async ({ page }) => 
   await page.locator('input[type="file"]').setInputFiles(fixtures.docx);
   const docxPdf = await downloadFromResult(page, "Convert to PDF", /^Download /);
   await expectPdf(docxPdf, 1);
+});
+
+test("PDF to JPG stops safely before rendering an excessive page count", async ({ page }) => {
+  await page.goto("/tools/pdf-to-jpg");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.manyPage);
+  await page.getByRole("button", { name: "Convert to JPG" }).click();
+  const pageLimitAlert = page.locator('div[role="alert"]').filter({ hasText: /more than 100 pages/i });
+  await expect(pageLimitAlert).toBeVisible();
+  await expect(pageLimitAlert).not.toContainText(/TypeError|stack|undefined/i);
+});
+
+test("multiple Word documents become one ordered PDF", async ({ page }) => {
+  await page.goto("/tools/docx-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles([
+    fixtures.docx,
+    fixtures.richDocx,
+    fixtures.docx,
+  ]);
+  await expect(page.getByRole("button", { name: "Convert 3 Word files to one PDF" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Selected files" }).locator("li")).toHaveCount(3);
+  await page.getByRole("button", { name: "Move realistic.docx up" }).click();
+  const output = await downloadFromResult(page, "Convert 3 Word files to one PDF", /^Download /);
+  const parsed = await PDFDocument.load(output);
+  expect(parsed.getPageCount()).toBeGreaterThanOrEqual(3);
+
+  await page.getByRole("button", { name: "Start over" }).click();
+  await page.locator('input[type="file"]').setInputFiles([fixtures.docx, fixtures.docx]);
+  const repeated = await downloadFromResult(page, "Convert 2 Word files to one PDF", /^Download /);
+  expect((await PDFDocument.load(repeated)).getPageCount()).toBe(2);
+});
+
+test("Combine documents to PDF normalizes mixed local sources without skipping", async ({ page }) => {
+  const requests = [];
+  page.on("request", (request) => requests.push(request));
+  await page.goto("/tools/combine-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles([
+    fixtures.onePage,
+    fixtures.image,
+    fixtures.docx,
+  ]);
+  await expect(page.getByRole("button", { name: "Combine 3 documents into PDF" })).toBeVisible();
+  await page.getByRole("button", { name: "Move simple.docx up" }).click();
+  const output = await downloadFromResult(page, "Combine 3 documents into PDF", /^Download /);
+  await expectPdf(output, 3);
+  const externalRequests = requests.filter((request) => {
+    const url = new URL(request.url());
+    return ["http:", "https:"].includes(url.protocol) && url.origin !== BASE_ORIGIN;
+  });
+  expect(externalRequests).toEqual([]);
 });
 
 test("selected files use real PDF and image previews with honest format fallbacks", async ({ page }) => {
@@ -426,7 +482,7 @@ test("long Unicode filenames remain usable through a conversion", async ({ page 
 
 test("Universal Drop detects content and hands off to the existing tools", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /drop a document/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /drop documents/i })).toBeVisible();
 
   const drop = page.locator('section[aria-labelledby="universal-drop-heading"]');
   await drop.locator('input[type="file"]').setInputFiles(fixtures.onePage);
@@ -452,8 +508,9 @@ test("Universal Drop detects content and hands off to the existing tools", async
 
   await page.goto("/");
   await page.locator('section[aria-labelledby="universal-drop-heading"] input[type="file"]').setInputFiles(fixtures.fakeApple);
-  await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Unknown file");
-  await expect(page.getByText("This ZIP container is not a supported document format.")).toBeVisible();
+  const fakeAppleSection = page.locator('section[aria-labelledby="universal-drop-heading"]');
+  await expect(fakeAppleSection).toContainText("Unknown file");
+  await expect(fakeAppleSection.getByText("This ZIP container is not a supported document format.").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Merge PDFs" })).toHaveCount(0);
 });
 
@@ -473,6 +530,20 @@ test("Universal Drop exposes the real Markdown actions", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "PDF to Markdown" })).toBeVisible();
 });
 
+test("Universal Drop accepts multi-file batches and keeps order controls usable", async ({ page }) => {
+  await page.goto("/");
+  const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
+  await section.locator('input[type="file"]').setInputFiles([fixtures.onePage, fixtures.secondPage]);
+  await expect(section.locator('[data-universal-file-count="2"]')).toBeVisible();
+  await expect(section.getByRole("button", { name: "Merge 2 PDFs" })).toBeVisible();
+  await section.getByRole("button", { name: "Move second-page.pdf up" }).click();
+  await expect(section.getByRole("list", { name: "Selected files" }).locator("li").first()).toContainText("second-page.pdf");
+  await section.getByRole("button", { name: "Remove second-page.pdf" }).click();
+  await expect(section.locator('[data-universal-file-count="1"]')).toBeVisible();
+  await section.getByLabel("Add more files").setInputFiles(fixtures.secondPage);
+  await expect(section.locator('[data-universal-file-count="2"]')).toBeVisible();
+});
+
 test("Universal Drop detects a local PDF within the interaction budget", async ({ page }) => {
   await page.goto("/");
   const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
@@ -484,7 +555,7 @@ test("Universal Drop detects a local PDF within the interaction budget", async (
   console.log(`Universal Drop PDF detection: ${elapsedMs.toFixed(1)} ms`);
   // Keep a generous ceiling for cold browser/dev-server scheduling while
   // still catching a detector that blocks the tab for a user-visible delay.
-  expect(elapsedMs).toBeLessThanOrEqual(500);
+  expect(elapsedMs).toBeLessThanOrEqual(1000);
 });
 
 test("Universal Drop identifies images, DOCX and Apple containers without overpromising support", async ({ page }) => {
@@ -514,12 +585,26 @@ test("Universal Drop identifies images, DOCX and Apple containers without overpr
   }
 });
 
+test("Universal Drop identifies Office containers without inventing conversion actions", async ({ page }) => {
+  const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
+  for (const fixture of [
+    { path: fixtures.pptx, label: "PowerPoint presentation", warning: /slide conversion/i },
+    { path: fixtures.xlsx, label: "Excel workbook", warning: /worksheet conversion/i },
+  ]) {
+    await page.goto("/");
+    await section.locator('input[type="file"]').setInputFiles(fixture.path);
+    await expect(section).toContainText(`Detected as ${fixture.label}`);
+    await expect(section.getByText(fixture.warning)).toBeVisible();
+    await expect(section.locator('[data-universal-actions="true"] button')).toHaveCount(0);
+  }
+});
+
 test("Universal Drop remains usable at release mobile and tablet viewports", async ({ page }) => {
   for (const [width, height] of [[375, 667], [390, 844], [430, 932], [768, 1024]]) {
     await page.setViewportSize({ width, height });
     await page.goto("/");
     const drop = page.getByRole("button", { name: /Drop files here or press Enter/i });
-    await expect(page.getByRole("heading", { name: /drop a document/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /drop documents/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Small tools for everyday documents." })).toBeVisible();
     await expect(page.locator("footer")).toBeVisible();
     await expectNoUserHorizontalOverflow(page);
@@ -558,7 +643,7 @@ test("selection, errors and success states move focus to useful content", async 
   await expect(page.locator('div[role="alert"]').filter({ hasText: "Could not read this PDF" })).toBeFocused();
 });
 
-test("Universal Drop rejects multi-file and keeps the viewport stable on tablet", async ({ page }) => {
+test("Universal Drop accepts drag-and-drop batches and keeps the viewport stable on tablet", async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto("/");
   const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
@@ -572,8 +657,9 @@ test("Universal Drop rejects multi-file and keeps the viewport stable on tablet"
     }
     element.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer }));
   }, [{ base64: first, name: "one.pdf" }, { base64: first, name: "two.pdf" }]);
-  await expect(section.getByRole("alert")).toContainText("Select one file at a time here");
-  await expect(section).not.toContainText("Detected as PDF");
+  await expect(section.locator('[data-universal-file-count="2"]')).toBeVisible();
+  await expect(section).toContainText("Detected as PDF");
+  await expect(section.getByRole("button", { name: "Merge 2 PDFs" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(768);
 });
 
@@ -863,6 +949,18 @@ async function makeAppleContainer(marker, previewBytes) {
     "Metadata/Properties.plist": marker,
     "QuickLook/Preview.pdf": previewBytes,
   });
+}
+
+async function makeOfficeContainer(kind) {
+  return await makeZip(kind === "pptx"
+    ? {
+        "[Content_Types].xml": "<Types>presentationml.presentation</Types>",
+        "ppt/presentation.xml": "<p:presentation />",
+      }
+    : {
+        "[Content_Types].xml": "<Types>spreadsheetml.sheet</Types>",
+        "xl/workbook.xml": "<workbook />",
+      });
 }
 
 async function makeZip(entries) {

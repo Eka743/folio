@@ -44,36 +44,65 @@ export function withExtension(base: string, ext: string): string {
   return `${safeFileName(base)}.${ext}`;
 }
 
+let fileReadQueue: Promise<void> = Promise.resolve();
+const FILE_READ_TIMEOUT_MS = 750;
+
+function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(message)), FILE_READ_TIMEOUT_MS);
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
 /**
  * Read a local Blob/File into an independent byte snapshot.
  *
- * Safari can reject Blob.arrayBuffer() with NotReadableError for some
- * picker-backed files. FileReader uses a separate compatibility path and
- * keeps the low-level browser exception out of the user-facing UI. The copy
- * also means downstream parsers never share a browser-owned buffer.
+ * Safari can reject or leave Blob.arrayBuffer() pending for some
+ * picker-backed files. FileReader uses a separate compatibility path and is
+ * the primary read path here. The copy also means downstream parsers never
+ * share a browser-owned buffer.
  */
-export async function readFileBytes(blob: Blob): Promise<Uint8Array> {
-  let nativeError: unknown;
-  try {
-    const buffer = await blob.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    const copy = new Uint8Array(bytes.length);
-    copy.set(bytes);
-    return copy;
-  } catch (error) {
-    nativeError = error;
-  }
-
+async function readFileBytesInternal(blob: Blob): Promise<Uint8Array> {
+  let readerError: unknown;
   if (typeof FileReader === "function") {
     try {
       const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => {
-          if (reader.result instanceof ArrayBuffer) resolve(reader.result);
-          else reject(new Error("The browser returned no readable file data."));
+        let settled = false;
+        const timeout = setTimeout(() => {
+          try {
+            reader.abort();
+          } catch {
+            // The reader may already have completed between the timer and abort.
+          }
+          if (!settled) {
+            settled = true;
+            reject(new Error("The browser did not finish reading the file."));
+          }
+        }, FILE_READ_TIMEOUT_MS);
+        const finish = (callback: () => void) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          callback();
         };
-        reader.onerror = () => reject(reader.error ?? new Error("FileReader failed."));
-        reader.onabort = () => reject(new Error("The file read was aborted."));
+        reader.onload = () => {
+          finish(() => {
+            if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+            else reject(new Error("The browser returned no readable file data."));
+          });
+        };
+        reader.onerror = () => finish(() => reject(reader.error ?? new Error("FileReader failed.")));
+        reader.onabort = () => finish(() => reject(new Error("The file read was aborted.")));
         reader.readAsArrayBuffer(blob);
       });
       const bytes = new Uint8Array(buffer);
@@ -81,17 +110,33 @@ export async function readFileBytes(blob: Blob): Promise<Uint8Array> {
       copy.set(bytes);
       return copy;
     } catch (fallbackError) {
-      throw new FileReadError(
-        "We couldn’t read this file. Remove it and select it again.",
-        { nativeError, fallbackError },
-      );
+      readerError = fallbackError;
     }
   }
 
-  throw new FileReadError(
-    "We couldn’t read this file. Remove it and select it again.",
-    nativeError,
-  );
+  try {
+    const buffer = await withTimeout(blob.arrayBuffer(), "The browser did not finish reading the file.");
+    const bytes = new Uint8Array(buffer);
+    const copy = new Uint8Array(bytes.length);
+    copy.set(bytes);
+    return copy;
+  } catch (nativeError) {
+    throw new FileReadError(
+      "We couldn’t read this file. Remove it and select it again.",
+      { nativeError, readerError },
+    );
+  }
+}
+
+/**
+ * Keep browser-owned Blob handles out of competing read operations. This is
+ * especially important in WebKit when a preview and content inspection start
+ * from the same picker-backed File at nearly the same time.
+ */
+export function readFileBytes(blob: Blob): Promise<Uint8Array> {
+  const next = fileReadQueue.then(() => readFileBytesInternal(blob));
+  fileReadQueue = next.then(() => undefined, () => undefined);
+  return next;
 }
 
 export class FileReadError extends Error {
@@ -112,9 +157,11 @@ export function validateFiles(
   tool: FolioTool,
   incoming: File[],
   alreadyAccepted: number,
+  alreadyAcceptedBytes = 0,
 ): { accepted: File[]; complaints: FileComplaint[] } {
   const accepted: File[] = [];
   const complaints: FileComplaint[] = [];
+  let acceptedBytes = alreadyAcceptedBytes;
 
   for (const file of incoming) {
     if (alreadyAccepted + accepted.length >= tool.maxFiles) {
@@ -160,7 +207,16 @@ export function validateFiles(
       continue;
     }
 
+    if (acceptedBytes + file.size > tool.maxTotalBytes) {
+      complaints.push({
+        fileName: file.name,
+        reason: `The selected files are larger than Folio’s ${formatBytes(tool.maxTotalBytes)} total limit for ${tool.name}.`,
+      });
+      continue;
+    }
+
     accepted.push(file);
+    acceptedBytes += file.size;
   }
 
   return { accepted, complaints };

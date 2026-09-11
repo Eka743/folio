@@ -67,6 +67,10 @@ export function ToolRunner({
   const resultRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(true);
   const fileObjs = useMemo(() => files.map((f) => f.file), [files]);
+  const selectedBytes = useMemo(
+    () => fileObjs.reduce((total, file) => total + file.size, 0),
+    [fileObjs],
+  );
 
   useEffect(() => {
     if (selectionFocusPendingRef.current && files.length > 0) {
@@ -141,6 +145,7 @@ export function ToolRunner({
         tool,
         incoming,
         files.length,
+        selectedBytes,
       );
       if (accepted.length > 0) {
         selectionFocusPendingRef.current = true;
@@ -151,7 +156,7 @@ export function ToolRunner({
       }
       setComplaints(found.map((c) => `${c.fileName}: ${c.reason}`));
     },
-    [tool, files.length, resetResults],
+    [tool, files.length, resetResults, selectedBytes],
   );
 
   const removeFile = useCallback(
@@ -254,13 +259,27 @@ export function ToolRunner({
           break;
         }
         case "docx-to-pdf": {
-          const file = needSingle(fileObjs);
-          const { docxToPdf } = await import("@/lib/pdfOps");
-          const bytes = await docxToPdf(file, (stage) => {
-            if (mountedRef.current) setProgress(stage);
-          });
+          if (fileObjs.length === 0) throw new Error("Add at least one Word document.");
+          const { combineFilesToPdf, docxToPdf } = await import("@/lib/pdfOps");
+          let bytes: Uint8Array;
+          let note: string;
+          if (fileObjs.length > 1) {
+            const combined = await combineFilesToPdf(fileObjs, (stage) => {
+              if (mountedRef.current) setProgress(stage);
+            });
+            bytes = combined.bytes;
+            note = `Combined ${fileObjs.length} Word documents in your selected order. Review pagination and complex layouts before sharing.`;
+          } else {
+            bytes = await docxToPdf(fileObjs[0], (stage) => {
+              if (mountedRef.current) setProgress(stage);
+            });
+            note = "Converted in your browser. Review pagination and complex layouts before sharing.";
+          }
           if (!mountedRef.current) return;
-          const name = withExtension(safeFileName(file.name), "pdf");
+          const name = withExtension(
+            fileObjs.length > 1 ? "folio-word-documents" : safeFileName(fileObjs[0].name),
+            "pdf",
+          );
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
           setEngineUsed("browser");
@@ -268,7 +287,25 @@ export function ToolRunner({
             kind: "file",
             fileName: name,
             sizeBytes: bytes.length,
-            note: "Converted in your browser. Review pagination and complex layouts before sharing.",
+            note,
+          });
+          break;
+        }
+        case "combine-to-pdf": {
+          const { combineFilesToPdf } = await import("@/lib/pdfOps");
+          const combined = await combineFilesToPdf(fileObjs, (stage) => {
+            if (mountedRef.current) setProgress(stage);
+          });
+          if (!mountedRef.current) return;
+          const name = withExtension("folio-combined-documents", "pdf");
+          const url = blobUrl(combined.bytes, "application/pdf");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({
+            kind: "file",
+            fileName: name,
+            sizeBytes: combined.bytes.length,
+            note: `Combined ${fileObjs.length} document${fileObjs.length === 1 ? "" : "s"} in your selected order. Each source converted locally and validated before merging.`,
           });
           break;
         }
@@ -420,6 +457,8 @@ export function ToolRunner({
       ? fileObjs.length >= 2
       : tool.slug === "images-to-pdf"
         ? fileObjs.length >= 1
+        : tool.slug === "docx-to-pdf" || tool.slug === "combine-to-pdf"
+          ? fileObjs.length >= 1
         : fileObjs.length === 1);
 
   return (
@@ -570,7 +609,7 @@ export function ToolRunner({
 
         <div className="flex flex-wrap items-center gap-3">
           <PrimaryButton onClick={run} disabled={!canRun}>
-            {busy ? "Working…" : actionLabel(tool.slug)}
+            {busy ? "Working…" : actionLabel(tool.slug, fileObjs.length)}
           </PrimaryButton>
           {(files.length > 0 || result || complaints.length > 0 || error) && (
             <SecondaryButton onClick={startOver} disabled={busy}>
@@ -685,7 +724,7 @@ function needSingle(objs: File[]): File {
   return objs[0];
 }
 
-function actionLabel(slug: string): string {
+function actionLabel(slug: string, count: number): string {
   switch (slug) {
     case "merge-pdf":
       return "Merge PDFs";
@@ -694,7 +733,7 @@ function actionLabel(slug: string): string {
     case "images-to-pdf":
       return "Create PDF";
     case "docx-to-pdf":
-      return "Convert to PDF";
+      return count > 1 ? `Convert ${count} Word files to one PDF` : "Convert to PDF";
     case "markdown-to-pdf":
       return "Convert to PDF";
     case "pdf-to-markdown":
@@ -705,6 +744,8 @@ function actionLabel(slug: string): string {
       return "Rotate PDF";
     case "compress-pdf":
       return "Compress PDF";
+    case "combine-to-pdf":
+      return `Combine ${count} document${count === 1 ? "" : "s"} into PDF`;
     default:
       return "Process";
   }

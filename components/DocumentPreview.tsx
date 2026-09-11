@@ -9,7 +9,7 @@ export type ListedFile = {
   id: string;
 };
 
-type PreviewKind = "pdf" | "image" | "docx" | "markdown" | "pages" | "keynote" | "numbers" | "file";
+type PreviewKind = "pdf" | "image" | "docx" | "markdown" | "pptx" | "xlsx" | "pages" | "keynote" | "numbers" | "file";
 type PreviewState = "loading" | "ready" | "fallback";
 
 function extensionOf(name: string): string {
@@ -23,6 +23,8 @@ function previewKind(file: File): PreviewKind {
   if (["image/jpeg", "image/png"].includes(file.type) || [".jpg", ".jpeg", ".png"].includes(extension)) return "image";
   if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || extension === ".docx") return "docx";
   if (file.type === "text/markdown" || [".md", ".markdown"].includes(extension)) return "markdown";
+  if (file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation" || [".ppt", ".pptx"].includes(extension)) return "pptx";
+  if (file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || [".xls", ".xlsx"].includes(extension)) return "xlsx";
   if (extension === ".pages") return "pages";
   if ([".key", ".keynote"].includes(extension)) return "keynote";
   if (extension === ".numbers") return "numbers";
@@ -35,6 +37,8 @@ function formatLabel(kind: PreviewKind): string {
     case "image": return "IMAGE";
     case "docx": return "DOCX";
     case "markdown": return "MD";
+    case "pptx": return "PPTX";
+    case "xlsx": return "XLSX";
     case "pages": return "PAGES";
     case "keynote": return "KEYNOTE";
     case "numbers": return "NUMBERS";
@@ -48,6 +52,8 @@ function documentLabel(kind: PreviewKind): string {
     case "image": return "Image";
     case "docx": return "Word document";
     case "markdown": return "Markdown document";
+    case "pptx": return "PowerPoint presentation";
+    case "xlsx": return "Excel workbook";
     case "pages": return "Pages document";
     case "keynote": return "Keynote presentation";
     case "numbers": return "Numbers spreadsheet";

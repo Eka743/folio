@@ -8,6 +8,7 @@ export const PUBLIC_WEB_TOOL_SLUGS = [
   "compress-pdf",
   "markdown-to-pdf",
   "pdf-to-markdown",
+  "combine-to-pdf",
 ] as const;
 
 export type ToolSlug = (typeof PUBLIC_WEB_TOOL_SLUGS)[number];
@@ -39,6 +40,7 @@ export interface FolioTool {
   multiple: boolean;
   maxFiles: number;
   maxFileBytes: number;
+  maxTotalBytes: number;
   processing: "local";
   category: ToolCategory;
   badge?: string;
@@ -48,6 +50,10 @@ export const MAX_PDF_BYTES = 100 * 1024 * 1024;
 export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 export const MAX_DOCX_BYTES = 50 * 1024 * 1024;
 export const MAX_MARKDOWN_BYTES = 10 * 1024 * 1024;
+export const MAX_BATCH_PDF_BYTES = 200 * 1024 * 1024;
+export const MAX_BATCH_IMAGE_BYTES = 100 * 1024 * 1024;
+export const MAX_BATCH_DOCX_BYTES = 100 * 1024 * 1024;
+export const MAX_COMBINE_BYTES = 150 * 1024 * 1024;
 
 const MIME_DOCX =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -65,6 +71,7 @@ export const TOOLS: FolioTool[] = [
     multiple: true,
     maxFiles: 20,
     maxFileBytes: MAX_PDF_BYTES,
+    maxTotalBytes: MAX_BATCH_PDF_BYTES,
     processing: "local",
     category: "PDF",
   },
@@ -80,6 +87,7 @@ export const TOOLS: FolioTool[] = [
     multiple: false,
     maxFiles: 1,
     maxFileBytes: MAX_PDF_BYTES,
+    maxTotalBytes: MAX_PDF_BYTES,
     processing: "local",
     category: "PDF",
   },
@@ -95,6 +103,7 @@ export const TOOLS: FolioTool[] = [
     multiple: true,
     maxFiles: 30,
     maxFileBytes: MAX_IMAGE_BYTES,
+    maxTotalBytes: MAX_BATCH_IMAGE_BYTES,
     processing: "local",
     category: "Images",
   },
@@ -102,14 +111,15 @@ export const TOOLS: FolioTool[] = [
     slug: "docx-to-pdf",
     name: "Word to PDF",
     shortName: "DOCX",
-    description: "Convert a .docx file to PDF in your browser. Beta.",
+    description: "Convert one or more Word documents into one PDF. Beta.",
     longDescription:
-      "Convert a .docx file in your browser. Headings, lists, tables and images are supported, but complex Word layouts and pagination may differ.",
+      "Convert one or more .docx files into one PDF in your browser. Reorder documents before processing; headings, lists, tables and images are supported, but complex Word layouts and pagination may differ.",
     accepts: ".docx",
     acceptMime: [MIME_DOCX],
-    multiple: false,
-    maxFiles: 1,
+    multiple: true,
+    maxFiles: 10,
     maxFileBytes: MAX_DOCX_BYTES,
+    maxTotalBytes: MAX_BATCH_DOCX_BYTES,
     processing: "local",
     category: "Documents",
     badge: "Beta",
@@ -126,6 +136,7 @@ export const TOOLS: FolioTool[] = [
     multiple: false,
     maxFiles: 1,
     maxFileBytes: MAX_PDF_BYTES,
+    maxTotalBytes: MAX_PDF_BYTES,
     processing: "local",
     category: "PDF",
   },
@@ -141,6 +152,7 @@ export const TOOLS: FolioTool[] = [
     multiple: false,
     maxFiles: 1,
     maxFileBytes: MAX_PDF_BYTES,
+    maxTotalBytes: MAX_PDF_BYTES,
     processing: "local",
     category: "PDF",
   },
@@ -156,6 +168,7 @@ export const TOOLS: FolioTool[] = [
     multiple: false,
     maxFiles: 1,
     maxFileBytes: MAX_PDF_BYTES,
+    maxTotalBytes: MAX_PDF_BYTES,
     processing: "local",
     category: "PDF",
   },
@@ -171,6 +184,7 @@ export const TOOLS: FolioTool[] = [
     multiple: false,
     maxFiles: 1,
     maxFileBytes: MAX_MARKDOWN_BYTES,
+    maxTotalBytes: MAX_MARKDOWN_BYTES,
     processing: "local",
     category: "Documents",
   },
@@ -186,6 +200,30 @@ export const TOOLS: FolioTool[] = [
     multiple: false,
     maxFiles: 1,
     maxFileBytes: MAX_PDF_BYTES,
+    maxTotalBytes: MAX_PDF_BYTES,
+    processing: "local",
+    category: "Documents",
+    badge: "Beta",
+  },
+  {
+    slug: "combine-to-pdf",
+    name: "Combine documents to PDF",
+    shortName: "Combine",
+    description: "Join PDFs, Word, Markdown and images into one PDF. Beta.",
+    longDescription:
+      "Normalize PDFs, Word documents, Markdown and JPG/PNG images into one PDF in your chosen order. Each source is processed locally and must convert successfully.",
+    accepts: ".pdf,.docx,.md,.markdown,.jpg,.jpeg,.png",
+    acceptMime: [
+      "application/pdf",
+      MIME_DOCX,
+      "text/markdown",
+      "image/jpeg",
+      "image/png",
+    ],
+    multiple: true,
+    maxFiles: 20,
+    maxFileBytes: MAX_PDF_BYTES,
+    maxTotalBytes: MAX_COMBINE_BYTES,
     processing: "local",
     category: "Documents",
     badge: "Beta",

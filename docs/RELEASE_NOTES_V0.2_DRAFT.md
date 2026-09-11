@@ -5,7 +5,12 @@ your browser. It also adds two real Markdown conversion workflows.
 
 - Universal Drop identifies PDFs, images, DOCX files and Apple Pages, Keynote
   and Numbers containers locally, then shows only actions Folio can actually
-  perform.
+  perform. It now accepts ordered multi-file batches and derives available
+  actions from the public capability graph.
+- Multiple DOCX files can be converted into one validated PDF in selected
+  order. A new mixed Combine documents → PDF Beta normalizes PDFs, DOCX,
+  Markdown and JPG/PNG locally and names the exact source when a segment
+  fails.
 - PDF merge, split, rotate, compression and PDF/JPG workflows have stronger
   browser compatibility, clearer progress and error recovery, and more honest
   output validation.
@@ -26,6 +31,9 @@ your browser. It also adds two real Markdown conversion workflows.
   preview failure falls back without blocking the conversion workflow.
 - PPTX and XLSX conversion are not part of this release: no reliable
   browser-local implementation met the usefulness bar during this phase.
+- Universal Drop and batch tools enforce bounded file counts, aggregate bytes,
+  sequential reads and safe PDF/image workloads for graceful failure on large
+  inputs.
 - Files are processed locally. Folio does not upload document contents or add
   accounts, analytics or tracking.
 

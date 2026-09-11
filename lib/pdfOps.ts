@@ -7,6 +7,8 @@
  */
 
 import { readFileBytes } from "./files";
+import { inspectFiles, type FileInspection } from "./fileIntelligence";
+import { MAX_COMBINE_BYTES } from "./tools";
 import {
   decodeMarkdown,
   markdownToHtml,
@@ -68,15 +70,105 @@ export function sanitizeMammothHtml(html: string): string {
 }
 
 export async function mergePdfs(files: File[]): Promise<Uint8Array> {
+  const documents: Uint8Array[] = [];
+  for (const file of files) documents.push(await readFileBytes(file));
+  return mergePdfBytes(documents);
+}
+
+/** Merge already-independent PDF byte snapshots in their supplied order. */
+export async function mergePdfBytes(
+  documents: readonly Uint8Array[],
+): Promise<Uint8Array> {
   const { PDFDocument } = await import("pdf-lib");
   const out = await PDFDocument.create();
-  for (const file of files) {
-    const bytes = await readFileBytes(file);
+  for (const bytes of documents) {
     const src = await loadPdfDocument(bytes);
     const pages = await out.copyPages(src, src.getPageIndices());
     for (const p of pages) out.addPage(p);
   }
+  if (out.getPageCount() === 0) throw new Error("No PDF pages were available to merge.");
   return out.save({ useObjectStreams: true });
+}
+
+export type CombineProgress = (stage: string) => void;
+
+function combineFailure(file: File, cause: unknown): Error {
+  const detail = cause instanceof Error && cause.message
+    ? cause.message
+    : "the file could not be converted locally";
+  return new Error(`Could not convert ${file.name || "this file"}. ${detail}`);
+}
+
+function inspectionFailure(file: File, inspection: FileInspection): Error {
+  const detail = inspection.warningMessages[0] ?? "Folio could not identify a supported document format.";
+  return new Error(`Could not convert ${file.name || "this file"}. ${detail}`);
+}
+
+/**
+ * Normalize supported local documents into PDF segments, then merge them.
+ * Every input must produce a segment. A failure names the exact source file.
+ */
+export async function combineFilesToPdf(
+  files: File[],
+  onProgress?: CombineProgress,
+): Promise<{ bytes: Uint8Array; pageCount: number }> {
+  if (files.length === 0) throw new Error("Add at least one document to combine.");
+  if (files.length > 20) throw new Error("Select no more than 20 documents at a time.");
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > MAX_COMBINE_BYTES) {
+    throw new Error("The selected documents are larger than Folio’s 150 MB total local limit.");
+  }
+
+  const inspections = await inspectFiles(files);
+  const segments: Uint8Array[] = [];
+  let expectedPages = 0;
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index];
+    const inspection = inspections[index];
+    if (!inspection.valid || !["pdf", "jpeg", "png", "docx", "markdown"].includes(inspection.kind)) {
+      throw inspectionFailure(file, inspection);
+    }
+    onProgress?.(`Preparing ${file.name || `document ${index + 1}`} (${index + 1} of ${files.length})…`);
+    try {
+      let segment: Uint8Array;
+      switch (inspection.kind) {
+        case "pdf":
+          segment = await readFileBytes(file);
+          break;
+        case "docx":
+          segment = await docxToPdf(file, (stage) =>
+            onProgress?.(`${file.name || "Word document"}: ${stage}`),
+          );
+          break;
+        case "markdown":
+          segment = await markdownToPdf(file, (stage) =>
+            onProgress?.(`${file.name || "Markdown document"}: ${stage}`),
+          );
+          break;
+        case "jpeg":
+        case "png":
+          segment = await imagesToPdf([file]);
+          break;
+        default:
+          throw new Error("This format is not supported by the combine workflow.");
+      }
+      const parsed = await loadPdfDocument(segment);
+      const pages = parsed.getPageCount();
+      if (pages < 1) throw new Error("The conversion produced no PDF pages.");
+      expectedPages += pages;
+      segments.push(segment);
+    } catch (cause) {
+      throw combineFailure(file, cause);
+    }
+  }
+
+  onProgress?.(`Merging ${segments.length} PDF segments…`);
+  const bytes = await mergePdfBytes(segments);
+  const output = await loadPdfDocument(bytes);
+  if (output.getPageCount() !== expectedPages) {
+    throw new Error("Folio could not validate the combined PDF page count.");
+  }
+  return { bytes, pageCount: output.getPageCount() };
 }
 
 export async function splitPdf(
@@ -184,6 +276,10 @@ export async function imagesToPdf(files: File[]): Promise<Uint8Array> {
   const margin = 24;
 
   for (const file of files) {
+    const detectedDims = await imageDimensions(file).catch(() => null);
+    if (detectedDims && detectedDims.width * detectedDims.height > MAX_IMAGE_PIXELS) {
+      throw new Error(`The image ${file.name || "file"} is too large to process safely in this browser.`);
+    }
     const raw = await readFileBytes(file);
     const isPng =
       file.type === "image/png" || /\.png$/i.test(file.name);
@@ -215,10 +311,13 @@ export async function imagesToPdf(files: File[]): Promise<Uint8Array> {
       }
     }
 
-    const dims = await imageDimensions(file).catch(() => ({
+    const dims = detectedDims ?? await imageDimensions(file).catch(() => ({
       width: embedded.width,
       height: embedded.height,
     }));
+    if (dims.width * dims.height > MAX_IMAGE_PIXELS || embedded.width * embedded.height > MAX_IMAGE_PIXELS) {
+      throw new Error(`The image ${file.name || "file"} is too large to process safely in this browser.`);
+    }
     const landscape = dims.width > dims.height;
     const pageW = landscape ? A4.h : A4.w;
     const pageH = landscape ? A4.w : A4.h;
@@ -250,6 +349,8 @@ export interface RenderedPage {
 }
 
 const PDF_WORKER_SRC = "/pdf.worker.min.mjs";
+export const MAX_PDF_TO_JPG_PAGES = 100;
+export const MAX_IMAGE_PIXELS = 24_000_000;
 
 export async function renderPdfPages(
   file: File,
@@ -270,6 +371,12 @@ export async function renderPdfPages(
   } catch {
     throw new Error(
       "Could not read this PDF — the file may be corrupted, password-protected, or not a valid PDF.",
+    );
+  }
+  if (pdf.numPages > MAX_PDF_TO_JPG_PAGES) {
+    await pdf.destroy();
+    throw new Error(
+      `This PDF has more than ${MAX_PDF_TO_JPG_PAGES} pages, so JPG rendering is stopped safely.`,
     );
   }
   const out: RenderedPage[] = [];

@@ -4,6 +4,12 @@ Folio is a free, simple, privacy-first browser toolkit for everyday document
 and PDF operations. Open it, pick a tool, select a file, download the result.
 No account, no uploads, no trackers.
 
+Universal Drop is the multi-file entry point: it inspects file content locally,
+keeps the selected order, and offers only browser-local actions supported by
+the whole batch. Mixed PDF, DOCX, Markdown and JPG/PNG batches can be
+normalized into one PDF; multiple DOCX files are also supported by Word → PDF
+Beta.
+
 ## Public web tools
 
 Every public tool below processes files locally in the browser. Results are
@@ -14,21 +20,22 @@ generated in the current tab and downloaded by your browser.
 | Merge PDF | `/tools/merge-pdf` | Combine 2–20 PDFs in your order | Browser |
 | Split PDF | `/tools/split-pdf` | Extract pages with `1-3,5,8-10` syntax | Browser |
 | JPG/PNG → PDF | `/tools/images-to-pdf` | Convert up to 30 images, one per A4 page | Browser |
-| Word → PDF | `/tools/docx-to-pdf` | Convert `.docx` in the browser | Browser Beta |
+| Word → PDF | `/tools/docx-to-pdf` | Convert one or more `.docx` files into one PDF | Browser Beta |
 | PDF → JPG | `/tools/pdf-to-jpg` | Render pages as JPGs, one download or ZIP | Browser |
 | Rotate PDF | `/tools/rotate-pdf` | Rotate all or selected pages | Browser |
 | Compress PDF | `/tools/compress-pdf` | Rewrite PDFs and show honest size changes | Browser |
 | Markdown → PDF | `/tools/markdown-to-pdf` | Render Markdown as a polished A4 PDF | Browser |
 | PDF → Markdown | `/tools/pdf-to-markdown` | Extract readable structure from text PDFs | Browser Beta |
+| Combine documents → PDF | `/tools/combine-to-pdf` | Join PDFs, DOCX, Markdown and JPG/PNG in order | Browser Beta |
 
 ## Local selection previews
 
 Selected files show a small local preview before processing. PDFs render their
 first page with the existing self-hosted PDF.js worker, JPG/PNG files use a
-browser object URL, and DOCX, Markdown and recognized Apple containers use
-honest format cards when a content preview would overpromise. Preview failures
-never block conversion, and preview resources are released when files are
-removed or the workflow is reset.
+browser object URL, and DOCX, Markdown, Office and recognized Apple containers
+use honest format cards when a content preview would overpromise. Preview
+failures never block conversion, and preview resources are released when files
+are removed or the workflow is reset.
 
 Historical native conversion experiments remain in the repository for future
 work, but they are dormant and are not part of the public website, navigation,
@@ -89,7 +96,8 @@ Node 20.19+ is required by the current Next.js/tooling release.
 
 - **DOCX → PDF (Beta):** headings, bold/italic, lists, tables and images are
   supported, but pagination, fonts, headers/footers, footnotes, text boxes and
-  tracked changes may differ. Review before sharing.
+  tracked changes may differ. Multiple DOCX files are converted sequentially
+  and joined in the selected order. Review before sharing.
 - **Markdown → PDF:** raw HTML is disabled and remote images are omitted rather
   than fetched. The output is laid out for readable A4 pages.
 - **PDF → Markdown (Beta):** this is text extraction and reconstruction, not a
@@ -99,7 +107,11 @@ Node 20.19+ is required by the current Next.js/tooling release.
   barely shrink, and image-heavy scans need deeper recompression outside this
   project.
 - **PDF → JPG:** very large PDFs may be slow or memory-heavy on low-end devices.
-- **File caps:** PDFs ≤ 100 MB, images ≤ 25 MB, DOCX ≤ 50 MB.
+- **Apple, PowerPoint and Excel:** content is detected locally, but native
+  conversion is deferred or rejected until Folio can produce a validated
+  browser-local output. An embedded Apple QuickLook PDF is preview-only.
+- **File caps:** individual PDFs ≤ 100 MB, images ≤ 25 MB, DOCX ≤ 50 MB;
+  batch workflows also enforce file-count and aggregate-size limits.
 
 ## Public release compliance
 

@@ -136,6 +136,19 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     limitation:
       "This reconstructs text and defensible structure; scanned pages, complex columns and exact original Markdown are not recovered.",
   },
+  {
+    id: "combine-to-pdf",
+    inputs: ["pdf", "docx", "md", "markdown", "jpg", "jpeg", "png"],
+    output: "pdf",
+    toolSlug: "combine-to-pdf",
+    category: "Documents",
+    title: "Combine documents to PDF",
+    description: "Normalize PDFs, Word, Markdown and images into one PDF in your order.",
+    browser: "beta",
+    status: "browser-beta",
+    limitation:
+      "Each source is normalized locally; DOCX and Markdown layout remains renderer-dependent.",
+  },
 ];
 
 /** Public compatibility matrix. Do not add native-only conversions here. */

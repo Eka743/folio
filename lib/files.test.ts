@@ -138,4 +138,14 @@ describe("validateFiles", () => {
     expect(capped.accepted).toHaveLength(merge.maxFiles);
     expect(capped.complaints.length).toBeGreaterThan(0);
   });
+
+  it("enforces the aggregate byte limit across repeated additions", () => {
+    const first = fakeFile("first.pdf", merge.maxTotalBytes - 100, "application/pdf");
+    const second = fakeFile("second.pdf", 101, "application/pdf");
+    const result = validateFiles(merge, [second], 1, first.size);
+
+    expect(result.accepted).toHaveLength(0);
+    expect(result.complaints[0].fileName).toBe("second.pdf");
+    expect(result.complaints[0].reason).toMatch(/total limit/i);
+  });
 });

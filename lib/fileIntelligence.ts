@@ -7,6 +7,12 @@ import {
   type SafeArchive,
 } from "./safeArchive";
 import { readFileBytes } from "./files";
+import {
+  actionsForKinds,
+  capabilityFormatForKind,
+  getCapability,
+  type CapabilityActionId,
+} from "./capabilityGraph";
 
 export type FolioFileKind =
   | "pdf"
@@ -14,6 +20,8 @@ export type FolioFileKind =
   | "png"
   | "docx"
   | "markdown"
+  | "pptx"
+  | "xlsx"
   | "pages"
   | "keynote"
   | "numbers"
@@ -21,19 +29,7 @@ export type FolioFileKind =
 
 export type FileGeneration = "modern" | "legacy" | "unknown";
 
-export type FileCapabilityAction =
-  | "merge-pdf"
-  | "split-pdf"
-  | "rotate-pdf"
-  | "compress-pdf"
-  | "pdf-to-jpg"
-  | "image-to-pdf"
-  | "docx-to-pdf"
-  | "markdown-to-pdf"
-  | "pdf-to-markdown"
-  | "embedded-pdf"
-  | "preview"
-  | "experimental-render";
+export type FileCapabilityAction = CapabilityActionId;
 
 export type FileWarning =
   | "extension-mismatch"
@@ -112,6 +108,10 @@ function labelFor(kind: FolioFileKind): string {
       return "Word document";
     case "markdown":
       return "Markdown document";
+    case "pptx":
+      return "PowerPoint presentation";
+    case "xlsx":
+      return "Excel workbook";
     case "pages":
       return "Apple Pages document";
     case "keynote":
@@ -120,36 +120,6 @@ function labelFor(kind: FolioFileKind): string {
       return "Apple Numbers spreadsheet";
     default:
       return "Unknown file";
-  }
-}
-
-function actionsFor(
-  kind: FolioFileKind,
-  hasEmbeddedPdf: boolean,
-): FileCapabilityAction[] {
-  switch (kind) {
-    case "pdf":
-      return [
-        "merge-pdf",
-        "split-pdf",
-        "rotate-pdf",
-        "compress-pdf",
-        "pdf-to-jpg",
-        "pdf-to-markdown",
-      ];
-    case "jpeg":
-    case "png":
-      return ["image-to-pdf"];
-    case "docx":
-      return ["docx-to-pdf"];
-    case "markdown":
-      return ["markdown-to-pdf"];
-    case "pages":
-    case "keynote":
-    case "numbers":
-      return hasEmbeddedPdf ? ["embedded-pdf"] : [];
-    default:
-      return [];
   }
 }
 
@@ -165,6 +135,10 @@ function expectedExtensions(kind: FolioFileKind): string[] {
       return [".docx"];
     case "markdown":
       return [".md", ".markdown"];
+    case "pptx":
+      return [".pptx", ".ppt"];
+    case "xlsx":
+      return [".xlsx", ".xls"];
     case "pages":
       return [".pages"];
     case "keynote":
@@ -190,6 +164,10 @@ function expectedMimes(kind: FolioFileKind): string[] {
       ];
     case "markdown":
       return ["text/markdown", "text/plain"];
+    case "pptx":
+      return ["application/vnd.openxmlformats-officedocument.presentationml.presentation"];
+    case "xlsx":
+      return ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
     default:
       return [];
   }
@@ -240,7 +218,11 @@ function finishInspection(
     mime: file.type,
     extensionMatch,
     mimeMatch,
-    supportedActions: actionsFor(kind, options.hasEmbeddedPdf ?? false),
+    supportedActions: capabilityFormatForKind(kind)
+      ? actionsForKinds([capabilityFormatForKind(kind)!], {
+          hasEmbeddedPdf: options.hasEmbeddedPdf ?? false,
+        })
+      : [],
     warnings: [...new Set(warnings)],
     warningMessages: [...new Set(warningMessages)],
     ...(options.archiveErrorCode
@@ -376,6 +358,26 @@ async function inspectZipContainer(
       isContainer: true,
     });
   }
+  const presentationPath = findPath(archive, (path) => path === "ppt/presentation.xml");
+  if (contentTypesPath && presentationPath) {
+    return finishInspection(file, "pptx", {
+      confidence: "high",
+      generation: "modern",
+      valid: true,
+      isContainer: true,
+      warningMessages: ["PowerPoint detection is available, but browser-local slide conversion is not enabled."],
+    });
+  }
+  const workbookPath = findPath(archive, (path) => path === "xl/workbook.xml");
+  if (contentTypesPath && workbookPath) {
+    return finishInspection(file, "xlsx", {
+      confidence: "high",
+      generation: "modern",
+      valid: true,
+      isContainer: true,
+      warningMessages: ["Excel detection is available, but browser-local worksheet conversion is not enabled."],
+    });
+  }
 
   const iwaCount = archive.entries.filter((entry) =>
     entry.path.toLowerCase().startsWith("index/") && entry.path.toLowerCase().endsWith(".iwa"),
@@ -502,6 +504,35 @@ export async function inspectFile(
   });
 }
 
+export const MAX_UNIVERSAL_FILES = 20;
+export const MAX_UNIVERSAL_TOTAL_BYTES = 150 * 1024 * 1024;
+
+/**
+ * Inspect a dropped batch with a conservative client-side concurrency bound.
+ *
+ * WebKit can leave picker-backed Blob reads pending when several reads start
+ * together. A single reader keeps detection predictable without blocking the
+ * UI, and conversion itself is also intentionally sequential for bounded
+ * memory use.
+ */
+export async function inspectFiles(
+  files: File[],
+  options: InspectFileOptions = {},
+): Promise<FileInspection[]> {
+  const inspections: FileInspection[] = Array.from({ length: files.length });
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < files.length) {
+      const index = nextIndex++;
+      inspections[index] = await inspectFile(files[index], options);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(1, Math.max(1, files.length)) }, worker),
+  );
+  return inspections;
+}
+
 /** Read only the exact QuickLook PDF entry from an already inspected iWork file. */
 export async function readEmbeddedPdfPreview(
   file: File,
@@ -526,30 +557,6 @@ function readU32(bytes: Uint8Array, offset: number): number {
 }
 
 export function capabilityLabel(action: FileCapabilityAction): string {
-  switch (action) {
-    case "merge-pdf":
-      return "Merge PDFs";
-    case "split-pdf":
-      return "Extract PDF pages";
-    case "rotate-pdf":
-      return "Rotate PDF";
-    case "compress-pdf":
-      return "Compress PDF";
-    case "pdf-to-jpg":
-      return "Convert PDF to JPG";
-    case "image-to-pdf":
-      return "Create a PDF";
-    case "docx-to-pdf":
-      return "Convert to PDF";
-    case "markdown-to-pdf":
-      return "Convert Markdown to PDF";
-    case "pdf-to-markdown":
-      return "Convert PDF to Markdown";
-    case "embedded-pdf":
-      return "Open embedded PDF preview";
-    case "preview":
-      return "Preview";
-    case "experimental-render":
-      return "Try experimental renderer";
-  }
+  const capability = getCapability(action);
+  return capability?.title ?? action;
 }

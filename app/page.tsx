@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { UniversalDrop } from "@/components/UniversalDrop";
-import { TOOLS, type ToolCategory, type ToolSlug } from "@/lib/tools";
+import { conversionsByCategory, HOMEPAGE_CATEGORIES } from "@/lib/formatMatrix";
+import { getTool, type ToolCategory, type ToolSlug } from "@/lib/tools";
 
-const CATEGORY_ORDER: ToolCategory[] = ["PDF", "Documents", "Images"];
+const CATEGORY_ORDER: ToolCategory[] = [...HOMEPAGE_CATEGORIES];
 
 const ICONS: Record<ToolSlug, React.ReactNode> = {
   "merge-pdf": (
@@ -32,6 +33,9 @@ const ICONS: Record<ToolSlug, React.ReactNode> = {
   "pdf-to-markdown": (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h4M9 12h6M9 16h6"/></svg>
   ),
+  "combine-to-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 3h7l3 3v5H7z"/><path d="M7 13h10v8H7z"/><path d="M14 3v3h3M10 16v3M14 16v3"/></svg>
+  ),
 };
 
 export default function HomePage() {
@@ -44,12 +48,12 @@ export default function HomePage() {
             Free, private, browser-local
           </p>
           <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.035em] text-ink-950 sm:text-6xl sm:leading-[1.05]">
-            Everyday PDF tools, without uploading your files.
+            Everyday document tools, without uploading your files.
           </h1>
           <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-500 sm:text-xl">
-            Merge, split, rotate, compress and convert documents in your
-            browser, including Markdown. No account, no cloud processing, and
-            no document bytes sent to Folio.
+            Drop, combine, convert and organize PDFs, images and everyday
+            documents in your browser. No account, no cloud processing, and no
+            document bytes sent to Folio.
           </p>
           <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-medium text-ink-700">
             <a href="#tools" className="inline-flex items-center gap-2 rounded-xl bg-ink-950 px-4 py-2.5 text-white shadow-sm transition hover:bg-ink-900">
@@ -85,7 +89,9 @@ export default function HomePage() {
 
           <div className="mt-9 space-y-10">
             {CATEGORY_ORDER.map((category) => {
-              const tools = TOOLS.filter((tool) => tool.category === category);
+              const tools = conversionsByCategory(category)
+                .map((conversion) => getTool(conversion.toolSlug))
+                .filter((tool): tool is NonNullable<typeof tool> => Boolean(tool));
               if (tools.length === 0) return null;
               return (
                 <div key={category}>
