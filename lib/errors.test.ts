@@ -27,6 +27,8 @@ describe("user-facing error boundary", () => {
   it("keeps known actionable input messages", () => {
     expect(describeError(new Error("No valid pages selected.")).message).toBe("No valid pages selected.");
     expect(describeError(new Error("Canvas unavailable in this browser.")).code).toBe("browser-capability");
+    expect(describeError(new Error("This PDF appears to contain scanned pages or images. Text extraction is not available for this file yet.")).code).toBe("input");
+    expect(describeError(new Error("Could not read this Markdown file. Choose a valid UTF-8 .md file and try again.")).code).toBe("invalid-markdown");
   });
 
   it("does not expose arbitrary runtime exception text", () => {

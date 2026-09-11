@@ -272,6 +272,45 @@ export function ToolRunner({
           });
           break;
         }
+        case "markdown-to-pdf": {
+          const file = needSingle(fileObjs);
+          const { markdownToPdf } = await import("@/lib/pdfOps");
+          const bytes = await markdownToPdf(file, (stage) => {
+            if (mountedRef.current) setProgress(stage);
+          });
+          if (!mountedRef.current) return;
+          const name = withExtension(safeFileName(file.name), "pdf");
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({
+            kind: "file",
+            fileName: name,
+            sizeBytes: bytes.length,
+            note: "Rendered from sanitized Markdown in your browser. Remote images are not fetched.",
+          });
+          break;
+        }
+        case "pdf-to-markdown": {
+          const file = needSingle(fileObjs);
+          const { pdfToMarkdown } = await import("@/lib/pdfOps");
+          const markdown = await pdfToMarkdown(file, (stage) => {
+            if (mountedRef.current) setProgress(stage);
+          });
+          if (!mountedRef.current) return;
+          const bytes = new TextEncoder().encode(markdown);
+          const name = withExtension(safeFileName(file.name), "md");
+          const url = blobUrl(bytes, "text/markdown;charset=utf-8");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({
+            kind: "file",
+            fileName: name,
+            sizeBytes: bytes.length,
+            note: "Extracted locally. This is a readable reconstruction, not a perfect copy of the original document layout.",
+          });
+          break;
+        }
         case "pdf-to-jpg": {
           const file = needSingle(fileObjs);
           setProgress("Loading renderer…");
@@ -508,6 +547,21 @@ export function ToolRunner({
           </StatusBox>
         )}
 
+        {tool.slug === "markdown-to-pdf" && (
+          <StatusBox kind="info">
+            Markdown is rendered locally into a readable A4 PDF. Raw HTML is
+            disabled and remote images are omitted instead of being fetched.
+          </StatusBox>
+        )}
+
+        {tool.slug === "pdf-to-markdown" && (
+          <StatusBox kind="info">
+            Beta: Folio extracts text and only reconstructs headings and lists
+            when the PDF layout makes them reasonably clear. Scanned PDFs and
+            complex columns need OCR or manual cleanup.
+          </StatusBox>
+        )}
+
         {busy && <ProgressBar label={progress || "Working…"} />}
 
         {error && <StatusBox ref={errorRef} tabIndex={-1} kind="error">{error}</StatusBox>}
@@ -639,6 +693,10 @@ function actionLabel(slug: string): string {
       return "Create PDF";
     case "docx-to-pdf":
       return "Convert to PDF";
+    case "markdown-to-pdf":
+      return "Convert to PDF";
+    case "pdf-to-markdown":
+      return "Convert to Markdown";
     case "pdf-to-jpg":
       return "Convert to JPG";
     case "rotate-pdf":

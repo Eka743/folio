@@ -6,6 +6,8 @@ export const PUBLIC_WEB_TOOL_SLUGS = [
   "pdf-to-jpg",
   "rotate-pdf",
   "compress-pdf",
+  "markdown-to-pdf",
+  "pdf-to-markdown",
 ] as const;
 
 export type ToolSlug = (typeof PUBLIC_WEB_TOOL_SLUGS)[number];
@@ -45,6 +47,7 @@ export interface FolioTool {
 export const MAX_PDF_BYTES = 100 * 1024 * 1024;
 export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 export const MAX_DOCX_BYTES = 50 * 1024 * 1024;
+export const MAX_MARKDOWN_BYTES = 10 * 1024 * 1024;
 
 const MIME_DOCX =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -155,6 +158,37 @@ export const TOOLS: FolioTool[] = [
     maxFileBytes: MAX_PDF_BYTES,
     processing: "local",
     category: "PDF",
+  },
+  {
+    slug: "markdown-to-pdf",
+    name: "Markdown to PDF",
+    shortName: "Markdown",
+    description: "Turn Markdown into a polished, downloadable PDF.",
+    longDescription:
+      "Convert a Markdown file into a clean A4 PDF with headings, lists, code, tables and safe local rendering.",
+    accepts: ".md,.markdown",
+    acceptMime: ["text/markdown"],
+    multiple: false,
+    maxFiles: 1,
+    maxFileBytes: MAX_MARKDOWN_BYTES,
+    processing: "local",
+    category: "Documents",
+  },
+  {
+    slug: "pdf-to-markdown",
+    name: "PDF to Markdown",
+    shortName: "PDF to MD",
+    description: "Extract useful Markdown from text-based PDFs.",
+    longDescription:
+      "Extract readable text and conservative list and heading structure from a PDF. Scanned PDFs need OCR, which Folio does not provide.",
+    accepts: ".pdf",
+    acceptMime: ["application/pdf"],
+    multiple: false,
+    maxFiles: 1,
+    maxFileBytes: MAX_PDF_BYTES,
+    processing: "local",
+    category: "Documents",
+    badge: "Beta",
   },
 ];
 

@@ -13,6 +13,7 @@ export type FolioFileKind =
   | "jpeg"
   | "png"
   | "docx"
+  | "markdown"
   | "pages"
   | "keynote"
   | "numbers"
@@ -28,6 +29,8 @@ export type FileCapabilityAction =
   | "pdf-to-jpg"
   | "image-to-pdf"
   | "docx-to-pdf"
+  | "markdown-to-pdf"
+  | "pdf-to-markdown"
   | "embedded-pdf"
   | "preview"
   | "experimental-render";
@@ -107,6 +110,8 @@ function labelFor(kind: FolioFileKind): string {
       return "PNG image";
     case "docx":
       return "Word document";
+    case "markdown":
+      return "Markdown document";
     case "pages":
       return "Apple Pages document";
     case "keynote":
@@ -130,12 +135,15 @@ function actionsFor(
         "rotate-pdf",
         "compress-pdf",
         "pdf-to-jpg",
+        "pdf-to-markdown",
       ];
     case "jpeg":
     case "png":
       return ["image-to-pdf"];
     case "docx":
       return ["docx-to-pdf"];
+    case "markdown":
+      return ["markdown-to-pdf"];
     case "pages":
     case "keynote":
     case "numbers":
@@ -155,6 +163,8 @@ function expectedExtensions(kind: FolioFileKind): string[] {
       return [".png"];
     case "docx":
       return [".docx"];
+    case "markdown":
+      return [".md", ".markdown"];
     case "pages":
       return [".pages"];
     case "keynote":
@@ -178,6 +188,8 @@ function expectedMimes(kind: FolioFileKind): string[] {
       return [
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       ];
+    case "markdown":
+      return ["text/markdown", "text/plain"];
     default:
       return [];
   }
@@ -258,6 +270,24 @@ function inspectJpeg(file: File, bytes: Uint8Array): FileInspection {
     confidence: "high",
     valid,
     warningMessages: valid ? [] : ["The JPEG start or end marker is missing."],
+    warnings: valid ? [] : ["malformed-content"],
+  });
+}
+
+function inspectMarkdown(file: File, bytes: Uint8Array): FileInspection {
+  let valid = false;
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    valid = text.trim().length > 0 && !text.includes("\0");
+  } catch {
+    valid = false;
+  }
+  return finishInspection(file, "markdown", {
+    confidence: "high",
+    valid,
+    warningMessages: valid
+      ? []
+      : ["The Markdown file is empty or is not valid UTF-8 text."],
     warnings: valid ? [] : ["malformed-content"],
   });
 }
@@ -457,6 +487,10 @@ export async function inspectFile(
   if (hasBytes(bytes, PDF_SIGNATURE)) return inspectPdf(file, bytes);
   if (hasBytes(bytes, JPEG_SIGNATURE)) return inspectJpeg(file, bytes);
   if (hasBytes(bytes, PNG_SIGNATURE)) return inspectPng(file, bytes);
+  const extension = fileExtension(file.name);
+  if (extension === ".md" || extension === ".markdown" || file.type === "text/markdown") {
+    return inspectMarkdown(file, bytes);
+  }
   if (bytes.length >= 4 && readU32(bytes, 0) === 0x04034b50) {
     return inspectZipContainer(file, bytes, options.limits ?? DESKTOP_ARCHIVE_LIMITS);
   }
@@ -507,6 +541,10 @@ export function capabilityLabel(action: FileCapabilityAction): string {
       return "Create a PDF";
     case "docx-to-pdf":
       return "Convert to PDF";
+    case "markdown-to-pdf":
+      return "Convert Markdown to PDF";
+    case "pdf-to-markdown":
+      return "Convert PDF to Markdown";
     case "embedded-pdf":
       return "Open embedded PDF preview";
     case "preview":

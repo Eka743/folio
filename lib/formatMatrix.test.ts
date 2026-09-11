@@ -25,6 +25,8 @@ describe("public format matrix", () => {
       "pdf-to-jpg",
       "images-to-pdf",
       "docx-to-pdf",
+      "markdown-to-pdf",
+      "pdf-to-markdown",
     ]);
   });
 
@@ -34,6 +36,18 @@ describe("public format matrix", () => {
     expect(docx.status).toBe("browser-beta");
     expect(docx.limitation).toMatch(/pagination/i);
     expect(docx.limitation).toMatch(/complex/i);
+  });
+
+  it("keeps Markdown conversions browser-local and honest about reconstruction", () => {
+    const toPdf = getConversion("markdown-to-pdf")!;
+    expect(toPdf.browser).toBe("full");
+    expect(toPdf.status).toBe("browser");
+    expect(toPdf.limitation).toMatch(/HTML|remote images/i);
+
+    const toMarkdown = getConversion("pdf-to-markdown")!;
+    expect(toMarkdown.browser).toBe("beta");
+    expect(toMarkdown.status).toBe("browser-beta");
+    expect(toMarkdown.limitation).toMatch(/scanned|complex columns|original Markdown/i);
   });
 
   it("keeps browser PDF and image tools fully local", () => {

@@ -26,6 +26,12 @@ const ICONS: Record<ToolSlug, React.ReactNode> = {
   "compress-pdf": (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 14h6v6H4zM14 4h6v6h-6z"/><path d="M10 17h7a3 3 0 0 0 3-3v-1M14 7H7a3 3 0 0 0-3 3v1"/></svg>
   ),
+  "markdown-to-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="m7 9 2 2 2-2M7 14h5M15 9v6m0 0 2-2m-2 2-2-2"/></svg>
+  ),
+  "pdf-to-markdown": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h4M9 12h6M9 16h6"/></svg>
+  ),
 };
 
 export default function HomePage() {
@@ -42,8 +48,8 @@ export default function HomePage() {
           </h1>
           <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-500 sm:text-xl">
             Merge, split, rotate, compress and convert documents in your
-            browser. No account, no cloud processing, and no document bytes
-            sent to Folio.
+            browser, including Markdown. No account, no cloud processing, and
+            no document bytes sent to Folio.
           </p>
           <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-medium text-ink-700">
             <a href="#tools" className="inline-flex items-center gap-2 rounded-xl bg-ink-950 px-4 py-2.5 text-white shadow-sm transition hover:bg-ink-900">

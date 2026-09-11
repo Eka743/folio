@@ -10,13 +10,13 @@ export const metadata: Metadata = {
     template: "%s · Folio",
   },
   description:
-    "Folio is a free, privacy-first toolkit for everyday document tasks: merge, split, rotate, compress and convert PDFs and images — processed in your browser.",
+    "Folio is a free, privacy-first toolkit for everyday document tasks: merge, split, rotate, compress and convert PDFs, images and Markdown — processed in your browser.",
   metadataBase: new URL(siteUrl()),
   alternates: { canonical: siteUrl() },
   openGraph: {
     title: "Folio — Free, private PDF & document tools",
     description:
-      "Merge, split, rotate, compress and convert PDFs and images. Free, no account, files stay on your device.",
+      "Merge, split, rotate, compress and convert PDFs, images and Markdown. Free, no account, files stay on your device.",
     type: "website",
     siteName: "Folio",
     url: siteUrl(),

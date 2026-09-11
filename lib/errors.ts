@@ -6,6 +6,7 @@ export type UserErrorCode =
   | "invalid-pdf"
   | "invalid-image"
   | "invalid-docx"
+  | "invalid-markdown"
   | "unsafe-container"
   | "invalid-container"
   | "browser-capability"
@@ -53,6 +54,9 @@ function knownMessage(message: string): { code: UserErrorCode; message: string }
       message: "Could not read this PDF. It may be corrupted, password-protected, or not a valid PDF.",
     };
   }
+  if (/^Could not read this Markdown|valid UTF-8|binary data|larger than Folio’s 10 MB/i.test(message)) {
+    return { code: "invalid-markdown", message: "We couldn’t read this Markdown file. Choose a valid UTF-8 .md file and try again." };
+  }
   if (/^Could not read .+\.|^Could not render page|^Generated JPEG could not be decoded/i.test(message)) {
     return { code: "invalid-image", message: "We couldn’t read this image. Choose a valid JPG or PNG and try again." };
   }
@@ -62,7 +66,7 @@ function knownMessage(message: string): { code: UserErrorCode; message: string }
   if (/Canvas unavailable|browser could not render/i.test(message)) {
     return { code: "browser-capability", message: "This browser couldn’t render the file. Try again or use another browser." };
   }
-  if (/^Add at least|^Add exactly|^Empty page or range found|^No valid pages|^No images|^No readable content|^This Apple document has no embedded PDF preview|^The embedded PDF preview is not valid|^Only .+ allowed|^Select one file at a time/i.test(message)) {
+  if (/^Add at least|^Add exactly|^Empty page or range found|^No valid pages|^No images|^No readable content|scanned pages|Text extraction is not available|more than \d+ pages|more extractable text|Markdown block is too large|Markdown file would create more than|^This Apple document has no embedded PDF preview|^The embedded PDF preview is not valid|^Only .+ allowed|^Select one file at a time/i.test(message)) {
     return { code: "input", message };
   }
   return null;

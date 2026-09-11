@@ -7,6 +7,11 @@
  */
 
 import { readFileBytes } from "./files";
+import {
+  decodeMarkdown,
+  markdownToHtml,
+  MAX_MARKDOWN_BYTES,
+} from "./markdown";
 
 export async function getPdfPageCount(data: Uint8Array): Promise<number> {
   const doc = await loadPdfDocument(data);
@@ -293,6 +298,324 @@ export async function renderPdfPages(
   }
 }
 
+const MAX_PDF_MARKDOWN_PAGES = 300;
+const MAX_PDF_MARKDOWN_BYTES = 5 * 1024 * 1024;
+const MAX_MARKDOWN_PDF_PAGES = 100;
+
+type PdfTextItem = {
+  str?: string;
+  transform?: number[];
+  width?: number;
+  height?: number;
+  hasEOL?: boolean;
+};
+
+type PdfTextLine = {
+  text: string;
+  y: number;
+  fontSize: number;
+  x: number;
+  gapAbove: number;
+};
+
+function median(values: number[]): number {
+  const sorted = [...values].filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (sorted.length === 0) return 12;
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function joinPdfItems(items: PdfTextItem[]): string {
+  const positioned = items
+    .map((item) => {
+      const transform = item.transform ?? [];
+      return {
+        item,
+        x: Number(transform[4] ?? 0),
+        width: Number(item.width ?? 0),
+      };
+    })
+    .sort((a, b) => a.x - b.x);
+  let text = "";
+  let previousEnd = 0;
+  for (const { item, x, width } of positioned) {
+    const value = (item.str ?? "").replace(/\s+/g, " ").trim();
+    if (!value) continue;
+    const gap = x - previousEnd;
+    const needsSpace = text.length > 0 && gap > 1.5 && !/^[,.;:!?%)]/.test(value) && !/[([{/]$/.test(text);
+    if (needsSpace) text += " ";
+    text += value;
+    previousEnd = Math.max(previousEnd, x + width);
+  }
+  return text.trim();
+}
+
+function pdfTextLines(items: PdfTextItem[]): PdfTextLine[] {
+  const placed = items
+    .filter((item) => (item.str ?? "").trim().length > 0)
+    .map((item) => {
+      const transform = item.transform ?? [];
+      return {
+        item,
+        x: Number(transform[4] ?? 0),
+        y: Number(transform[5] ?? 0),
+        fontSize: Math.max(1, Math.abs(Number(transform[3] ?? transform[0] ?? item.height ?? 12))),
+      };
+    })
+    .sort((a, b) => b.y - a.y || a.x - b.x);
+  const groups: Array<{ y: number; items: PdfTextItem[]; x: number; fontSize: number }> = [];
+  for (const item of placed) {
+    const tolerance = Math.max(2, item.fontSize * 0.35);
+    const group = groups.find((candidate) => Math.abs(candidate.y - item.y) <= tolerance);
+    if (group) {
+      group.items.push(item.item);
+      group.x = Math.min(group.x, item.x);
+      group.fontSize = Math.max(group.fontSize, item.fontSize);
+    } else {
+      groups.push({ y: item.y, items: [item.item], x: item.x, fontSize: item.fontSize });
+    }
+  }
+  const lines = groups
+    .map((group) => ({
+      text: joinPdfItems(group.items),
+      y: group.y,
+      fontSize: group.fontSize,
+      x: group.x,
+      gapAbove: 0,
+    }))
+    .filter((line) => line.text.length > 0)
+    .sort((a, b) => b.y - a.y || a.x - b.x);
+  for (let index = 1; index < lines.length; index++) {
+    lines[index].gapAbove = Math.max(0, lines[index - 1].y - lines[index].y);
+  }
+  return lines;
+}
+
+function safeExtractedLink(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  const value = url.trim();
+  return /^(?:https?:|mailto:)/i.test(value) ? value : null;
+}
+
+function appendRecoveredLinks(
+  text: string,
+  y: number,
+  annotations: Array<{ url?: unknown; rect?: number[] }>,
+): string {
+  const urls = annotations
+    .filter((annotation) => {
+      const rect = annotation.rect ?? [];
+      return rect.length >= 4 && y >= Math.min(rect[1], rect[3]) - 4 && y <= Math.max(rect[1], rect[3]) + 4;
+    })
+    .map((annotation) => safeExtractedLink(annotation.url))
+    .filter((url): url is string => Boolean(url));
+  const unique = [...new Set(urls)];
+  if (unique.length === 0) return text;
+  return `${text} ${unique.map((url) => `[link](${url})`).join(" ")}`;
+}
+
+function pageTextToMarkdown(
+  items: PdfTextItem[],
+  annotations: Array<{ url?: unknown; rect?: number[] }>,
+): string {
+  const lines = pdfTextLines(items);
+  const bodySize = median(lines.map((line) => line.fontSize));
+  const output: string[] = [];
+  let paragraph: string[] = [];
+  const flushParagraph = () => {
+    if (paragraph.length > 0) output.push(paragraph.join(" ").trim());
+    paragraph = [];
+  };
+
+  for (const line of lines) {
+    const text = appendRecoveredLinks(line.text, line.y, annotations);
+    const isHeading = line.text.length <= 120 &&
+      line.fontSize >= Math.max(14, bodySize * 1.4) &&
+      !/[.!?:;]$/.test(line.text) &&
+      !/^(?:[-*+•●◦▪‣]|\d+[.)])\s+/.test(line.text);
+    if (isHeading) {
+      flushParagraph();
+      const level = line.fontSize >= bodySize * 1.8 ? 1 : line.fontSize >= bodySize * 1.55 ? 2 : 3;
+      output.push(`${"#".repeat(level)} ${text}`);
+      continue;
+    }
+
+    const bullet = /^(?:[-*+]|[•●◦▪‣])\s+(.+)$/.exec(text);
+    const ordered = /^(\d+)[.)]\s+(.+)$/.exec(text);
+    if (bullet || ordered) {
+      flushParagraph();
+      output.push(ordered ? `${ordered[1]}. ${ordered[2]}` : `- ${bullet![1]}`);
+      continue;
+    }
+
+    const paragraphGap = line.gapAbove > Math.max(bodySize * 1.9, 18);
+    if (paragraphGap) flushParagraph();
+    paragraph.push(text);
+  }
+  flushParagraph();
+  return output.join("\n").trim();
+}
+
+/** Extract readable, conservative Markdown from a text-based PDF locally. */
+export async function pdfToMarkdown(
+  file: File,
+  onProgress?: (stage: string) => void,
+): Promise<string> {
+  onProgress?.("Reading PDF text…");
+  const pdfjs = await import("pdfjs-dist");
+  if (!pdfjs.GlobalWorkerOptions.workerSrc) pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
+  const data = await readFileBytes(file);
+  let pdf;
+  try {
+    pdf = await pdfjs.getDocument({ data }).promise;
+  } catch {
+    throw new Error("Could not read this PDF — the file may be corrupted, password-protected, or not a valid PDF.");
+  }
+  if (pdf.numPages > MAX_PDF_MARKDOWN_PAGES) {
+    await pdf.destroy();
+    throw new Error(`This PDF has more than ${MAX_PDF_MARKDOWN_PAGES} pages, so text extraction is stopped safely.`);
+  }
+  const pages: string[] = [];
+  try {
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      onProgress?.(`Extracting page ${pageNumber} of ${pdf.numPages}…`);
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent({ includeMarkedContent: false });
+      let annotations: Array<{ url?: unknown; rect?: number[] }> = [];
+      try {
+        annotations = await page.getAnnotations({ intent: "display" });
+      } catch {
+        // Annotation support varies by PDF. Text extraction remains useful.
+      }
+      const markdown = pageTextToMarkdown(content.items as PdfTextItem[], annotations);
+      if (markdown) pages.push(markdown);
+      page.cleanup();
+      if (pages.join("\n\n").length > MAX_PDF_MARKDOWN_BYTES) {
+        throw new Error("This PDF contains more extractable text than Folio can safely prepare in one download.");
+      }
+    }
+  } finally {
+    await pdf.destroy();
+  }
+  const result = pages.join("\n\n").trim();
+  if (!result) {
+    throw new Error("This PDF appears to contain scanned pages or images. Text extraction is not available for this file yet.");
+  }
+  return `${result}\n`;
+}
+
+function markdownPageStyles(): string {
+  return `<style>
+    .folio-markdown{box-sizing:border-box;width:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#101418;font-size:15px;line-height:1.55;overflow-wrap:anywhere}
+    .folio-markdown h1{font-size:30px;line-height:1.15;letter-spacing:-.025em;margin:0 0 18px;font-weight:750}
+    .folio-markdown h2{font-size:23px;line-height:1.2;letter-spacing:-.02em;margin:22px 0 10px;font-weight:700}
+    .folio-markdown h3{font-size:19px;line-height:1.25;margin:18px 0 8px;font-weight:700}
+    .folio-markdown h4,.folio-markdown h5,.folio-markdown h6{font-size:16px;line-height:1.3;margin:15px 0 7px;font-weight:700}
+    .folio-markdown p{margin:0 0 12px;white-space:pre-wrap}
+    .folio-markdown strong{font-weight:750}.folio-markdown em{font-style:italic}
+    .folio-markdown a{color:#1d4ed8;text-decoration:underline}.folio-markdown code{border-radius:5px;background:#eef2f7;padding:1px 4px;font-family:"SFMono-Regular",Menlo,monospace;font-size:.88em}
+    .folio-markdown pre{box-sizing:border-box;margin:14px 0;padding:13px 15px;border-radius:10px;background:#17212b;color:#f5f7fa;white-space:pre-wrap;overflow-wrap:anywhere;font:12.5px/1.5 "SFMono-Regular",Menlo,monospace}
+    .folio-markdown pre code{padding:0;background:transparent;color:inherit;font-size:inherit}
+    .folio-markdown ul,.folio-markdown ol{margin:0 0 13px;padding-left:25px}.folio-markdown li{margin:4px 0}.folio-markdown li.folio-md-level-1{margin-left:18px}.folio-markdown li.folio-md-level-2{margin-left:36px}.folio-markdown li.folio-md-level-3{margin-left:54px}
+    .folio-markdown blockquote{margin:14px 0;padding:9px 15px;border-left:4px solid #93c5fd;background:#eff6ff;color:#334155}
+    .folio-markdown hr{border:0;border-top:1px solid #cbd5e1;margin:20px 0}.folio-markdown-table-wrap{width:100%;overflow:hidden}
+    .folio-md-table-wrap{width:100%;overflow:hidden}.folio-markdown table{width:100%;table-layout:fixed;border-collapse:collapse;margin:14px 0;font-size:13px}.folio-markdown th,.folio-markdown td{border:1px solid #cbd5e1;padding:7px 8px;text-align:left;overflow-wrap:anywhere;vertical-align:top}.folio-markdown th{background:#f1f5f9;font-weight:700}
+    .folio-md-image{display:block;max-width:100%;max-height:230px;margin:12px auto;object-fit:contain}.folio-md-image-note{display:inline-block;border:1px dashed #94a3b8;border-radius:7px;padding:5px 8px;color:#64748b;font-size:12px}
+  </style>`;
+}
+
+async function renderMarkdownPagesToPdf(
+  html: string,
+  onProgress?: (stage: string) => void,
+): Promise<Uint8Array> {
+  const [{ jsPDF }, html2canvas] = await Promise.all([
+    import("jspdf"),
+    import("html2canvas").then((module) => module.default),
+  ]);
+  const source = document.createElement("div");
+  source.style.cssText = "position:fixed;left:-20000px;top:0;width:794px;visibility:hidden;";
+  source.innerHTML = `${markdownPageStyles()}<div class="folio-markdown">${html}</div>`;
+  document.body.appendChild(source);
+  const pages: HTMLDivElement[] = [];
+  const content = source.querySelector<HTMLDivElement>(".folio-markdown");
+  if (!content) {
+    source.remove();
+    throw new Error("Could not lay out this Markdown file.");
+  }
+  try {
+    const blocks = [...content.children] as HTMLElement[];
+    const newPage = () => {
+      const page = document.createElement("div");
+      page.style.cssText = "box-sizing:border-box;width:794px;height:1123px;padding:58px 64px;background:#fff;overflow:hidden;position:fixed;left:-10000px;top:0;visibility:visible;";
+      page.className = "folio-markdown folio-markdown-page";
+      return page;
+    };
+    let page = newPage();
+    source.appendChild(page);
+    for (const block of blocks) {
+      if (block.tagName === "PRE" && (block.textContent?.split("\n").length ?? 0) > 200) {
+        throw new Error("A Markdown block is too large to fit safely on a PDF page. Shorten it and try again.");
+      }
+      const copy = block.cloneNode(true) as HTMLElement;
+      page.appendChild(copy);
+      if (page.scrollHeight > page.clientHeight + 2 && page.children.length > 1) {
+        page.removeChild(copy);
+        pages.push(page);
+        if (pages.length >= MAX_MARKDOWN_PDF_PAGES) {
+          throw new Error(`This Markdown file would create more than ${MAX_MARKDOWN_PDF_PAGES} PDF pages.`);
+        }
+        page = newPage();
+        source.appendChild(page);
+        page.appendChild(copy);
+      } else if (page.scrollHeight > page.clientHeight + 2) {
+        throw new Error("A Markdown block is too large to fit safely on a PDF page. Shorten it and try again.");
+      }
+    }
+    if (page.children.length > 0) {
+      pages.push(page);
+      if (pages.length > MAX_MARKDOWN_PDF_PAGES) {
+        throw new Error(`This Markdown file would create more than ${MAX_MARKDOWN_PDF_PAGES} PDF pages.`);
+      }
+    }
+    if (pages.length === 0) {
+      throw new Error("No readable content found in this Markdown file.");
+    }
+
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
+    for (let index = 0; index < pages.length; index++) {
+      onProgress?.(`Rendering page ${index + 1} of ${pages.length}…`);
+      const images = [...pages[index].querySelectorAll("img")];
+      await Promise.all(images.map((image) => image.decode?.().catch(() => undefined)));
+      const canvas = await html2canvas(pages[index], { scale: 2, backgroundColor: "#ffffff", useCORS: false, logging: false });
+      if (index > 0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(`${index + 1} / ${pages.length}`, 195, 290, { align: "right" });
+    }
+    const output = new Uint8Array(pdf.output("arraybuffer") as ArrayBuffer);
+    const parsed = await loadPdfDocument(output);
+    if (parsed.getPageCount() < 1) throw new Error("Folio could not create a readable PDF.");
+    return output;
+  } finally {
+    source.remove();
+  }
+}
+
+/** Render safe Markdown into a styled, multi-page A4 PDF in the browser. */
+export async function markdownToPdf(
+  file: File,
+  onProgress?: (stage: string) => void,
+): Promise<Uint8Array> {
+  if (file.size > MAX_MARKDOWN_BYTES) {
+    throw new Error("This Markdown file is larger than Folio’s 10 MB local limit.");
+  }
+  const markdown = decodeMarkdown(await readFileBytes(file));
+  onProgress?.("Preparing Markdown layout…");
+  const html = markdownToHtml(markdown);
+  return renderMarkdownPagesToPdf(html, onProgress);
+}
+
 /**
  * DOCX -> PDF via formatted HTML rendering.
  *
@@ -336,9 +659,9 @@ export async function docxToPdf(
   host.style.cssText =
     "position:fixed;left:-10000px;top:0;width:794px;background:#fff;";
   host.innerHTML =
-    `<div class="folio-docx" style="width:794px;background:#fff;color:#111;` +
+    `<div class="folio-docx" style="box-sizing:border-box;width:794px;background:#fff;color:#111;` +
     `font-family:Georgia,'Times New Roman',serif;font-size:15px;line-height:1.6;` +
-    `padding:48px 56px;word-wrap:break-word;">${safeHtml}</div>` +
+    `padding:48px 56px;word-wrap:break-word;overflow-wrap:anywhere;">${safeHtml}</div>` +
     `<style>
       .folio-docx h1{font-size:28px;line-height:1.25;margin:0 0 12px;font-family:Inter,system-ui,sans-serif;font-weight:700}
       .folio-docx h2{font-size:22px;margin:22px 0 8px;font-family:Inter,system-ui,sans-serif;font-weight:700}
@@ -349,6 +672,7 @@ export async function docxToPdf(
       .folio-docx table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}
       .folio-docx th,.folio-docx td{border:1px solid #999;padding:6px 8px;text-align:left}
       .folio-docx img{max-width:100%;height:auto}
+      .folio-docx tr,.folio-docx img{break-inside:avoid}
       .folio-docx a{color:#1d4ed8;text-decoration:underline}
     </style>`;
   document.body.appendChild(host);

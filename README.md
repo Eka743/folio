@@ -18,6 +18,8 @@ generated in the current tab and downloaded by your browser.
 | PDF → JPG | `/tools/pdf-to-jpg` | Render pages as JPGs, one download or ZIP | Browser |
 | Rotate PDF | `/tools/rotate-pdf` | Rotate all or selected pages | Browser |
 | Compress PDF | `/tools/compress-pdf` | Rewrite PDFs and show honest size changes | Browser |
+| Markdown → PDF | `/tools/markdown-to-pdf` | Render Markdown as a polished A4 PDF | Browser |
+| PDF → Markdown | `/tools/pdf-to-markdown` | Extract readable structure from text PDFs | Browser Beta |
 
 Historical native conversion experiments remain in the repository for future
 work, but they are dormant and are not part of the public website, navigation,
@@ -79,6 +81,11 @@ Node 20.19+ is required by the current Next.js/tooling release.
 - **DOCX → PDF (Beta):** headings, bold/italic, lists, tables and images are
   supported, but pagination, fonts, headers/footers, footnotes, text boxes and
   tracked changes may differ. Review before sharing.
+- **Markdown → PDF:** raw HTML is disabled and remote images are omitted rather
+  than fetched. The output is laid out for readable A4 pages.
+- **PDF → Markdown (Beta):** this is text extraction and reconstruction, not a
+  perfect inverse of the source. Scanned pages, complex columns, tables and
+  exact original formatting may need manual cleanup.
 - **Compress PDF:** client-side optimization only. Already-optimized PDFs may
   barely shrink, and image-heavy scans need deeper recompression outside this
   project.

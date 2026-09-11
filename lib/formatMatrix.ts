@@ -110,6 +110,32 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     limitation:
       "Headings, lists, tables and images are supported, but complex layouts, pagination, headers, footers and tracked changes may differ.",
   },
+  {
+    id: "markdown-to-pdf",
+    inputs: ["md", "markdown"],
+    output: "pdf",
+    toolSlug: "markdown-to-pdf",
+    category: "Documents",
+    title: "Markdown to PDF",
+    description: "Turn Markdown into a polished, downloadable PDF.",
+    browser: "full",
+    status: "browser",
+    limitation:
+      "Raw HTML is disabled, remote images are omitted, and output is laid out for A4 pages.",
+  },
+  {
+    id: "pdf-to-markdown",
+    inputs: ["pdf"],
+    output: "md",
+    toolSlug: "pdf-to-markdown",
+    category: "Documents",
+    title: "PDF to Markdown",
+    description: "Extract useful Markdown from text-based PDFs.",
+    browser: "beta",
+    status: "browser-beta",
+    limitation:
+      "This reconstructs text and defensible structure; scanned pages, complex columns and exact original Markdown are not recovered.",
+  },
 ];
 
 /** Public compatibility matrix. Do not add native-only conversions here. */

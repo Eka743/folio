@@ -1,7 +1,7 @@
 # Folio v0.2 — release notes draft
 
 Folio v0.2 makes everyday document work easier while keeping processing in
-your browser.
+your browser. It also adds two real Markdown conversion workflows.
 
 - Universal Drop identifies PDFs, images, DOCX files and Apple Pages, Keynote
   and Numbers containers locally, then shows only actions Folio can actually
@@ -11,9 +11,17 @@ your browser.
   output validation.
 - JPG/PNG to PDF and DOCX to PDF Beta remain local browser workflows; review
   DOCX pagination and complex layouts before sharing.
+- Markdown to PDF renders a safe, styled Markdown subset into a downloadable
+  A4 PDF. Raw HTML is disabled and remote images are omitted rather than
+  fetched.
+- PDF to Markdown extracts readable text and conservative heading/list
+  structure from text-based PDFs. It is labelled Beta because reconstruction is
+  not a perfect inverse of the source layout.
 - Apple documents can be recognized and may expose a validated embedded PDF
   preview when the file contains one. Generic Pages, Keynote and Numbers
   conversion is not included.
+- PPTX and XLSX conversion are not part of this release: no reliable
+  browser-local implementation met the usefulness bar during this phase.
 - Files are processed locally. Folio does not upload document contents or add
   accounts, analytics or tracking.
 

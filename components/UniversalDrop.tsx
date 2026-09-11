@@ -8,7 +8,7 @@ import { formatBytes } from "@/lib/files";
 import { describeError } from "@/lib/errors";
 import { getTool, type FolioTool } from "@/lib/tools";
 
-const ACCEPTS = ".pdf,.jpg,.jpeg,.png,.docx,.pages,.key,.keynote,.numbers";
+const ACCEPTS = ".pdf,.jpg,.jpeg,.png,.docx,.md,.markdown,.pages,.key,.keynote,.numbers";
 
 function toolForAction(action: FileCapabilityAction): FolioTool | undefined {
   const slug = action === "image-to-pdf" ? "images-to-pdf" : action;
@@ -27,10 +27,14 @@ function actionDescription(action: FileCapabilityAction): string {
       return "Rewrite the PDF locally and compare the result honestly.";
     case "pdf-to-jpg":
       return "Render each page as a JPG image.";
+    case "pdf-to-markdown":
+      return "Extract readable text and conservative structure locally.";
     case "image-to-pdf":
       return "Add more images and place one on each PDF page.";
     case "docx-to-pdf":
       return "Convert this Word document locally. Beta.";
+    case "markdown-to-pdf":
+      return "Render this Markdown file into a polished A4 PDF.";
     case "embedded-pdf":
       return "Open the file’s own QuickLook PDF preview in a new tab.";
     default:

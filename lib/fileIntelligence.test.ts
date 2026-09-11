@@ -89,6 +89,26 @@ describe("content-based file intelligence", () => {
     expect(result.supportedActions).toEqual(["docx-to-pdf"]);
   });
 
+  it("detects valid UTF-8 Markdown and offers the real PDF action", async () => {
+    const markdown = new File(["# Hola\n\nTexto con acentos: acción, niño."], "guide.md", {
+      type: "text/markdown",
+    });
+    const result = await inspectFile(markdown);
+    expect(result.kind).toBe("markdown");
+    expect(result.valid).toBe(true);
+    expect(result.supportedActions).toEqual(["markdown-to-pdf"]);
+  });
+
+  it("rejects empty and invalid UTF-8 Markdown content", async () => {
+    const empty = await inspectFile(new File(["\n"], "empty.md", { type: "text/markdown" }));
+    expect(empty.kind).toBe("markdown");
+    expect(empty.valid).toBe(false);
+    const invalid = await inspectFile(new File([new Uint8Array([0xff, 0xfe])], "bad.md", { type: "text/markdown" }));
+    expect(invalid.kind).toBe("markdown");
+    expect(invalid.valid).toBe(false);
+    expect(invalid.warnings).toContain("malformed-content");
+  });
+
   it("identifies modern Pages and exposes only a bounded embedded preview", async () => {
     const preview = await pdfFile("preview.pdf");
     const pages = await zipFile("proposal.pages", {
