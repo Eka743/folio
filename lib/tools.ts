@@ -9,6 +9,10 @@ export const PUBLIC_WEB_TOOL_SLUGS = [
   "markdown-to-pdf",
   "pdf-to-markdown",
   "combine-to-pdf",
+  "pages-to-pdf",
+  "keynote-to-pdf",
+  "numbers-to-xlsx",
+  "numbers-to-pdf",
 ] as const;
 
 export type ToolSlug = (typeof PUBLIC_WEB_TOOL_SLUGS)[number];
@@ -16,18 +20,15 @@ export type ToolSlug = (typeof PUBLIC_WEB_TOOL_SLUGS)[number];
 /** Historical native routes kept only so old bookmarks can redirect cleanly. */
 export const LEGACY_TOOL_SLUGS = [
   "word-to-pdf",
-  "pages-to-pdf",
   "pages-to-word",
   "powerpoint-to-pdf",
-  "keynote-to-pdf",
   "keynote-to-powerpoint",
   "excel-to-pdf",
-  "numbers-to-pdf",
   "numbers-to-excel",
 ] as const;
 
 export type LegacyToolSlug = (typeof LEGACY_TOOL_SLUGS)[number];
-export type ToolCategory = "PDF" | "Documents" | "Images";
+export type ToolCategory = "PDF" | "Documents" | "Images" | "Apple";
 
 export interface FolioTool {
   slug: ToolSlug;
@@ -54,6 +55,7 @@ export const MAX_BATCH_PDF_BYTES = 200 * 1024 * 1024;
 export const MAX_BATCH_IMAGE_BYTES = 100 * 1024 * 1024;
 export const MAX_BATCH_DOCX_BYTES = 100 * 1024 * 1024;
 export const MAX_COMBINE_BYTES = 150 * 1024 * 1024;
+export const MAX_APPLE_BYTES = 100 * 1024 * 1024;
 
 const MIME_DOCX =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -226,6 +228,74 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_COMBINE_BYTES,
     processing: "local",
     category: "Documents",
+    badge: "Beta",
+  },
+  {
+    slug: "pages-to-pdf",
+    name: "Pages to PDF",
+    shortName: "Pages",
+    description: "Export supported Pages content to PDF locally. Beta.",
+    longDescription:
+      "Convert a .pages document into a reviewable PDF in your browser. Text, tables, images and basic shapes are supported; unsupported content fails closed.",
+    accepts: ".pages",
+    acceptMime: ["application/vnd.apple.pages"],
+    multiple: false,
+    maxFiles: 1,
+    maxFileBytes: MAX_APPLE_BYTES,
+    maxTotalBytes: MAX_APPLE_BYTES,
+    processing: "local",
+    category: "Apple",
+    badge: "Beta",
+  },
+  {
+    slug: "keynote-to-pdf",
+    name: "Keynote to PDF",
+    shortName: "Keynote",
+    description: "Export supported Keynote slides to PDF locally. Beta.",
+    longDescription:
+      "Convert a .key presentation into a reviewable PDF in your browser. Text, tables, images, basic shapes and saved chart data are supported; unsupported content fails closed.",
+    accepts: ".key,.keynote",
+    acceptMime: ["application/vnd.apple.keynote"],
+    multiple: false,
+    maxFiles: 1,
+    maxFileBytes: MAX_APPLE_BYTES,
+    maxTotalBytes: MAX_APPLE_BYTES,
+    processing: "local",
+    category: "Apple",
+    badge: "Beta",
+  },
+  {
+    slug: "numbers-to-xlsx",
+    name: "Numbers to XLSX",
+    shortName: "Numbers",
+    description: "Export saved Numbers tables to Excel locally. Beta.",
+    longDescription:
+      "Convert a .numbers spreadsheet into an .xlsx workbook in your browser. Saved cell values and table structure are preserved; formulas are not recalculated.",
+    accepts: ".numbers",
+    acceptMime: ["application/vnd.apple.numbers"],
+    multiple: false,
+    maxFiles: 1,
+    maxFileBytes: MAX_APPLE_BYTES,
+    maxTotalBytes: MAX_APPLE_BYTES,
+    processing: "local",
+    category: "Apple",
+    badge: "Beta",
+  },
+  {
+    slug: "numbers-to-pdf",
+    name: "Numbers to PDF",
+    shortName: "Numbers PDF",
+    description: "Export supported Numbers tables to a readable PDF. Beta.",
+    longDescription:
+      "Convert a .numbers spreadsheet into a readable PDF in your browser. Tables and saved chart data are rendered locally; native print styling and formula recalculation are not reproduced.",
+    accepts: ".numbers",
+    acceptMime: ["application/vnd.apple.numbers"],
+    multiple: false,
+    maxFiles: 1,
+    maxFileBytes: MAX_APPLE_BYTES,
+    maxTotalBytes: MAX_APPLE_BYTES,
+    processing: "local",
+    category: "Apple",
     badge: "Beta",
   },
 ];

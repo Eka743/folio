@@ -291,6 +291,35 @@ export function ToolRunner({
           });
           break;
         }
+        case "pages-to-pdf":
+        case "keynote-to-pdf":
+        case "numbers-to-pdf":
+        case "numbers-to-xlsx": {
+          const file = needSingle(fileObjs);
+          const isXlsx = tool.slug === "numbers-to-xlsx";
+          setProgress(isXlsx ? "Reading Numbers tables…" : "Rendering Apple document…");
+          const { appleToPdf, numbersToXlsx } = await import("@/lib/iwork");
+          const bytes = isXlsx
+            ? await numbersToXlsx(file)
+            : await appleToPdf(file, tool.slug === "pages-to-pdf" ? "pages" : tool.slug === "keynote-to-pdf" ? "keynote" : "numbers");
+          if (!mountedRef.current) return;
+          const extension = isXlsx ? "xlsx" : "pdf";
+          const name = withExtension(safeFileName(file.name), extension);
+          const url = blobUrl(bytes, isXlsx
+            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            : "application/pdf");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({
+            kind: "file",
+            fileName: name,
+            sizeBytes: bytes.length,
+            note: isXlsx
+              ? "Saved Numbers cell values and table structure were exported locally. Formulas are not recalculated."
+              : "Exported locally from the supported Apple content subset. Review the PDF before sharing.",
+          });
+          break;
+        }
         case "combine-to-pdf": {
           const { combineFilesToPdf } = await import("@/lib/pdfOps");
           const combined = await combineFilesToPdf(fileObjs, (stage) => {
@@ -603,6 +632,15 @@ export function ToolRunner({
           </StatusBox>
         )}
 
+        {(tool.slug === "pages-to-pdf" || tool.slug === "keynote-to-pdf" || tool.slug === "numbers-to-pdf" || tool.slug === "numbers-to-xlsx") && (
+          <StatusBox kind="info">
+            Beta: Folio processes the Apple container locally. Saved text, tables,
+            images and basic shapes are supported where the document exposes them;
+            animations, transitions, formula recalculation and unsupported content
+            are not exported.
+          </StatusBox>
+        )}
+
         {busy && <ProgressBar label={progress || "Working…"} />}
 
         {error && <StatusBox ref={errorRef} tabIndex={-1} kind="error">{error}</StatusBox>}
@@ -746,6 +784,14 @@ function actionLabel(slug: string, count: number): string {
       return "Compress PDF";
     case "combine-to-pdf":
       return `Combine ${count} document${count === 1 ? "" : "s"} into PDF`;
+    case "pages-to-pdf":
+      return "Convert to PDF";
+    case "keynote-to-pdf":
+      return "Convert to PDF";
+    case "numbers-to-xlsx":
+      return "Convert to XLSX";
+    case "numbers-to-pdf":
+      return "Convert to PDF";
     default:
       return "Process";
   }

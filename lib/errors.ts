@@ -63,6 +63,9 @@ function knownMessage(message: string): { code: UserErrorCode; message: string }
   if (/DOCX|Word document|document\.xml/i.test(message)) {
     return { code: "invalid-docx", message: "We couldn’t read this Word document. Choose a valid DOCX file and try again." };
   }
+  if (/^Folio couldn’t read this (?:Pages|Keynote|Numbers) file|^This Apple document|^This Numbers file|^This Apple chart|^Merged Apple table/i.test(message)) {
+    return { code: "input", message };
+  }
   if (/Canvas unavailable|browser could not render/i.test(message)) {
     return { code: "browser-capability", message: "This browser couldn’t render the file. Try again or use another browser." };
   }

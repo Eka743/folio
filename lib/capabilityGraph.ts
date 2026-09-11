@@ -34,7 +34,11 @@ export type CapabilityActionId =
   | "markdown-to-pdf"
   | "pdf-to-markdown"
   | "combine-to-pdf"
-  | "embedded-pdf";
+  | "embedded-pdf"
+  | "pages-to-pdf"
+  | "keynote-to-pdf"
+  | "numbers-to-xlsx"
+  | "numbers-to-pdf";
 
 export type CapabilityKind = "conversion" | "preview";
 export type CapabilityBrowserStatus = "ready" | "beta";
@@ -46,7 +50,7 @@ export interface CapabilityDefinition {
   inputs: CapabilityFormat[];
   output: string;
   toolSlug?: string;
-  category: "PDF" | "Documents" | "Images";
+  category: "PDF" | "Documents" | "Images" | "Apple";
   title: string;
   description: string;
   browser: CapabilityBrowserStatus;
@@ -88,9 +92,9 @@ export const CAPABILITY_GRAPH: readonly CapabilityDefinition[] = [
     kind: "preview",
     inputs: ["pages", "keynote", "numbers"],
     output: "pdf-preview",
-    category: "Documents",
-    title: "Open embedded PDF preview",
-    description: "Open an Apple document’s own QuickLook PDF preview.",
+    category: "Apple",
+    title: "Export embedded PDF preview",
+    description: "Export an Apple document’s own QuickLook PDF preview.",
     browser: "beta",
     limitation: "An embedded preview is not native conversion or an editable output.",
   },
@@ -117,7 +121,16 @@ export function actionsForKinds(
   );
 
   if (kinds.length === 1 && ["pages", "keynote", "numbers"].includes(first)) {
-    return options.hasEmbeddedPdf ? ["embedded-pdf"] : [];
+    const action = first === "pages"
+      ? "pages-to-pdf"
+      : first === "keynote"
+        ? "keynote-to-pdf"
+        : "numbers-to-xlsx";
+    const actions: CapabilityActionId[] = [];
+    if (options.hasEmbeddedPdf) actions.push("embedded-pdf");
+    actions.push(action);
+    if (first === "numbers") actions.push("numbers-to-pdf");
+    return actions;
   }
   if (!allCombinable) return [];
   if (allSame && first === "pdf") {

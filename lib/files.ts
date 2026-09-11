@@ -79,14 +79,18 @@ async function readFileBytesInternal(blob: Blob): Promise<Uint8Array> {
         const reader = new FileReader();
         let settled = false;
         const timeout = setTimeout(() => {
-          try {
-            reader.abort();
-          } catch {
-            // The reader may already have completed between the timer and abort.
-          }
           if (!settled) {
             settled = true;
+            clearTimeout(timeout);
             reject(new Error("The browser did not finish reading the file."));
+            // Do not call reader.abort() here. Some WebKit builds can block
+            // synchronously while aborting an invalidated picker-backed Blob,
+            // which would prevent the rejection and fallback read from
+            // reaching the caller. Dropping the handlers lets the reader be
+            // collected after the browser finishes or abandons its operation.
+            reader.onload = null;
+            reader.onerror = null;
+            reader.onabort = null;
           }
         }, FILE_READ_TIMEOUT_MS);
         const finish = (callback: () => void) => {
@@ -102,7 +106,9 @@ async function readFileBytesInternal(blob: Blob): Promise<Uint8Array> {
           });
         };
         reader.onerror = () => finish(() => reject(reader.error ?? new Error("FileReader failed.")));
-        reader.onabort = () => finish(() => reject(new Error("The file read was aborted.")));
+        reader.onabort = () => {
+          finish(() => reject(new Error("The file read was aborted.")));
+        };
         reader.readAsArrayBuffer(blob);
       });
       const bytes = new Uint8Array(buffer);

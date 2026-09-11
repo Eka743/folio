@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 /**
- * Disposable, opt-in inspection harness for the iWork renderer candidate.
+ * Opt-in inspection harness for the pinned iWork renderer.
  *
- * This script intentionally has no production import path and does not add a
- * renderer to Folio's dependencies. Run it from a separate evaluation folder
- * with the candidate installed there, then pass --package-dir.
+ * Run it with a checkout or install containing the pinned package, then pass
+ * --package-dir. It remains an evaluation tool: production conversion is
+ * deliberately limited to Folio's validated structured Beta subset.
  */
 
 import { execFileSync } from "node:child_process";
@@ -354,7 +354,7 @@ const report = {
   packageDir,
   fixtureDir: fixtureDirArgument ? path.resolve(fixtureDirArgument) : undefined,
   installed: Boolean(resolved),
-  verdict: "EXPERIMENTAL — NOT FOR PRODUCTION",
+  verdict: "SCOPED BETA — PUBLIC EXPORTS FAIL CLOSED",
   gates: {
     bundleIsolation: "required",
     networkFreeRuntime: "required",
@@ -416,5 +416,5 @@ if (process.argv.includes("--json")) {
     console.log(`Structural assertions: ${report.fixtureAudit.structuralPassed}/${report.fixtureAudit.passed} passed`);
     console.log(`Adversarial cases: ${report.adversarialAudit.passed}/${report.adversarialAudit.passed + report.adversarialAudit.failed} passed`);
   }
-  console.log("Public Pages/Keynote/Numbers conversion remains disabled.");
+  console.log("Public Apple conversion is limited to Folio's validated structured Beta subset.");
 }

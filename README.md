@@ -107,9 +107,10 @@ Node 20.19+ is required by the current Next.js/tooling release.
   barely shrink, and image-heavy scans need deeper recompression outside this
   project.
 - **PDF → JPG:** very large PDFs may be slow or memory-heavy on low-end devices.
-- **Apple, PowerPoint and Excel:** content is detected locally, but native
-  conversion is deferred or rejected until Folio can produce a validated
-  browser-local output. An embedded Apple QuickLook PDF is preview-only.
+- **Apple, PowerPoint and Excel:** Pages, Keynote and Numbers are detected
+  locally. Pages → PDF, Keynote → PDF, Numbers → XLSX and Numbers → PDF are
+  scoped Beta exports for supported structured content; unsupported Apple
+  content fails closed. An embedded Apple QuickLook PDF is preview-only.
 - **File caps:** individual PDFs ≤ 100 MB, images ≤ 25 MB, DOCX ≤ 50 MB;
   batch workflows also enforce file-count and aggregate-size limits.
 

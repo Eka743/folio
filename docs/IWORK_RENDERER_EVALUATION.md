@@ -1,9 +1,12 @@
-# iWork renderer evaluation
+# iWork renderer evaluation (Phase 2E baseline)
 
-Folio v0.2 identifies Pages, Keynote and Numbers containers locally, but does
-not expose generic Apple-document conversion. The public browser tools remain
-the seven conversions in `lib/formatMatrix.ts`. This document records the
-isolated evaluation only; it is not a support announcement.
+This document records the Phase 2E evaluation that preceded scoped Apple
+support. Phase 2F re-opened the exact candidate below and adopted it for the
+limited browser-local Beta described in
+[`docs/APPLE_SUPPORT.md`](APPLE_SUPPORT.md): Pages → PDF, Keynote → PDF,
+Numbers → XLSX and Numbers → PDF. The public actions use a lazy module Worker,
+validate their target files, and fail closed for limited or unsupported
+content. Native Apple fidelity is not claimed.
 
 ## Candidate identity and isolation
 
@@ -20,9 +23,9 @@ The candidate reviewed on 2026-09-10 was:
 - Largest published files: `dist/iwork.parser.js` 4,237,425 bytes and
   `dist/iwork.worker.js` 4,220,971 bytes
 
-The package was installed only under `/tmp/folio-iwork-runtime.*`. It is not a
-Folio dependency, is not in the Next.js client graph, and is not included in a
-Folio production build.
+The Phase 2E package was installed only under `/tmp/folio-iwork-runtime.*`.
+Phase 2F now pins the same version in Folio; its parser and Worker remain lazy
+and are not part of the initial homepage bundle.
 
 The repeatable entry point is:
 
@@ -186,35 +189,34 @@ conversion is made.
 
 ## Decision
 
-**Do not adopt `@file-viewer/renderer-iwork` for public conversion in this
-phase.** Pages and Keynote remain experimental candidates for future work;
-Numbers is not ready; public iWork conversion remains disabled. The current
-Folio branch contains identification and a bounded embedded QuickLook PDF
-preview only. No candidate dependency, worker, network request, upload path or
-public iWork action was added.
+**Phase 2E decision (superseded):** Do not adopt the candidate for unrestricted
+native-fidelity conversion. Phase 2F adopted a scoped Beta subset only, with
+the boundaries in `docs/APPLE_SUPPORT.md`; no native helper route, cloud
+processing or editable Apple output was added.
 
 ## Bundle and performance gates
 
-The candidate was not added to Folio's dependency graph. A production build
-comparison was made between `origin/main` at `e81a12a` and this branch after
-the Phase 2B changes:
+The Phase 2E candidate was not added to Folio's dependency graph. A production
+build comparison was made between `origin/main` at `e81a12a` and that branch
+after the Phase 2B changes. Phase 2F's separate lazy Apple chunk and Worker
+are documented in `docs/APPLE_SUPPORT.md` and the release report.
 
 | Measurement | `origin/main` | This branch | Change |
 | --- | ---: | ---: | ---: |
 | All emitted client JavaScript | 24 files / 2,742,518 bytes | 26 files / 2,792,283 bytes | +49,765 bytes (+1.81%) |
 | Homepage initial client entry | 23,131 bytes | 70,633 bytes | +47,502 bytes |
 | Tool-route initial client entry | 45,028 bytes | 47,291 bytes | +2,263 bytes |
-| Candidate iWork parser + worker only | — | 8,458,396 bytes | not shipped |
+| Candidate iWork parser + worker only | — | 8,458,396 bytes | Phase 2E only |
 
 The homepage increase is the intentional Universal Drop surface; the tool
-route remains lazy for the heavy conversion libraries. The current lazy
-conversion chunks are approximately 396,701 bytes for `pdf-lib`, 330,657
+route remains lazy for the heavy conversion libraries. The Phase 2E lazy
+conversion chunks were approximately 396,701 bytes for `pdf-lib`, 330,657
 bytes for PDF.js, 418,911 bytes for jsPDF, 398,556 bytes for Mammoth and
-127,475 bytes for JSZip. No iWork lazy chunk exists because no iWork renderer
-was adopted. The candidate package declares no optional or bundled
-dependencies and publishes no source maps in its 25-file package inventory;
-tree-shaking effectiveness was not assumed from that metadata and requires a
-future integration build to measure.
+127,475 bytes for JSZip. Phase 2F emits the iWork parser and Worker separately
+and keeps them out of the initial homepage chunks; the current build sizes are
+recorded in the release report. The candidate package declares no optional or
+bundled dependencies and publishes no source maps in its 25-file package
+inventory.
 
 The isolated candidate dependency audit on 2026-09-10 reported **0**
 moderate-or-higher vulnerabilities across 24 production/optional resolved
@@ -237,9 +239,10 @@ renderer; it does not provide a Folio-compatible PDF byte output contract.
 `window.print()` or browser print-to-PDF was not accepted as a conversion path:
 it is browser- and printer-profile-dependent, cannot provide deterministic
 download validation, and is not a safe substitute for native Apple fidelity.
-Folio's existing PDF engines cannot consume the candidate model without a new
-integration layer. Therefore no candidate-to-PDF route, rasterized PDF route,
-or public iWork conversion action was added.
+Folio's existing PDF engines could not consume the candidate model without a
+new integration layer. That was the Phase 2E reason no public action was added;
+Phase 2F supplies a separate structured-subset renderer and keeps this
+document's native-fidelity warning in force.
 
 ## Apple reference procedure
 

@@ -141,7 +141,7 @@ describe("content-based file intelligence", () => {
     expect(result.kind).toBe("pages");
     expect(result.generation).toBe("modern");
     expect(result.valid).toBe(true);
-    expect(result.supportedActions).toEqual(["embedded-pdf"]);
+    expect(result.supportedActions).toEqual(["embedded-pdf", "pages-to-pdf"]);
     expect(result.warnings).toContain("renderer-evaluation-pending");
   });
 

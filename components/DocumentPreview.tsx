@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { formatBytes } from "@/lib/files";
 import { schedulePdfThumbnail } from "@/lib/pdfThumbnail";
+import { readEmbeddedPdfPreview } from "@/lib/fileIntelligence";
 
 export type ListedFile = {
   file: File;
   id: string;
+  hasEmbeddedPreview?: boolean;
 };
 
 type PreviewKind = "pdf" | "image" | "docx" | "markdown" | "pptx" | "xlsx" | "pages" | "keynote" | "numbers" | "file";
@@ -202,6 +204,50 @@ function ImagePreview({ file, compact }: { file: File; compact: boolean }) {
   );
 }
 
+function ApplePreview({ file, compact, hasEmbeddedPreview }: { file: File; compact: boolean; hasEmbeddedPreview: boolean }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [state, setState] = useState<PreviewState>(hasEmbeddedPreview ? "loading" : "ready");
+
+  useEffect(() => {
+    if (!hasEmbeddedPreview) {
+      return;
+    }
+    let active = true;
+    let createdUrl: string | null = null;
+    readEmbeddedPdfPreview(file).then((bytes) => {
+      if (!active) return;
+      const copy = new Uint8Array(bytes.length);
+      copy.set(bytes);
+      const nextUrl = URL.createObjectURL(new Blob([copy], { type: "application/pdf" }));
+      createdUrl = nextUrl;
+      setUrl(nextUrl);
+      setState("ready");
+    }, () => {
+      if (active) setState("fallback");
+    });
+    return () => {
+      active = false;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [file, hasEmbeddedPreview]);
+
+  if (!hasEmbeddedPreview) return <FormatPreview kind={previewKind(file)} compact={compact} />;
+  return (
+    <PreviewFrame kind={previewKind(file)} state={state} compact={compact}>
+      {state === "loading" && <PreviewSkeleton label="Opening local preview…" />}
+      {state === "ready" && url && (
+        <iframe
+          title="Embedded Apple PDF preview"
+          src={url}
+          className="h-full w-full border-0"
+          data-preview-iframe="apple-pdf"
+        />
+      )}
+      {state === "fallback" && <PreviewFallback kind={previewKind(file)} failed />}
+    </PreviewFrame>
+  );
+}
+
 function FormatPreview({ kind, compact }: { kind: PreviewKind; compact: boolean }) {
   return (
     <PreviewFrame kind={kind} state="ready" compact={compact}>
@@ -214,11 +260,14 @@ function FormatPreview({ kind, compact }: { kind: PreviewKind; compact: boolean 
  * A visual enhancement only. The semantic filename stays outside this
  * decorative region so a failed preview never blocks the underlying tool.
  */
-export function DocumentPreview({ file, compact = false }: { file: File; compact?: boolean }) {
+export function DocumentPreview({ file, compact = false, hasEmbeddedPreview = false }: { file: File; compact?: boolean; hasEmbeddedPreview?: boolean }) {
   const kind = previewKind(file);
-  const key = `${kind}:${file.name}:${file.size}:${file.lastModified}`;
+  const key = `${kind}:${file.name}:${file.size}:${file.lastModified}:${hasEmbeddedPreview}`;
   if (kind === "pdf") return <PdfPreview key={key} file={file} compact={compact} />;
   if (kind === "image") return <ImagePreview key={key} file={file} compact={compact} />;
+  if (kind === "pages" || kind === "keynote" || kind === "numbers") {
+    return <ApplePreview key={key} file={file} compact={compact} hasEmbeddedPreview={hasEmbeddedPreview} />;
+  }
   return <FormatPreview key={key} kind={kind} compact={compact} />;
 }
 
@@ -259,7 +308,7 @@ export function FileList({
             aria-setsize={items.length}
           >
             <div className="relative">
-              <DocumentPreview file={item.file} />
+              <DocumentPreview file={item.file} hasEmbeddedPreview={item.hasEmbeddedPreview} />
               {reorderable && (
                 <span className="absolute left-2 top-2 flex h-7 min-w-7 items-center justify-center rounded-full bg-ink-950 px-2 text-xs font-semibold tabular-nums text-white shadow-sm" aria-label={`Position ${index + 1} of ${items.length}`}>
                   {index + 1}

@@ -22,6 +22,10 @@ const PUBLIC_TOOLS = [
   "/tools/markdown-to-pdf",
   "/tools/pdf-to-markdown",
   "/tools/combine-to-pdf",
+  "/tools/pages-to-pdf",
+  "/tools/keynote-to-pdf",
+  "/tools/numbers-to-xlsx",
+  "/tools/numbers-to-pdf",
 ];
 
 const ONE_PIXEL_PNG = Buffer.from(
@@ -60,8 +64,8 @@ test.beforeAll(async () => {
   const docx = await makeDocx();
   const richDocx = await makeRichDocx();
   const pages = await makePages(onePage);
-  const keynote = await makeAppleContainer("com.apple.iWork.Keynote", onePage);
-  const numbers = await makeAppleContainer("com.apple.iWork.Numbers", onePage);
+  const keynote = await makeKeynote();
+  const numbers = await makeNumbers();
   const pptx = await makeOfficeContainer("pptx");
   const xlsx = await makeOfficeContainer("xlsx");
 
@@ -112,7 +116,7 @@ test("public surface and retired native routes stay web-only", async ({ page }) 
   expect(discoveredTools).toEqual([...PUBLIC_TOOLS].sort());
   await expect(page.locator("body")).not.toContainText(/Folio for Mac|native helper|localhost/i);
 
-  for (const retiredRoute of ["/mac", "/tools/pages-to-pdf"]) {
+  for (const retiredRoute of ["/mac", "/tools/pages-to-word", "/tools/keynote-to-powerpoint", "/tools/numbers-to-excel"]) {
     await page.goto(retiredRoute);
     await expect(page).toHaveURL(/\/$/);
     await expect(page.locator("body")).not.toContainText(/Folio for Mac|native helper|localhost/i);
@@ -499,9 +503,10 @@ test("Universal Drop detects content and hands off to the existing tools", async
   const universalInput = page.locator('section[aria-labelledby="universal-drop-heading"] input[type="file"]');
   await universalInput.setInputFiles(fixtures.pages);
   await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Apple Pages document");
-  await expect(page.getByText("Detected, but conversion is unavailable.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Prepare embedded PDF preview", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Prepare embedded PDF preview", exact: true }).click();
+  await expect(page.getByText("Apple export is Beta.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export embedded PDF preview", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Convert Pages to PDF", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Export embedded PDF preview", exact: true }).click();
   const previewHref = await page.getByRole("link", { name: "Open preview in a new tab", exact: true }).getAttribute("href");
   expect(previewHref).toMatch(/^blob:/);
   await expect(page.getByRole("button", { name: "Start over", exact: true })).toBeVisible();
@@ -558,6 +563,25 @@ test("Universal Drop detects a local PDF within the interaction budget", async (
   expect(elapsedMs).toBeLessThanOrEqual(1000);
 });
 
+test("Universal Drop recovers when a FileReader never settles", async ({ page }) => {
+  await page.addInitScript(() => {
+    const original = FileReader.prototype.readAsArrayBuffer;
+    let stalled = false;
+    FileReader.prototype.readAsArrayBuffer = function (blob) {
+      if (!stalled) {
+        stalled = true;
+        return;
+      }
+      return original.call(this, blob);
+    };
+  });
+  await page.goto("/");
+  const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
+  await section.locator('input[type="file"]').setInputFiles(fixtures.markdown);
+  await expect(section).toContainText("Detected as Markdown document");
+  await expect(section).not.toContainText("Inspecting");
+});
+
 test("Universal Drop identifies images, DOCX and Apple containers without overpromising support", async ({ page }) => {
   await page.goto("/");
   const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
@@ -580,9 +604,38 @@ test("Universal Drop identifies images, DOCX and Apple containers without overpr
     const universal = page.locator('section[aria-labelledby="universal-drop-heading"]');
     await universal.locator('input[type="file"]').setInputFiles(fixture);
     await expect(universal).toContainText(`Detected as ${label}`);
-    await expect(universal).toContainText("Detected, but conversion is unavailable.");
-    await expect(universal.getByRole("button", { name: "Prepare embedded PDF preview" })).toBeVisible();
+    await expect(universal).toContainText("Apple export is Beta.");
+    await expect(universal.getByRole("button", { name: label.includes("Keynote") ? "Convert Keynote to PDF" : "Convert Numbers to XLSX" })).toBeVisible();
   }
+});
+
+test("Universal Drop exports Apple documents locally and validates the outputs", async ({ page }) => {
+  const workerUrls = [];
+  page.on("worker", (worker) => workerUrls.push(worker.url()));
+  await page.goto("/");
+  const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
+  await section.locator('input[type="file"]').setInputFiles(fixtures.pages);
+  await expect(section.getByRole("button", { name: "Convert Pages to PDF" })).toBeVisible();
+  await section.getByRole("button", { name: "Convert Pages to PDF" }).click();
+  const pagesOutput = await downloadFromResult(page, "Convert to PDF", /^Download /);
+  await expectPdf(pagesOutput, 1);
+  expect(workerUrls.some((url) => /iwork/i.test(url))).toBe(true);
+
+  await page.goto("/tools/keynote-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.keynote);
+  const keynoteOutput = await downloadFromResult(page, "Convert to PDF", /^Download /);
+  await expectPdf(keynoteOutput, 2);
+
+  await page.goto("/tools/numbers-to-xlsx");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.numbers);
+  const xlsxOutput = await downloadFromResult(page, "Convert to XLSX", /^Download /);
+  const xlsxArchive = await JSZip.loadAsync(xlsxOutput);
+  expect(Object.keys(xlsxArchive.files)).toContain("xl/workbook.xml");
+
+  await page.goto("/tools/numbers-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.numbers);
+  const numbersOutput = await downloadFromResult(page, "Convert to PDF", /^Download /);
+  await expectPdf(numbersOutput, 1);
 });
 
 test("Universal Drop identifies Office containers without inventing conversion actions", async ({ page }) => {
@@ -714,7 +767,7 @@ test("malformed input recovers, double-clicks stay single-result, and conversion
   expect(documentRequests).toEqual([]);
 });
 
-test("all seven tools recover from empty, wrong-extension and malformed files", async ({ page }) => {
+test("current browser-local tools recover from empty, wrong-extension and malformed files", async ({ page }) => {
   const cases = [
     { route: "merge-pdf", action: "Merge PDFs", malformed: [fixtures.corruptPdf, fixtures.corruptPdf], wrongSource: fixtures.corruptPdf, valid: [fixtures.onePage, fixtures.secondPage] },
     { route: "split-pdf", action: "Extract pages", malformed: fixtures.corruptPdf, wrongSource: fixtures.corruptPdf, valid: fixtures.twoPage },
@@ -940,14 +993,24 @@ async function makeRichDocx() {
 }
 
 async function makePages(previewBytes) {
-  return await makeAppleContainer("com.apple.iWork.Pages", previewBytes);
+  return await makeZip({
+    "index.xml": `<document><page name="Page 1"><p>Pages browser fixture</p><p>Local export marker</p></page></document>`,
+    "Metadata/Properties.plist": "com.apple.iWork.Pages",
+    "QuickLook/Preview.pdf": previewBytes,
+  });
 }
 
-async function makeAppleContainer(marker, previewBytes) {
+async function makeKeynote() {
   return await makeZip({
-    "Index/Document.iwa": "binary iWork fixture",
-    "Metadata/Properties.plist": marker,
-    "QuickLook/Preview.pdf": previewBytes,
+    "index.apxl": `<document><slide-list><slide name="Slide 1"><title><text-storage><p>Keynote browser fixture</p></text-storage></title><body><text-storage><p>Local export marker</p></text-storage></body></slide><slide name="Slide 2"><body><text-storage><p>Second slide</p></text-storage></body></slide></slide-list></document>`,
+    "Metadata/Properties.plist": "com.apple.iWork.Keynote",
+  });
+}
+
+async function makeNumbers() {
+  return await makeZip({
+    "index.xml": `<document xmlns:sfa="http://developer.apple.com/namespaces/sfa"><workspace name="Budget"><table><row><cell><string sfa:string="Item"/></cell><cell><string sfa:string="Total"/></cell></row><row><cell><string sfa:string="Alpha"/></cell><cell><string sfa:string="30"/></cell></row></table></workspace></document>`,
+    "Metadata/Properties.plist": "com.apple.iWork.Numbers",
   });
 }
 

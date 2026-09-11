@@ -11,7 +11,7 @@ describe("public capability graph", () => {
     expect(getCapability("combine-to-pdf")?.inputs).toEqual(
       expect.arrayContaining(["pdf", "docx", "markdown", "jpeg", "png"]),
     );
-    expect(actionsForKinds(["pages"])).toEqual([]);
+    expect(actionsForKinds(["pages"])).toEqual(["pages-to-pdf"]);
     expect(actionsForKinds(["pptx"])).toEqual([]);
     expect(actionsForKinds(["xlsx"])).toEqual([]);
   });
@@ -22,6 +22,6 @@ describe("public capability graph", () => {
     expect(actionsForKinds(["docx", "docx", "docx"])).toEqual(["docx-to-pdf"]);
     expect(actionsForKinds(["jpeg", "png"])).toEqual(["image-to-pdf"]);
     expect(actionsForKinds(["pdf", "docx", "markdown", "png"])).toEqual(["combine-to-pdf"]);
-    expect(actionsForKinds(["pages"], { hasEmbeddedPdf: true })).toEqual(["embedded-pdf"]);
+    expect(actionsForKinds(["pages"], { hasEmbeddedPdf: true })).toEqual(["embedded-pdf", "pages-to-pdf"]);
   });
 });

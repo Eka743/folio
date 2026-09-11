@@ -100,6 +100,35 @@ describe("readFileBytes", () => {
       });
     }
   });
+
+  it("falls back when WebKit leaves FileReader pending", async () => {
+    const originalReader = globalThis.FileReader;
+    class StalledReader {
+      result: ArrayBuffer | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      readAsArrayBuffer(): void {
+        // Simulate the WebKit picker-backed Blob regression: no event is
+        // delivered, but the Blob's independent arrayBuffer path is healthy.
+      }
+    }
+    Object.defineProperty(globalThis, "FileReader", {
+      configurable: true,
+      value: StalledReader,
+    });
+    try {
+      const readable = {
+        arrayBuffer: async () => new Uint8Array([7, 8, 9]).buffer,
+      } as unknown as Blob;
+      await expect(readFileBytes(readable)).resolves.toEqual(new Uint8Array([7, 8, 9]));
+    } finally {
+      Object.defineProperty(globalThis, "FileReader", {
+        configurable: true,
+        value: originalReader,
+      });
+    }
+  });
 });
 
 describe("validateFiles", () => {

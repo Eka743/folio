@@ -15,6 +15,9 @@ the applicable upstream notices and license terms.
 | jsPDF | Browser PDF generation | MIT |
 | html2canvas | Browser rendering support | MIT |
 | JSZip | ZIP output | MIT or GPL-3.0-or-later, at the recipient's option |
+| @file-viewer/renderer-iwork | Apple Pages/Keynote/Numbers parser for scoped local Beta exports | Apache-2.0 |
+| styled-exceljs | Numbers saved-value XLSX output (loaded with the Apple renderer) | Apache-2.0 |
+| keynote-archives | Typed Keynote/iWork archive definitions (loaded with the Apple renderer) | MIT |
 | Tailwind CSS | Stylesheet generation | MIT |
 
 The complete dependency graph and its license metadata are recorded in

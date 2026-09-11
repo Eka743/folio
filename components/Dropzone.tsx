@@ -15,12 +15,21 @@ export function Dropzone({
   accepts: string;
   multiple: boolean;
   disabled?: boolean;
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[]) => void | Promise<void>;
   onDropIssue?: (message: string) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
+
+  const openPicker = useCallback(() => {
+    if (disabled || !inputRef.current) return;
+    // Clear the previous selection before opening the picker. Clearing after
+    // change invalidates picker-backed File handles in some WebKit builds
+    // while an async inspection or conversion is still reading them.
+    inputRef.current.value = "";
+    inputRef.current.click();
+  }, [disabled]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -55,11 +64,11 @@ export function Dropzone({
       tabIndex={disabled ? -1 : 0}
       aria-disabled={disabled}
       aria-label={`Drop files here or press Enter to browse. Accepted: ${accepts}`}
-      onClick={() => !disabled && inputRef.current?.click()}
+      onClick={openPicker}
       onKeyDown={(e) => {
         if ((e.key === "Enter" || e.key === " ") && !disabled) {
           e.preventDefault();
-          inputRef.current?.click();
+          openPicker();
         }
       }}
       onDragEnter={(e) => {
@@ -101,10 +110,6 @@ export function Dropzone({
         onChange={(e) => {
           const files = [...(e.target.files ?? [])];
           if (files.length > 0) onFiles(files);
-          // Clear after dispatching the File objects. This preserves the
-          // native picker-backed handles long enough for callers to snapshot
-          // them on Safari before the input is reset.
-          e.target.value = "";
         }}
       />
     </div>

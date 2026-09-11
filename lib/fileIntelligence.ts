@@ -168,6 +168,12 @@ function expectedMimes(kind: FolioFileKind): string[] {
       return ["application/vnd.openxmlformats-officedocument.presentationml.presentation"];
     case "xlsx":
       return ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
+    case "pages":
+      return ["application/vnd.apple.pages"];
+    case "keynote":
+      return ["application/vnd.apple.keynote"];
+    case "numbers":
+      return ["application/vnd.apple.numbers"];
     default:
       return [];
   }
@@ -384,7 +390,7 @@ async function inspectZipContainer(
   ).length;
   const hasLegacyMarker = Boolean(
     findPath(archive, (path) =>
-      path === "index.xml" || path === "quicklook/preview.pdf" ||
+      path === "index.xml" || path === "index.apxl" || path === "quicklook/preview.pdf" ||
       path === "preview.pdf" || path.includes("preview.jpg"),
     ),
   );
@@ -456,7 +462,7 @@ async function inspectZipContainer(
     hasEmbeddedPdf,
     warnings: ["renderer-evaluation-pending"],
     warningMessages: [
-      "Browser-native rendering for Apple documents is still experimental; no document conversion is enabled yet.",
+      "Apple export is Beta: saved text, tables and supported visuals are processed locally; unsupported content fails closed.",
     ],
   });
 }

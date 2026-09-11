@@ -28,6 +28,10 @@ describe("public format matrix", () => {
       "markdown-to-pdf",
       "pdf-to-markdown",
       "combine-to-pdf",
+      "pages-to-pdf",
+      "keynote-to-pdf",
+      "numbers-to-xlsx",
+      "numbers-to-pdf",
     ]);
   });
 
@@ -114,7 +118,7 @@ describe("dormant native format matrix", () => {
   });
 
   it("keeps Keynote explicitly deferred", () => {
-    for (const id of ["key-to-pdf", "key-to-pptx"]) {
+    for (const id of ["key-to-pptx"]) {
       const conversion = DORMANT_NATIVE_CONVERSIONS.find((item) => item.id === id)!;
       expect(conversion.status).toBe("helper-beta");
       expect(conversion.limitation).toMatch(/deferred|unvalidated/i);

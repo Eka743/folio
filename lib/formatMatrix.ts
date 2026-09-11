@@ -8,7 +8,7 @@
 
 export type BrowserSupport = "full" | "beta";
 export type ConversionStatus = "browser" | "browser-beta";
-export type PublicToolCategory = "PDF" | "Documents" | "Images";
+export type PublicToolCategory = "PDF" | "Documents" | "Images" | "Apple";
 
 export interface FormatConversion {
   id: string;
@@ -149,6 +149,58 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     limitation:
       "Each source is normalized locally; DOCX and Markdown layout remains renderer-dependent.",
   },
+  {
+    id: "pages-to-pdf",
+    inputs: ["pages"],
+    output: "pdf",
+    toolSlug: "pages-to-pdf",
+    category: "Apple",
+    title: "Pages to PDF",
+    description: "Export supported Apple Pages content to PDF locally. Beta.",
+    browser: "beta",
+    status: "browser-beta",
+    limitation:
+      "Text, tables, images and basic shapes are supported. Animations, advanced layout features and unsupported objects fail closed instead of being silently omitted.",
+  },
+  {
+    id: "keynote-to-pdf",
+    inputs: ["keynote"],
+    output: "pdf",
+    toolSlug: "keynote-to-pdf",
+    category: "Apple",
+    title: "Keynote to PDF",
+    description: "Export supported Keynote slides to PDF locally. Beta.",
+    browser: "beta",
+    status: "browser-beta",
+    limitation:
+      "Slide text, tables, images, basic shapes and saved chart data are supported. Animations, transitions, video and unsupported objects are not exported.",
+  },
+  {
+    id: "numbers-to-xlsx",
+    inputs: ["numbers"],
+    output: "xlsx",
+    toolSlug: "numbers-to-xlsx",
+    category: "Apple",
+    title: "Numbers to XLSX",
+    description: "Export saved Numbers tables to an Excel workbook locally. Beta.",
+    browser: "beta",
+    status: "browser-beta",
+    limitation:
+      "Saved cell values and table structure are exported. Formulas are not recalculated, and charts, formatting and unsupported Numbers features are not represented in XLSX.",
+  },
+  {
+    id: "numbers-to-pdf",
+    inputs: ["numbers"],
+    output: "pdf",
+    toolSlug: "numbers-to-pdf",
+    category: "Apple",
+    title: "Numbers to PDF",
+    description: "Export supported Numbers tables to a readable PDF locally. Beta.",
+    browser: "beta",
+    status: "browser-beta",
+    limitation:
+      "Tables and saved chart data are rendered in a clean layout; formulas are not recalculated and native print styling is not reproduced.",
+  },
 ];
 
 /** Public compatibility matrix. Do not add native-only conversions here. */
@@ -162,7 +214,7 @@ export function getConversionBySlug(slug: string): FormatConversion | undefined 
   return PUBLIC_WEB_FORMAT_MATRIX.find((conversion) => conversion.toolSlug === slug);
 }
 
-export const HOMEPAGE_CATEGORIES = ["PDF", "Documents", "Images"] as const;
+export const HOMEPAGE_CATEGORIES = ["PDF", "Documents", "Images", "Apple"] as const;
 
 export function conversionsByCategory(
   category: (typeof HOMEPAGE_CATEGORIES)[number],

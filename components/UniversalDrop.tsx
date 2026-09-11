@@ -44,7 +44,11 @@ function actionTitle(action: CapabilityActionId, count: number): string {
   if (action === "image-to-pdf") return count > 1 ? `Create PDF from ${count} images` : "Create a PDF";
   if (action === "docx-to-pdf") return count > 1 ? `Convert ${count} Word files to one PDF` : "Convert to PDF";
   if (action === "combine-to-pdf") return `Combine ${count} document${count === 1 ? "" : "s"} into PDF`;
-  if (action === "embedded-pdf") return "Prepare embedded PDF preview";
+  if (action === "embedded-pdf") return "Export embedded PDF preview";
+  if (action === "pages-to-pdf") return "Convert Pages to PDF";
+  if (action === "keynote-to-pdf") return "Convert Keynote to PDF";
+  if (action === "numbers-to-xlsx") return "Convert Numbers to XLSX";
+  if (action === "numbers-to-pdf") return "Convert Numbers to PDF";
   if (action === "split-pdf") return "Extract PDF pages";
   if (action === "pdf-to-jpg") return "Convert PDF to JPG";
   if (action === "pdf-to-markdown") return "Convert PDF to Markdown";
@@ -59,6 +63,10 @@ function actionDescription(action: CapabilityActionId, count: number): string {
     ? "Convert each Word document locally, then join the PDF pages in order. Beta."
     : "Convert this Word document locally. Beta.";
   if (action === "combine-to-pdf") return "Normalize each supported source locally. Nothing is silently skipped.";
+  if (action === "pages-to-pdf") return "Export the supported Pages subset locally. Unsupported content fails closed.";
+  if (action === "keynote-to-pdf") return "Export supported Keynote slides locally. Unsupported content fails closed.";
+  if (action === "numbers-to-xlsx") return "Export saved Numbers tables and values to an XLSX workbook locally.";
+  if (action === "numbers-to-pdf") return "Render saved Numbers tables to a readable PDF locally.";
   return getCapability(action)?.description ?? "Available locally in this browser.";
 }
 
@@ -92,10 +100,8 @@ export function UniversalDrop() {
 
   useEffect(() => {
     mountedRef.current = true;
-    const operation = operationRef;
     return () => {
       mountedRef.current = false;
-      operation.current++;
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
     };
@@ -300,7 +306,10 @@ export function UniversalDrop() {
 
             <div className="mt-4">
               <FileList
-                items={items}
+                items={items.map((item) => ({
+                  ...item,
+                  hasEmbeddedPreview: item.inspection?.supportedActions.includes("embedded-pdf") ?? false,
+                }))}
                 reorderable={items.length > 1}
                 disabled={busy}
                 accepts={ACCEPTS}
@@ -315,8 +324,8 @@ export function UniversalDrop() {
               <div className="mt-5" data-universal-actions="true">
                 {items.length === 1 && ["pages", "keynote", "numbers"].includes(items[0].inspection!.kind) && (
                   <div className="mb-4 rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm leading-relaxed text-ink-700">
-                    <p className="font-medium text-ink-950">Detected, but conversion is unavailable.</p>
-                    <p className="mt-1">Folio identified this Apple document locally. Native conversion is deferred until Folio can produce a validated target file. An embedded PDF preview, when present, is only a preview.</p>
+                    <p className="font-medium text-ink-950">Apple export is Beta.</p>
+                    <p className="mt-1">Folio reads this container locally. Saved text, tables, images and basic shapes are supported where available; animations, transitions, formula recalculation and unsupported content are not exported.</p>
                   </div>
                 )}
                 {valid && actions.length > 0 ? (

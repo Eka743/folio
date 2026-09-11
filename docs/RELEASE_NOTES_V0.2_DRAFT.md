@@ -23,8 +23,9 @@ your browser. It also adds two real Markdown conversion workflows.
   structure from text-based PDFs. It is labelled Beta because reconstruction is
   not a perfect inverse of the source layout.
 - Apple documents can be recognized and may expose a validated embedded PDF
-  preview when the file contains one. Generic Pages, Keynote and Numbers
-  conversion is not included.
+  preview when the file contains one. Scoped Beta actions now export Pages →
+  PDF, Keynote → PDF, Numbers → XLSX and Numbers → PDF locally for supported
+  structured content; unsupported content fails closed.
 - Selected files now show local visual previews across the public tools:
   first-page PDF thumbnails, JPG/PNG thumbnails, and honest DOCX, Markdown and
   Apple format cards. Preview rendering is bounded and cancellable, and a
