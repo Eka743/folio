@@ -89,7 +89,7 @@ describe("content-based file intelligence", () => {
     expect(result.supportedActions).toEqual(["docx-to-pdf"]);
   });
 
-  it("detects Office presentation and workbook containers without inventing actions", async () => {
+  it("detects Office presentation and workbook containers and exposes their local actions", async () => {
     const pptx = await zipFile("slides.pptx", {
       "[Content_Types].xml": "<Types>presentationml.presentation</Types>",
       "ppt/presentation.xml": "<p:presentation />",
@@ -102,12 +102,24 @@ describe("content-based file intelligence", () => {
     const workbook = await inspectFile(xlsx);
     expect(presentation.kind).toBe("pptx");
     expect(presentation.valid).toBe(true);
-    expect(presentation.supportedActions).toEqual([]);
-    expect(presentation.warningMessages[0]).toMatch(/slide conversion/i);
+    expect(presentation.supportedActions).toEqual(["powerpoint-to-pdf"]);
     expect(workbook.kind).toBe("xlsx");
     expect(workbook.valid).toBe(true);
-    expect(workbook.supportedActions).toEqual([]);
-    expect(workbook.warningMessages[0]).toMatch(/worksheet conversion/i);
+    expect(workbook.supportedActions).toEqual(["excel-to-pdf"]);
+  });
+
+  it("rejects macro-enabled Office containers before exposing conversion actions", async () => {
+    const macroDocx = await zipFile("report.docm", {
+      "[Content_Types].xml": "<Types>wordprocessingml.document macroEnabled vbaProject</Types>",
+      "word/document.xml": "<w:document><w:body>Hello</w:body></w:document>",
+      "word/vbaProject.bin": new Uint8Array([1, 2, 3]),
+    });
+    const result = await inspectFile(macroDocx);
+    expect(result.kind).toBe("docx");
+    expect(result.valid).toBe(false);
+    expect(result.safety).toBe("rejected");
+    expect(result.warnings).toContain("macro-enabled");
+    expect(result.supportedActions).toEqual([]);
   });
 
   it("detects valid UTF-8 Markdown and offers the real PDF action", async () => {
@@ -141,7 +153,7 @@ describe("content-based file intelligence", () => {
     expect(result.kind).toBe("pages");
     expect(result.generation).toBe("modern");
     expect(result.valid).toBe(true);
-    expect(result.supportedActions).toEqual(["embedded-pdf", "pages-to-pdf"]);
+    expect(result.supportedActions).toEqual(["embedded-pdf", "pages-to-pdf", "pages-to-word"]);
     expect(result.warnings).toContain("renderer-evaluation-pending");
   });
 

@@ -37,6 +37,7 @@ export type FileWarning =
   | "malformed-content"
   | "unsafe-container"
   | "unsupported-container"
+  | "macro-enabled"
   | "renderer-evaluation-pending";
 
 export interface FileInspection {
@@ -136,9 +137,9 @@ function expectedExtensions(kind: FolioFileKind): string[] {
     case "markdown":
       return [".md", ".markdown"];
     case "pptx":
-      return [".pptx", ".ppt"];
+      return [".pptx"];
     case "xlsx":
-      return [".xlsx", ".xls"];
+      return [".xlsx"];
     case "pages":
       return [".pages"];
     case "keynote":
@@ -191,6 +192,7 @@ function finishInspection(
     warnings?: FileWarning[];
     warningMessages?: string[];
     hasEmbeddedPdf?: boolean;
+    supportedActions?: FileCapabilityAction[];
     archiveErrorCode?: string;
   },
 ): FileInspection {
@@ -225,7 +227,7 @@ function finishInspection(
     extensionMatch,
     mimeMatch,
     supportedActions: capabilityFormatForKind(kind)
-      ? actionsForKinds([capabilityFormatForKind(kind)!], {
+      ? options.supportedActions ?? actionsForKinds([capabilityFormatForKind(kind)!], {
           hasEmbeddedPdf: options.hasEmbeddedPdf ?? false,
         })
       : [],
@@ -355,8 +357,31 @@ async function inspectZipContainer(
 
   const paths = entriesByLowerPath(archive);
   const contentTypesPath = paths.get("[content_types].xml");
+  let contentTypes = "";
+  if (contentTypesPath) {
+    try {
+      contentTypes = new TextDecoder().decode(await readZipEntry(bytes, archive, contentTypesPath));
+    } catch {
+      contentTypes = "";
+    }
+  }
+  const macroEnabled = /<Override\b[^>]*ContentType\s*=\s*["'][^"']*macroEnabled[^"']*["']/i.test(contentTypes) ||
+    /\.(?:docm|pptm|xlsm)$/i.test(file.name) ||
+    [...paths.keys()].some((path) => path.endsWith("/vbaproject.bin") || path.includes("/activex/"));
   const wordDocumentPath = findPath(archive, (path) => path === "word/document.xml");
   if (contentTypesPath && wordDocumentPath) {
+    if (macroEnabled) {
+      return finishInspection(file, "docx", {
+        confidence: "high",
+        generation: "modern",
+        valid: false,
+        safety: "rejected",
+        isContainer: true,
+        warnings: ["macro-enabled"],
+        warningMessages: ["Macro-enabled Word files are not supported. Save a copy without macros and try again."],
+        supportedActions: [],
+      });
+    }
     return finishInspection(file, "docx", {
       confidence: "high",
       generation: "modern",
@@ -366,22 +391,46 @@ async function inspectZipContainer(
   }
   const presentationPath = findPath(archive, (path) => path === "ppt/presentation.xml");
   if (contentTypesPath && presentationPath) {
+    if (macroEnabled) {
+      return finishInspection(file, "pptx", {
+        confidence: "high",
+        generation: "modern",
+        valid: false,
+        safety: "rejected",
+        isContainer: true,
+        warnings: ["macro-enabled"],
+        warningMessages: ["Macro-enabled PowerPoint files are not supported. Save a copy without macros and try again."],
+        supportedActions: [],
+      });
+    }
     return finishInspection(file, "pptx", {
       confidence: "high",
       generation: "modern",
       valid: true,
       isContainer: true,
-      warningMessages: ["PowerPoint detection is available, but browser-local slide conversion is not enabled."],
+      warningMessages: [],
     });
   }
   const workbookPath = findPath(archive, (path) => path === "xl/workbook.xml");
   if (contentTypesPath && workbookPath) {
+    if (macroEnabled) {
+      return finishInspection(file, "xlsx", {
+        confidence: "high",
+        generation: "modern",
+        valid: false,
+        safety: "rejected",
+        isContainer: true,
+        warnings: ["macro-enabled"],
+        warningMessages: ["Macro-enabled Excel files are not supported. Save a copy without macros and try again."],
+        supportedActions: [],
+      });
+    }
     return finishInspection(file, "xlsx", {
       confidence: "high",
       generation: "modern",
       valid: true,
       isContainer: true,
-      warningMessages: ["Excel detection is available, but browser-local worksheet conversion is not enabled."],
+      warningMessages: [],
     });
   }
 

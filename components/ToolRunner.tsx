@@ -291,6 +291,58 @@ export function ToolRunner({
           });
           break;
         }
+        case "pages-to-word": {
+          const file = needSingle(fileObjs);
+          setProgress("Reading Pages content…");
+          const { pagesToDocx } = await import("@/lib/office");
+          const bytes = await pagesToDocx(file);
+          if (!mountedRef.current) return;
+          const name = withExtension(safeFileName(file.name), "docx");
+          const url = blobUrl(bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({ kind: "file", fileName: name, sizeBytes: bytes.length, note: "Exported a real DOCX package locally. Review advanced layout before sharing." });
+          break;
+        }
+        case "powerpoint-to-pdf": {
+          const file = needSingle(fileObjs);
+          setProgress("Reading PowerPoint slides…");
+          const { powerpointToPdf } = await import("@/lib/office");
+          const bytes = await powerpointToPdf(file);
+          if (!mountedRef.current) return;
+          const name = withExtension(safeFileName(file.name), "pdf");
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({ kind: "file", fileName: name, sizeBytes: bytes.length, note: "Converted locally and validated as a loadable PDF. Animations and unsupported PowerPoint objects are not exported." });
+          break;
+        }
+        case "keynote-to-powerpoint": {
+          const file = needSingle(fileObjs);
+          setProgress("Reading Keynote slides…");
+          const { keynoteToPptx } = await import("@/lib/office");
+          const bytes = await keynoteToPptx(file);
+          if (!mountedRef.current) return;
+          const name = withExtension(safeFileName(file.name), "pptx");
+          const url = blobUrl(bytes, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({ kind: "file", fileName: name, sizeBytes: bytes.length, note: "Exported a real PPTX package locally. Native-app validation is still recommended before sharing." });
+          break;
+        }
+        case "excel-to-pdf": {
+          const file = needSingle(fileObjs);
+          setProgress("Reading Excel worksheets…");
+          const { excelToPdf } = await import("@/lib/office");
+          const bytes = await excelToPdf(file);
+          if (!mountedRef.current) return;
+          const name = withExtension(safeFileName(file.name), "pdf");
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({ kind: "file", fileName: name, sizeBytes: bytes.length, note: "Converted all worksheets locally and validated the resulting PDF." });
+          break;
+        }
         case "pages-to-pdf":
         case "keynote-to-pdf":
         case "numbers-to-pdf":
@@ -632,12 +684,15 @@ export function ToolRunner({
           </StatusBox>
         )}
 
-        {(tool.slug === "pages-to-pdf" || tool.slug === "keynote-to-pdf" || tool.slug === "numbers-to-pdf" || tool.slug === "numbers-to-xlsx") && (
+        {(tool.slug === "pages-to-pdf" || tool.slug === "keynote-to-pdf" || tool.slug === "numbers-to-pdf" || tool.slug === "numbers-to-xlsx" || tool.slug === "pages-to-word" || tool.slug === "keynote-to-powerpoint" || tool.slug === "powerpoint-to-pdf" || tool.slug === "excel-to-pdf") && (
           <StatusBox kind="info">
-            Beta: Folio processes the Apple container locally. Saved text, tables,
-            images and basic shapes are supported where the document exposes them;
-            animations, transitions, formula recalculation and unsupported content
-            are not exported.
+            {tool.slug === "powerpoint-to-pdf" || tool.slug === "excel-to-pdf"
+              ? "Beta: Folio reads the Office package locally. Saved text, tables, images and basic formatting are represented; macros, external content and unsupported objects are rejected or omitted safely."
+              : tool.slug === "pages-to-word"
+                ? "Beta: Folio writes a real DOCX package locally. Text, tables, images and basic shapes are supported; advanced Pages layout may differ."
+                : tool.slug === "keynote-to-powerpoint"
+                  ? "Experimental: Folio writes a real PPTX package locally. Review it in PowerPoint or Keynote before sharing; charts, media and animations are not exported."
+                  : "Beta: Folio processes the Apple container locally. Saved text, tables, images and basic shapes are supported where the document exposes them; animations, transitions, formula recalculation and unsupported content are not exported."}
           </StatusBox>
         )}
 
@@ -772,6 +827,14 @@ function actionLabel(slug: string, count: number): string {
       return "Create PDF";
     case "docx-to-pdf":
       return count > 1 ? `Convert ${count} Word files to one PDF` : "Convert to PDF";
+    case "pages-to-word":
+      return "Convert to DOCX";
+    case "powerpoint-to-pdf":
+      return "Convert to PDF";
+    case "keynote-to-powerpoint":
+      return "Convert to PPTX";
+    case "excel-to-pdf":
+      return "Convert to PDF";
     case "markdown-to-pdf":
       return "Convert to PDF";
     case "pdf-to-markdown":

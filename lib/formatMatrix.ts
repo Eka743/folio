@@ -8,7 +8,7 @@
 
 export type BrowserSupport = "full" | "beta";
 export type ConversionStatus = "browser" | "browser-beta";
-export type PublicToolCategory = "PDF" | "Documents" | "Images" | "Apple";
+export type PublicToolCategory = "PDF" | "Documents" | "Images";
 
 export interface FormatConversion {
   id: string;
@@ -111,6 +111,54 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
       "Headings, lists, tables and images are supported, but complex layouts, pagination, headers, footers and tracked changes may differ.",
   },
   {
+    id: "pages-to-word",
+    inputs: ["pages"],
+    output: "docx",
+    toolSlug: "pages-to-word",
+    category: "Documents",
+    title: "Pages to Word",
+    description: "Export supported Pages content to an editable Word document locally. Beta.",
+    browser: "beta",
+    status: "browser-beta",
+    limitation: "Text, tables, images and basic shapes are exported to a real DOCX package; advanced Pages layout and unsupported objects may differ or fail closed.",
+  },
+  {
+    id: "powerpoint-to-pdf",
+    inputs: ["pptx"],
+    output: "pdf",
+    toolSlug: "powerpoint-to-pdf",
+    category: "Documents",
+    title: "PowerPoint to PDF",
+    description: "Convert PowerPoint slides into a validated PDF locally. Beta.",
+    browser: "beta",
+    status: "browser-beta",
+    limitation: "Text, tables, embedded PNG/JPEG images and basic shapes are supported; animations, video, OLE and unsupported graphics are not exported.",
+  },
+  {
+    id: "keynote-to-powerpoint",
+    inputs: ["keynote"],
+    output: "pptx",
+    toolSlug: "keynote-to-powerpoint",
+    category: "Documents",
+    title: "Keynote to PowerPoint",
+    description: "Export supported Keynote slides to a real PowerPoint package locally. Experimental.",
+    browser: "beta",
+    status: "browser-beta",
+    limitation: "This emits a real OOXML PPTX package, but PowerPoint/Keynote native-app validation is still required before calling it Ready; advanced Apple features are not exported.",
+  },
+  {
+    id: "excel-to-pdf",
+    inputs: ["xlsx"],
+    output: "pdf",
+    toolSlug: "excel-to-pdf",
+    category: "Documents",
+    title: "Excel to PDF",
+    description: "Convert Excel worksheets into a readable PDF locally. Beta.",
+    browser: "beta",
+    status: "browser-beta",
+    limitation: "Multiple sheets, saved values, formulas, merged cells and basic formatting are represented; Excel recalculation and advanced print styling are not reproduced.",
+  },
+  {
     id: "markdown-to-pdf",
     inputs: ["md", "markdown"],
     output: "pdf",
@@ -154,7 +202,7 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     inputs: ["pages"],
     output: "pdf",
     toolSlug: "pages-to-pdf",
-    category: "Apple",
+    category: "Documents",
     title: "Pages to PDF",
     description: "Export supported Apple Pages content to PDF locally. Beta.",
     browser: "beta",
@@ -167,7 +215,7 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     inputs: ["keynote"],
     output: "pdf",
     toolSlug: "keynote-to-pdf",
-    category: "Apple",
+    category: "Documents",
     title: "Keynote to PDF",
     description: "Export supported Keynote slides to PDF locally. Beta.",
     browser: "beta",
@@ -180,7 +228,7 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     inputs: ["numbers"],
     output: "xlsx",
     toolSlug: "numbers-to-xlsx",
-    category: "Apple",
+    category: "Documents",
     title: "Numbers to XLSX",
     description: "Export saved Numbers tables to an Excel workbook locally. Beta.",
     browser: "beta",
@@ -193,7 +241,7 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     inputs: ["numbers"],
     output: "pdf",
     toolSlug: "numbers-to-pdf",
-    category: "Apple",
+    category: "Documents",
     title: "Numbers to PDF",
     description: "Export supported Numbers tables to a readable PDF locally. Beta.",
     browser: "beta",
@@ -214,7 +262,7 @@ export function getConversionBySlug(slug: string): FormatConversion | undefined 
   return PUBLIC_WEB_FORMAT_MATRIX.find((conversion) => conversion.toolSlug === slug);
 }
 
-export const HOMEPAGE_CATEGORIES = ["PDF", "Documents", "Images", "Apple"] as const;
+export const HOMEPAGE_CATEGORIES = ["PDF", "Documents", "Images"] as const;
 
 export function conversionsByCategory(
   category: (typeof HOMEPAGE_CATEGORIES)[number],

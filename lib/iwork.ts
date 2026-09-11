@@ -23,6 +23,7 @@ const MAX_SCENES = 200;
 const MAX_ROWS_PER_TABLE = 10_000;
 const MAX_COLUMNS_PER_TABLE = 500;
 const MAX_OUTPUT_DIMENSION = 4_000;
+const MAX_XLSX_OUTPUT_BYTES = 50 * 1024 * 1024;
 const PDF_SIGNATURE = "%PDF-";
 const IWORK_WORKER_TIMEOUT_MS = 60_000;
 let iworkWorkerRequestId = 0;
@@ -444,9 +445,51 @@ function sheetName(name: string, index: number, used: Set<string>): string {
   return candidate;
 }
 
+function xlsxColor(value: string | undefined, fallback = "ECECEC"): { rgb: string } {
+  const match = value?.match(/^#?([0-9a-f]{6})$/i);
+  return { rgb: (match?.[1] ?? fallback).toUpperCase() };
+}
+
+function xlsxCellReference(row: number, column: number): string {
+  let value = column + 1;
+  let letters = "";
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    letters = String.fromCharCode(65 + remainder) + letters;
+    value = Math.floor((value - 1) / 26);
+  }
+  return `${letters}${row + 1}`;
+}
+
+function applyNumbersCellTypes(worksheet: Record<string, unknown>, table: IworkTable): void {
+  for (const [rowIndex, row] of table.rows.entries()) {
+    for (const [columnIndex, rawValue] of row.entries()) {
+      const reference = xlsxCellReference(rowIndex, columnIndex);
+      const cell = worksheet[reference] as { v?: unknown; t?: string; f?: string; s?: unknown } | undefined;
+      if (!cell) continue;
+      const value = String(rawValue ?? "");
+      if (/^=/.test(value)) {
+        cell.f = value.slice(1);
+        cell.v = 0;
+        cell.t = "n";
+      } else if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) {
+        cell.v = Number(value);
+        cell.t = "n";
+      }
+      if (rowIndex < (table.headerRows ?? 0)) {
+        cell.s = {
+          font: { bold: true },
+          fill: { patternType: "solid", fgColor: xlsxColor(table.headerRowBackground) },
+          alignment: { vertical: "center" },
+        };
+      }
+    }
+  }
+}
+
 export async function numbersToXlsx(file: File): Promise<Uint8Array> {
   const document = await parseAppleDocument(file, "numbers");
-  const { utils, write } = await import("styled-exceljs");
+  const { read, utils, write } = await import("styled-exceljs");
   const workbook = utils.book_new();
   const usedNames = new Set<string>();
   let tableCount = 0;
@@ -454,6 +497,13 @@ export async function numbersToXlsx(file: File): Promise<Uint8Array> {
     for (const table of scene.tables) {
       if (!table.rows.length) continue;
       const worksheet = utils.aoa_to_sheet(table.rows.map((row) => row.map((cell) => String(cell ?? ""))));
+      if (table.columnWidths?.length) {
+        worksheet["!cols"] = table.columnWidths.map((width) => ({ wpx: Math.max(24, Math.min(640, Math.round(width))) }));
+      }
+      if (table.rowHeights?.length) {
+        worksheet["!rows"] = table.rowHeights.map((height) => ({ hpx: Math.max(16, Math.min(240, Math.round(height))) }));
+      }
+      applyNumbersCellTypes(worksheet, table);
       if (table.merges?.length) {
         worksheet["!merges"] = table.merges.map((merge) => ({
           s: { r: merge.row, c: merge.col },
@@ -473,12 +523,28 @@ export async function numbersToXlsx(file: File): Promise<Uint8Array> {
   const copy = new Uint8Array(bytes.length);
   copy.set(bytes);
   try {
+    if (copy.length === 0 || copy.length > MAX_XLSX_OUTPUT_BYTES) throw new Error("XLSX output exceeds the supported safety limit.");
     const archive = inspectZip(copy);
     const paths = new Set(archive.entries.map((entry) => entry.path.toLowerCase()));
     if (!paths.has("[content_types].xml") || !paths.has("xl/workbook.xml")) {
       throw new Error("XLSX package entries are incomplete.");
     }
     await readZipEntry(copy, archive, "xl/workbook.xml");
+    const checked = read(copy, { type: "array", cellStyles: true, validateMerges: true });
+    if (checked.SheetNames.length !== tableCount || checked.SheetNames.some((name) => !checked.Sheets[name]?.["!ref"])) {
+      throw new Error("XLSX output does not contain the expected worksheets and cells.");
+    }
+    const expectedValues = document.scenes
+      .flatMap((scene) => scene.tables.flatMap((table) => table.rows.flatMap((row) => row)))
+      .map((value) => String(value ?? ""))
+      .filter(Boolean)
+      .slice(0, 5);
+    const outputText = checked.SheetNames
+      .flatMap((name) => utils.sheet_to_json(checked.Sheets[name], { header: 1, raw: false, defval: "", blankrows: true }) as unknown[][])
+      .flat()
+      .map((value) => String(value ?? ""))
+      .join(" ");
+    if (expectedValues.some((value) => !outputText.includes(value))) throw new Error("XLSX output is missing source cell values.");
   } catch (cause) {
     throw new AppleConversionError("Folio could not validate the generated Numbers workbook.", cause);
   }

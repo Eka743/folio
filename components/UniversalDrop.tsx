@@ -21,11 +21,24 @@ import { describeError } from "@/lib/errors";
 import { formatBytes } from "@/lib/files";
 import {
   MAX_PDF_BYTES,
+  MAX_DOCX_BYTES,
+  MAX_IMAGE_BYTES,
+  MAX_MARKDOWN_BYTES,
+  MAX_APPLE_BYTES,
   type FolioTool,
   getTool,
 } from "@/lib/tools";
 
 const ACCEPTS = ".pdf,.jpg,.jpeg,.png,.docx,.md,.markdown,.pages,.key,.keynote,.numbers,.pptx,.xlsx";
+
+function universalFileLimit(file: File): number {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (extension === "docx" || extension === "pptx" || extension === "xlsx") return MAX_DOCX_BYTES;
+  if (extension === "jpg" || extension === "jpeg" || extension === "png") return MAX_IMAGE_BYTES;
+  if (extension === "md" || extension === "markdown") return MAX_MARKDOWN_BYTES;
+  if (extension === "pages" || extension === "key" || extension === "keynote" || extension === "numbers") return MAX_APPLE_BYTES;
+  return MAX_PDF_BYTES;
+}
 
 type UniversalItem = ListedFile & { inspection: FileInspection | null };
 
@@ -43,6 +56,10 @@ function actionTitle(action: CapabilityActionId, count: number): string {
   if (action === "merge-pdf") return count > 1 ? `Merge ${count} PDFs` : "Merge PDFs";
   if (action === "image-to-pdf") return count > 1 ? `Create PDF from ${count} images` : "Create a PDF";
   if (action === "docx-to-pdf") return count > 1 ? `Convert ${count} Word files to one PDF` : "Convert to PDF";
+  if (action === "pages-to-word") return "Convert Pages to DOCX";
+  if (action === "powerpoint-to-pdf") return "Convert PowerPoint to PDF";
+  if (action === "keynote-to-powerpoint") return "Convert Keynote to PPTX";
+  if (action === "excel-to-pdf") return "Convert Excel to PDF";
   if (action === "combine-to-pdf") return `Combine ${count} document${count === 1 ? "" : "s"} into PDF`;
   if (action === "embedded-pdf") return "Export embedded PDF preview";
   if (action === "pages-to-pdf") return "Convert Pages to PDF";
@@ -62,6 +79,10 @@ function actionDescription(action: CapabilityActionId, count: number): string {
   if (action === "docx-to-pdf") return count > 1
     ? "Convert each Word document locally, then join the PDF pages in order. Beta."
     : "Convert this Word document locally. Beta.";
+  if (action === "pages-to-word") return "Write a real DOCX package from supported Pages content locally. Beta.";
+  if (action === "powerpoint-to-pdf") return "Render supported PowerPoint slides to a validated PDF locally. Beta.";
+  if (action === "keynote-to-powerpoint") return "Write a real PPTX package from supported Keynote slides locally. Experimental.";
+  if (action === "excel-to-pdf") return "Render all supported Excel worksheets to a validated PDF locally. Beta.";
   if (action === "combine-to-pdf") return "Normalize each supported source locally. Nothing is silently skipped.";
   if (action === "pages-to-pdf") return "Export the supported Pages subset locally. Unsupported content fails closed.";
   if (action === "keynote-to-pdf") return "Export supported Keynote slides locally. Unsupported content fails closed.";
@@ -132,8 +153,9 @@ export function UniversalDrop() {
         complaints.push(`${file.name || "Unnamed file"}: Select no more than ${MAX_UNIVERSAL_FILES} documents.`);
         continue;
       }
-      if (file.size > MAX_PDF_BYTES) {
-        complaints.push(`${file.name || "Unnamed file"}: This file is larger than Folio’s 100 MB local limit.`);
+      const fileLimit = universalFileLimit(file);
+      if (file.size > fileLimit) {
+        complaints.push(`${file.name || "Unnamed file"}: This file is larger than Folio’s ${formatBytes(fileLimit)} local limit for its format.`);
         continue;
       }
       if (totalBytes + file.size > MAX_UNIVERSAL_TOTAL_BYTES) {
@@ -350,7 +372,7 @@ export function UniversalDrop() {
                   </>
                 ) : valid ? (
                   <p className="rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm leading-relaxed text-ink-700">
-                    Folio recognized these files, but no shared browser-local conversion is enabled for this selection. Native Apple, PowerPoint and Excel conversion remains deferred until it can produce validated target files.
+                    Folio recognized these files, but no shared browser-local conversion is enabled for this selection. Choose a compatible single-file action or adjust the selection.
                   </p>
                 ) : (
                   <div className="rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm leading-relaxed text-ink-700">

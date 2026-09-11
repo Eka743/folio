@@ -23,15 +23,18 @@ your browser. It also adds two real Markdown conversion workflows.
   structure from text-based PDFs. It is labelled Beta because reconstruction is
   not a perfect inverse of the source layout.
 - Apple documents can be recognized and may expose a validated embedded PDF
-  preview when the file contains one. Scoped Beta actions now export Pages →
-  PDF, Keynote → PDF, Numbers → XLSX and Numbers → PDF locally for supported
-  structured content; unsupported content fails closed.
+  preview when the file contains one. Scoped actions now export Pages → PDF,
+  Pages → DOCX, Keynote → PDF, Keynote → PPTX, Numbers → XLSX and Numbers →
+  PDF locally for supported structured content; unsupported content fails
+  closed. Keynote → PPTX remains Experimental until native-app validation.
 - Selected files now show local visual previews across the public tools:
   first-page PDF thumbnails, JPG/PNG thumbnails, and honest DOCX, Markdown and
   Apple format cards. Preview rendering is bounded and cancellable, and a
   preview failure falls back without blocking the conversion workflow.
-- PPTX and XLSX conversion are not part of this release: no reliable
-  browser-local implementation met the usefulness bar during this phase.
+- PPTX → PDF and XLSX → PDF use bounded local OOXML parsers and validated PDF
+  reconstruction. They support structured text, tables, embedded PNG/JPEG
+  images, basic shapes, multiple worksheets and basic formatting; unsupported
+  Office features fail closed.
 - Universal Drop and batch tools enforce bounded file counts, aggregate bytes,
   sequential reads and safe PDF/image workloads for graceful failure on large
   inputs.

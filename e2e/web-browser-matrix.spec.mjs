@@ -16,6 +16,10 @@ const PUBLIC_TOOLS = [
   "/tools/split-pdf",
   "/tools/images-to-pdf",
   "/tools/docx-to-pdf",
+  "/tools/pages-to-word",
+  "/tools/powerpoint-to-pdf",
+  "/tools/keynote-to-powerpoint",
+  "/tools/excel-to-pdf",
   "/tools/pdf-to-jpg",
   "/tools/rotate-pdf",
   "/tools/compress-pdf",
@@ -116,7 +120,7 @@ test("public surface and retired native routes stay web-only", async ({ page }) 
   expect(discoveredTools).toEqual([...PUBLIC_TOOLS].sort());
   await expect(page.locator("body")).not.toContainText(/Folio for Mac|native helper|localhost/i);
 
-  for (const retiredRoute of ["/mac", "/tools/pages-to-word", "/tools/keynote-to-powerpoint", "/tools/numbers-to-excel"]) {
+  for (const retiredRoute of ["/mac", "/tools/word-to-pdf", "/tools/numbers-to-excel"]) {
     await page.goto(retiredRoute);
     await expect(page).toHaveURL(/\/$/);
     await expect(page.locator("body")).not.toContainText(/Folio for Mac|native helper|localhost/i);
@@ -191,6 +195,33 @@ test("all current browser-local tools produce valid results", async ({ page }) =
   await page.locator('input[type="file"]').setInputFiles(fixtures.docx);
   const docxPdf = await downloadFromResult(page, "Convert to PDF", /^Download /);
   await expectPdf(docxPdf, 1);
+});
+
+test("Office and reverse Apple tools produce validated packages and PDFs", async ({ page }) => {
+  await page.goto("/tools/powerpoint-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.pptx);
+  const powerpointPdf = await downloadFromResult(page, "Convert to PDF", /^Download /);
+  await expectPdf(powerpointPdf, 2);
+
+  await page.goto("/tools/excel-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.xlsx);
+  const excelPdf = await downloadFromResult(page, "Convert to PDF", /^Download /);
+  await expectPdf(excelPdf, 2);
+
+  await page.goto("/tools/pages-to-word");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.pages);
+  const pagesDocx = await downloadFromResult(page, "Convert to DOCX", /^Download /);
+  const pagesArchive = await JSZip.loadAsync(pagesDocx);
+  expect(Object.keys(pagesArchive.files)).toContain("word/document.xml");
+  expect(await pagesArchive.file("word/document.xml").async("string")).toContain("Pages browser fixture");
+
+  await page.goto("/tools/keynote-to-powerpoint");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.keynote);
+  const keynotePptx = await downloadFromResult(page, "Convert to PPTX", /^Download /);
+  const keynoteArchive = await JSZip.loadAsync(keynotePptx);
+  expect(Object.keys(keynoteArchive.files)).toContain("ppt/presentation.xml");
+  expect(Object.keys(keynoteArchive.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))).toHaveLength(2);
+  expect(await keynoteArchive.file("ppt/slides/slide1.xml").async("string")).toContain("Keynote browser fixture");
 });
 
 test("PDF to JPG stops safely before rendering an excessive page count", async ({ page }) => {
@@ -638,17 +669,16 @@ test("Universal Drop exports Apple documents locally and validates the outputs",
   await expectPdf(numbersOutput, 1);
 });
 
-test("Universal Drop identifies Office containers without inventing conversion actions", async ({ page }) => {
+test("Universal Drop identifies Office containers and exposes their validated conversion actions", async ({ page }) => {
   const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
   for (const fixture of [
-    { path: fixtures.pptx, label: "PowerPoint presentation", warning: /slide conversion/i },
-    { path: fixtures.xlsx, label: "Excel workbook", warning: /worksheet conversion/i },
+    { path: fixtures.pptx, label: "PowerPoint presentation", action: "Convert PowerPoint to PDF" },
+    { path: fixtures.xlsx, label: "Excel workbook", action: "Convert Excel to PDF" },
   ]) {
     await page.goto("/");
     await section.locator('input[type="file"]').setInputFiles(fixture.path);
     await expect(section).toContainText(`Detected as ${fixture.label}`);
-    await expect(section.getByText(fixture.warning)).toBeVisible();
-    await expect(section.locator('[data-universal-actions="true"] button')).toHaveCount(0);
+    await expect(section.getByRole("button", { name: fixture.action })).toBeVisible();
   }
 });
 
@@ -1015,15 +1045,22 @@ async function makeNumbers() {
 }
 
 async function makeOfficeContainer(kind) {
-  return await makeZip(kind === "pptx"
-    ? {
-        "[Content_Types].xml": "<Types>presentationml.presentation</Types>",
-        "ppt/presentation.xml": "<p:presentation />",
-      }
-    : {
-        "[Content_Types].xml": "<Types>spreadsheetml.sheet</Types>",
-        "xl/workbook.xml": "<workbook />",
-      });
+  if (kind === "pptx") {
+    return await makeZip({
+      "[Content_Types].xml": `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/><Override PartName="/ppt/slides/slide2.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>`,
+      "ppt/presentation.xml": `<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldIdLst><p:sldId id="256" r:id="rId1"/><p:sldId id="257" r:id="rId2"/></p:sldIdLst><p:sldSz cx="9144000" cy="6858000"/></p:presentation>`,
+      "ppt/_rels/presentation.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide2.xml"/></Relationships>`,
+      "ppt/slides/slide1.xml": `<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr/><p:grpSpPr/><p:sp><p:nvSpPr/><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9144000" cy="6858000"/></a:xfrm><a:prstGeom prst="rect"/></p:spPr><p:txBody><a:bodyPr/><a:p><a:r><a:rPr sz="1800"/><a:t>PowerPoint fixture first slide</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+      "ppt/slides/slide2.xml": `<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr/><p:grpSpPr/><p:sp><p:nvSpPr/><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9144000" cy="6858000"/></a:xfrm><a:prstGeom prst="rect"/></p:spPr><p:txBody><a:bodyPr/><a:p><a:r><a:rPr sz="1800"/><a:t>PowerPoint fixture second slide</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+    });
+  }
+  return await makeZip({
+    "[Content_Types].xml": `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`,
+    "xl/workbook.xml": `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Summary" sheetId="1" r:id="rId1"/><sheet name="Details" sheetId="2" r:id="rId2"/></sheets></workbook>`,
+    "xl/_rels/workbook.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>`,
+    "xl/worksheets/sheet1.xml": `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Revenue</t></is></c><c r="B1"><v>42</v></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>Total</t></is></c><c r="B2"><f>SUM(B1)</f><v>42</v></c></row></sheetData><mergeCells count="1"><mergeCell ref="A1:B1"/></mergeCells></worksheet>`,
+    "xl/worksheets/sheet2.xml": `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Unicode acción</t></is></c><c r="B1"><v>7</v></c></row></sheetData></worksheet>`,
+  });
 }
 
 async function makeZip(entries) {

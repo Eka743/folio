@@ -20,6 +20,12 @@ the applicable upstream notices and license terms.
 | keynote-archives | Typed Keynote/iWork archive definitions (loaded with the Apple renderer) | MIT |
 | Tailwind CSS | Stylesheet generation | MIT |
 
+PPTX/XLSX parsing and the Keynote → PPTX / Pages → DOCX writers use Folio’s
+bounded local OOXML reader and writer over the existing JSZip dependency. The
+candidate `pptxgenjs` package was evaluated but not adopted because its
+transitive `image-size` dependency has a high-severity image parsing advisory
+in the candidate install; it is not part of the Folio lockfile.
+
 The complete dependency graph and its license metadata are recorded in
 `package-lock.json`. The macOS helper and Folio for Mac packages use Apple
 platform frameworks and the source files in this repository; they do not add a

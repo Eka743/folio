@@ -738,6 +738,8 @@ export async function docxToPdf(
   onProgress?: (stage: string) => void,
 ): Promise<Uint8Array> {
   onProgress?.("Reading document…");
+  const { assertSafeDocx } = await import("./office");
+  await assertSafeDocx(file);
   const [{ convertToHtml }, { jsPDF }, html2canvas] = await Promise.all([
     import("mammoth"),
     import("jspdf"),
@@ -745,7 +747,9 @@ export async function docxToPdf(
   ]);
 
   const buffer = await readFileBytes(file);
-  const arrayBuffer = buffer.buffer as ArrayBuffer;
+  const stableBuffer = new Uint8Array(buffer.length);
+  stableBuffer.set(buffer);
+  const arrayBuffer = stableBuffer.buffer;
   let html: string;
   try {
     const result = await convertToHtml({ arrayBuffer });

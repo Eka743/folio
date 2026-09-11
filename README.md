@@ -108,10 +108,13 @@ Node 20.19+ is required by the current Next.js/tooling release.
   project.
 - **PDF → JPG:** very large PDFs may be slow or memory-heavy on low-end devices.
 - **Apple, PowerPoint and Excel:** Pages, Keynote and Numbers are detected
-  locally. Pages → PDF, Keynote → PDF, Numbers → XLSX and Numbers → PDF are
-  scoped Beta exports for supported structured content; unsupported Apple
-  content fails closed. An embedded Apple QuickLook PDF is preview-only.
-- **File caps:** individual PDFs ≤ 100 MB, images ≤ 25 MB, DOCX ≤ 50 MB;
+  locally. Pages → PDF, Pages → DOCX, Keynote → PDF, Keynote → PPTX,
+  Numbers → XLSX, Numbers → PDF, PowerPoint → PDF and Excel → PDF are scoped
+  Beta/Experimental exports for supported structured content; unsupported
+  content fails closed. An embedded Apple QuickLook PDF is preview-only, and
+  reverse Apple output still needs native-app validation.
+- **File caps:** individual PDFs/Apple containers ≤ 100 MB, images ≤ 25 MB,
+  DOCX/PPTX/XLSX ≤ 50 MB;
   batch workflows also enforce file-count and aggregate-size limits.
 
 ## Public release compliance

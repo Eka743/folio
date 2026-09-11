@@ -18,6 +18,18 @@ const ICONS: Record<ToolSlug, React.ReactNode> = {
   "docx-to-pdf": (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>
   ),
+  "pages-to-word": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 12h6M9 16h6"/><path d="M12 9v2"/></svg>
+  ),
+  "powerpoint-to-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 15v-4l2-2 3 3 2-2 2 2M12 3v2"/></svg>
+  ),
+  "keynote-to-powerpoint": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 3v2M8 15h8M12 9v6"/></svg>
+  ),
+  "excel-to-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 8h16M9 8v13M15 8v13M4 13h16M4 17h16"/></svg>
+  ),
   "pdf-to-jpg": (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="13" height="13" rx="2"/><path d="M16 8h4a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-4"/></svg>
   ),
@@ -101,32 +113,48 @@ export default function HomePage() {
 
           <div className="mt-9 space-y-10">
             {CATEGORY_ORDER.map((category) => {
-              const tools = conversionsByCategory(category)
-                .map((conversion) => getTool(conversion.toolSlug))
-                .filter((tool): tool is NonNullable<typeof tool> => Boolean(tool));
-              if (tools.length === 0) return null;
+              const conversions = conversionsByCategory(category);
+              const groups = category === "Documents"
+                ? [
+                    { label: "Microsoft formats", items: conversions.filter((conversion) => conversion.inputs.some((input) => ["docx", "pptx", "xlsx"].includes(input))) },
+                    { label: "Apple formats", items: conversions.filter((conversion) => conversion.inputs.some((input) => ["pages", "keynote", "numbers"].includes(input))) },
+                    { label: "Cross-format and text", items: conversions.filter((conversion) => !conversion.inputs.some((input) => ["docx", "pptx", "xlsx", "pages", "keynote", "numbers"].includes(input))) },
+                  ]
+                : [{ label: null, items: conversions }];
+              if (conversions.length === 0) return null;
               return (
                 <div key={category}>
                   <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-ink-400">{category}</h3>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {tools.map((tool) => (
-                      <Link
-                        key={tool.slug}
-                        href={`/tools/${tool.slug}`}
-                        className="group flex min-h-44 flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_1px_2px_rgba(16,20,24,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_10px_28px_rgba(16,20,24,0.08)]"
-                      >
-                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-50 text-accent-600 [&>svg]:h-[22px] [&>svg]:w-[22px]">
-                          {ICONS[tool.slug]}
-                        </span>
-                        <span className="mt-5 flex items-center gap-2">
-                          <span className="text-[17px] font-semibold tracking-tight text-ink-950">{tool.name}</span>
-                          {tool.badge && <span className="rounded-full bg-accent-50 px-2 py-0.5 text-xs font-semibold text-accent-700">{tool.badge}</span>}
-                        </span>
-                        <span className="mt-1 flex-1 text-[15px] leading-relaxed text-ink-500">{tool.description}</span>
-                        <span className="mt-4 text-sm font-semibold text-accent-700 group-hover:underline">Open tool <span aria-hidden="true">→</span></span>
-                      </Link>
-                    ))}
-                  </div>
+                  {groups.map((group) => {
+                    const tools = group.items
+                      .map((conversion) => getTool(conversion.toolSlug))
+                      .filter((tool): tool is NonNullable<typeof tool> => Boolean(tool));
+                    if (tools.length === 0) return null;
+                    return (
+                      <div key={group.label ?? category} className={group.label ? "mt-7 first:mt-0" : ""}>
+                        {group.label && <h4 className="mb-3 text-sm font-semibold text-ink-700">{group.label}</h4>}
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {tools.map((tool) => (
+                            <Link
+                              key={tool.slug}
+                              href={`/tools/${tool.slug}`}
+                              className="group flex min-h-44 flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_1px_2px_rgba(16,20,24,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_10px_28px_rgba(16,20,24,0.08)]"
+                            >
+                              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-50 text-accent-600 [&>svg]:h-[22px] [&>svg]:w-[22px]">
+                                {ICONS[tool.slug]}
+                              </span>
+                              <span className="mt-5 flex items-center gap-2">
+                                <span className="text-[17px] font-semibold tracking-tight text-ink-950">{tool.name}</span>
+                                {tool.badge && <span className="rounded-full bg-accent-50 px-2 py-0.5 text-xs font-semibold text-accent-700">{tool.badge}</span>}
+                              </span>
+                              <span className="mt-1 flex-1 text-[15px] leading-relaxed text-ink-500">{tool.description}</span>
+                              <span className="mt-4 text-sm font-semibold text-accent-700 group-hover:underline">Open tool <span aria-hidden="true">→</span></span>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}

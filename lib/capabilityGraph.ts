@@ -36,9 +36,13 @@ export type CapabilityActionId =
   | "combine-to-pdf"
   | "embedded-pdf"
   | "pages-to-pdf"
+  | "pages-to-word"
   | "keynote-to-pdf"
+  | "keynote-to-powerpoint"
   | "numbers-to-xlsx"
-  | "numbers-to-pdf";
+  | "numbers-to-pdf"
+  | "powerpoint-to-pdf"
+  | "excel-to-pdf";
 
 export type CapabilityKind = "conversion" | "preview";
 export type CapabilityBrowserStatus = "ready" | "beta";
@@ -50,7 +54,7 @@ export interface CapabilityDefinition {
   inputs: CapabilityFormat[];
   output: string;
   toolSlug?: string;
-  category: "PDF" | "Documents" | "Images" | "Apple";
+  category: "PDF" | "Documents" | "Images";
   title: string;
   description: string;
   browser: CapabilityBrowserStatus;
@@ -92,7 +96,7 @@ export const CAPABILITY_GRAPH: readonly CapabilityDefinition[] = [
     kind: "preview",
     inputs: ["pages", "keynote", "numbers"],
     output: "pdf-preview",
-    category: "Apple",
+    category: "Documents",
     title: "Export embedded PDF preview",
     description: "Export an Apple document’s own QuickLook PDF preview.",
     browser: "beta",
@@ -121,17 +125,15 @@ export function actionsForKinds(
   );
 
   if (kinds.length === 1 && ["pages", "keynote", "numbers"].includes(first)) {
-    const action = first === "pages"
-      ? "pages-to-pdf"
-      : first === "keynote"
-        ? "keynote-to-pdf"
-        : "numbers-to-xlsx";
     const actions: CapabilityActionId[] = [];
     if (options.hasEmbeddedPdf) actions.push("embedded-pdf");
-    actions.push(action);
-    if (first === "numbers") actions.push("numbers-to-pdf");
+    if (first === "pages") actions.push("pages-to-pdf", "pages-to-word");
+    else if (first === "keynote") actions.push("keynote-to-pdf", "keynote-to-powerpoint");
+    else actions.push("numbers-to-xlsx", "numbers-to-pdf");
     return actions;
   }
+  if (kinds.length === 1 && first === "pptx") return ["powerpoint-to-pdf"];
+  if (kinds.length === 1 && first === "xlsx") return ["excel-to-pdf"];
   if (!allCombinable) return [];
   if (allSame && first === "pdf") {
     if (kinds.length > 1) return ["merge-pdf"];

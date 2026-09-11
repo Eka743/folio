@@ -3,6 +3,10 @@ export const PUBLIC_WEB_TOOL_SLUGS = [
   "split-pdf",
   "images-to-pdf",
   "docx-to-pdf",
+  "pages-to-word",
+  "powerpoint-to-pdf",
+  "keynote-to-powerpoint",
+  "excel-to-pdf",
   "pdf-to-jpg",
   "rotate-pdf",
   "compress-pdf",
@@ -20,15 +24,11 @@ export type ToolSlug = (typeof PUBLIC_WEB_TOOL_SLUGS)[number];
 /** Historical native routes kept only so old bookmarks can redirect cleanly. */
 export const LEGACY_TOOL_SLUGS = [
   "word-to-pdf",
-  "pages-to-word",
-  "powerpoint-to-pdf",
-  "keynote-to-powerpoint",
-  "excel-to-pdf",
   "numbers-to-excel",
 ] as const;
 
 export type LegacyToolSlug = (typeof LEGACY_TOOL_SLUGS)[number];
-export type ToolCategory = "PDF" | "Documents" | "Images" | "Apple";
+export type ToolCategory = "PDF" | "Documents" | "Images";
 
 export interface FolioTool {
   slug: ToolSlug;
@@ -50,6 +50,8 @@ export interface FolioTool {
 export const MAX_PDF_BYTES = 100 * 1024 * 1024;
 export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 export const MAX_DOCX_BYTES = 50 * 1024 * 1024;
+export const MAX_PPTX_BYTES = 50 * 1024 * 1024;
+export const MAX_XLSX_BYTES = 50 * 1024 * 1024;
 export const MAX_MARKDOWN_BYTES = 10 * 1024 * 1024;
 export const MAX_BATCH_PDF_BYTES = 200 * 1024 * 1024;
 export const MAX_BATCH_IMAGE_BYTES = 100 * 1024 * 1024;
@@ -59,6 +61,10 @@ export const MAX_APPLE_BYTES = 100 * 1024 * 1024;
 
 const MIME_DOCX =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const MIME_PPTX =
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const MIME_XLSX =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 export const TOOLS: FolioTool[] = [
   {
@@ -122,6 +128,74 @@ export const TOOLS: FolioTool[] = [
     maxFiles: 10,
     maxFileBytes: MAX_DOCX_BYTES,
     maxTotalBytes: MAX_BATCH_DOCX_BYTES,
+    processing: "local",
+    category: "Documents",
+    badge: "Beta",
+  },
+  {
+    slug: "pages-to-word",
+    name: "Pages to Word",
+    shortName: "Pages → DOCX",
+    description: "Export supported Pages content to an editable Word document. Beta.",
+    longDescription:
+      "Convert a .pages document into a real .docx package in your browser. Text, tables, images and basic shapes are supported; advanced Pages layout and unsupported objects fail closed.",
+    accepts: ".pages",
+    acceptMime: ["application/vnd.apple.pages"],
+    multiple: false,
+    maxFiles: 1,
+    maxFileBytes: MAX_APPLE_BYTES,
+    maxTotalBytes: MAX_APPLE_BYTES,
+    processing: "local",
+    category: "Documents",
+    badge: "Beta",
+  },
+  {
+    slug: "powerpoint-to-pdf",
+    name: "PowerPoint to PDF",
+    shortName: "PPTX",
+    description: "Convert a PowerPoint presentation into a PDF locally.",
+    longDescription:
+      "Convert a .pptx presentation into a validated PDF in your browser. Slide text, tables, embedded PNG/JPEG images and basic shapes are supported; unsupported objects fail closed.",
+    accepts: ".pptx",
+    acceptMime: [MIME_PPTX],
+    multiple: false,
+    maxFiles: 1,
+    maxFileBytes: MAX_PPTX_BYTES,
+    maxTotalBytes: MAX_PPTX_BYTES,
+    processing: "local",
+    category: "Documents",
+    badge: "Beta",
+  },
+  {
+    slug: "keynote-to-powerpoint",
+    name: "Keynote to PowerPoint",
+    shortName: "Keynote → PPTX",
+    description: "Export supported Keynote slides to a real PowerPoint file. Experimental.",
+    longDescription:
+      "Convert supported .key presentations into a real .pptx package locally. Slide text, tables, images and basic shapes are exported; charts, video, animations and unsupported objects fail closed.",
+    accepts: ".key,.keynote",
+    acceptMime: ["application/vnd.apple.keynote"],
+    multiple: false,
+    maxFiles: 1,
+    maxFileBytes: MAX_APPLE_BYTES,
+    maxTotalBytes: MAX_APPLE_BYTES,
+    processing: "local",
+    category: "Documents",
+    badge: "Experimental",
+  },
+  {
+    slug: "excel-to-pdf",
+    name: "Excel to PDF",
+    shortName: "XLSX",
+    description: "Convert an Excel workbook into a readable PDF locally. Beta.",
+    longDescription:
+      "Convert a .xlsx workbook into a validated PDF in your browser. Multiple sheets, saved values, formulas, merged cells and basic formatting are included; advanced Excel features are not recalculated.",
+    accepts: ".xlsx",
+    acceptMime: [MIME_XLSX],
+    multiple: false,
+    maxFiles: 1,
+    maxFileBytes: MAX_XLSX_BYTES,
+    maxTotalBytes: MAX_XLSX_BYTES,
     processing: "local",
     category: "Documents",
     badge: "Beta",
@@ -244,7 +318,7 @@ export const TOOLS: FolioTool[] = [
     maxFileBytes: MAX_APPLE_BYTES,
     maxTotalBytes: MAX_APPLE_BYTES,
     processing: "local",
-    category: "Apple",
+    category: "Documents",
     badge: "Beta",
   },
   {
@@ -261,7 +335,7 @@ export const TOOLS: FolioTool[] = [
     maxFileBytes: MAX_APPLE_BYTES,
     maxTotalBytes: MAX_APPLE_BYTES,
     processing: "local",
-    category: "Apple",
+    category: "Documents",
     badge: "Beta",
   },
   {
@@ -278,7 +352,7 @@ export const TOOLS: FolioTool[] = [
     maxFileBytes: MAX_APPLE_BYTES,
     maxTotalBytes: MAX_APPLE_BYTES,
     processing: "local",
-    category: "Apple",
+    category: "Documents",
     badge: "Beta",
   },
   {
@@ -295,7 +369,7 @@ export const TOOLS: FolioTool[] = [
     maxFileBytes: MAX_APPLE_BYTES,
     maxTotalBytes: MAX_APPLE_BYTES,
     processing: "local",
-    category: "Apple",
+    category: "Documents",
     badge: "Beta",
   },
 ];
