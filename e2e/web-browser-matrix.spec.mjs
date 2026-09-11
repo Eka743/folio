@@ -142,6 +142,12 @@ test("public routes render successfully", async ({ page }) => {
     const response = await page.goto(route);
     expect(response?.status(), route).toBe(200);
     await expect(page.locator("main")).toBeVisible();
+    const canonical = page.locator('link[rel="canonical"]');
+    const canonicalHref = await canonical.getAttribute("href");
+    expect(canonicalHref, route).toBeTruthy();
+    if (route.startsWith("/tools/")) {
+      expect(new URL(canonicalHref).pathname, route).toBe(route);
+    }
   }
 });
 

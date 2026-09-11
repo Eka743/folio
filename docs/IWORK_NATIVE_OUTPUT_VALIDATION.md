@@ -9,13 +9,23 @@ opened representative outputs in the relevant native application.
 
 | Path | Browser package validation | Native-app validation | Public status |
 | --- | --- | --- | --- |
-| Pages → DOCX | ZIP, content types, relationships, `word/document.xml`, expected text | Not yet completed | Beta |
-| Keynote → PPTX | ZIP, presentation parts, slide count, expected text, embedded media relationships | Not yet completed | Experimental |
-| Numbers → XLSX | Existing structured XLSX exporter; workbook/worksheet/value checks | Not yet completed | Beta |
+| Pages → DOCX | ZIP, content types, relationships, `word/document.xml`, expected text | Pages 15.3.1 opened, saved, closed and reopened | Beta |
+| Keynote → PPTX | ZIP, presentation parts, slide count, expected text, embedded media relationships | Keynote 15.3.1 opened, saved, closed and reopened | Experimental |
+| Numbers → XLSX | XLSX workbook/worksheet/shared-string/value checks | Numbers 15.3.1 opened, saved, closed and reopened | Beta |
 
-No Terminal or shell-based substitute counts as native validation. Until the
-owner completes the steps below, reverse native outputs remain Beta or
-Experimental and must not be promoted to Ready.
+Validation record (2026-09-11, macOS local host): real native `.pages`, `.key`
+and `.numbers` source fixtures were generated in the installed Apple apps,
+converted through Folio in WebKit, opened in the corresponding native app,
+saved as native documents, closed, and reopened. Pages preserved the source
+text; Keynote preserved two slides and their text; Numbers preserved one table,
+Unicode text, numeric values and the date cell. The reverse outputs remain Beta
+or Experimental because this is a bounded subset check, not a claim of full
+native fidelity. The saved validation artifacts were temporary and are not
+part of the repository.
+
+No Terminal or shell-based substitute counts as native validation. The
+application checks above are the evidence for this record; future changes to
+the writers should repeat them before changing a public status.
 
 ## Owner validation — no Terminal required
 

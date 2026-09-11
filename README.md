@@ -27,6 +27,14 @@ generated in the current tab and downloaded by your browser.
 | Markdown → PDF | `/tools/markdown-to-pdf` | Render Markdown as a polished A4 PDF | Browser |
 | PDF → Markdown | `/tools/pdf-to-markdown` | Extract readable structure from text PDFs | Browser Beta |
 | Combine documents → PDF | `/tools/combine-to-pdf` | Join PDFs, DOCX, Markdown and JPG/PNG in order | Browser Beta |
+| Pages → Word | `/tools/pages-to-word` | Export supported Pages content to DOCX | Browser Beta |
+| PowerPoint → PDF | `/tools/powerpoint-to-pdf` | Render supported PowerPoint slides locally | Browser Beta |
+| Keynote → PowerPoint | `/tools/keynote-to-powerpoint` | Export supported Keynote slides to PPTX | Browser Experimental |
+| Excel → PDF | `/tools/excel-to-pdf` | Render supported Excel worksheets locally | Browser Beta |
+| Pages → PDF | `/tools/pages-to-pdf` | Export supported Pages content to PDF | Browser Beta |
+| Keynote → PDF | `/tools/keynote-to-pdf` | Export supported Keynote slides to PDF | Browser Beta |
+| Numbers → XLSX | `/tools/numbers-to-xlsx` | Export saved Numbers tables to XLSX | Browser Beta |
+| Numbers → PDF | `/tools/numbers-to-pdf` | Render saved Numbers tables locally | Browser Beta |
 
 ## Local selection previews
 
@@ -111,8 +119,10 @@ Node 20.19+ is required by the current Next.js/tooling release.
   locally. Pages → PDF, Pages → DOCX, Keynote → PDF, Keynote → PPTX,
   Numbers → XLSX, Numbers → PDF, PowerPoint → PDF and Excel → PDF are scoped
   Beta/Experimental exports for supported structured content; unsupported
-  content fails closed. An embedded Apple QuickLook PDF is preview-only, and
-  reverse Apple output still needs native-app validation.
+  content fails closed. An embedded Apple QuickLook PDF is preview-only.
+  Representative reverse outputs were opened, saved and reopened in Pages,
+  Keynote and Numbers 15.3.1; advanced native features remain outside the
+  bounded browser writers.
 - **File caps:** individual PDFs/Apple containers ≤ 100 MB, images ≤ 25 MB,
   DOCX/PPTX/XLSX ≤ 50 MB;
   batch workflows also enforce file-count and aggregate-size limits.

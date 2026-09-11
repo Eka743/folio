@@ -19,6 +19,7 @@ export async function generateMetadata({
   return {
     title: tool.name,
     description: `${tool.description} Free, no account, processed in your browser.`,
+    alternates: { canonical: `/tools/${tool.slug}` },
   };
 }
 

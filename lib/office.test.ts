@@ -62,6 +62,73 @@ describe("bounded Office conversion", () => {
     expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
   });
 
+  it("falls back to the direct Office parser when a worker crashes", async () => {
+    const originalWorker = globalThis.Worker;
+    let terminated = 0;
+    class CrashingWorker {
+      private listeners = new Map<string, Set<(event: unknown) => void>>();
+
+      addEventListener(type: string, listener: (event: unknown) => void): void {
+        const listeners = this.listeners.get(type) ?? new Set<(event: unknown) => void>();
+        listeners.add(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      removeEventListener(type: string, listener: (event: unknown) => void): void {
+        this.listeners.get(type)?.delete(listener);
+      }
+
+      postMessage(): void {
+        queueMicrotask(() => this.listeners.get("error")?.forEach((listener) => listener({ error: new Error("simulated worker crash"), message: "simulated worker crash" })));
+      }
+
+      terminate(): void {
+        terminated++;
+      }
+    }
+    Object.defineProperty(globalThis, "Worker", { configurable: true, value: CrashingWorker });
+    try {
+      const parsed = await parsePptx(await pptxFile());
+      expect(parsed.slides).toHaveLength(1);
+      expect(terminated).toBe(1);
+    } finally {
+      Object.defineProperty(globalThis, "Worker", { configurable: true, value: originalWorker });
+    }
+  });
+
+  it("turns a worker error response into a retryable conversion error and cleans up", async () => {
+    const originalWorker = globalThis.Worker;
+    let terminated = 0;
+    class ErrorResponseWorker {
+      private listeners = new Map<string, Set<(event: unknown) => void>>();
+
+      addEventListener(type: string, listener: (event: unknown) => void): void {
+        const listeners = this.listeners.get(type) ?? new Set<(event: unknown) => void>();
+        listeners.add(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      removeEventListener(type: string, listener: (event: unknown) => void): void {
+        this.listeners.get(type)?.delete(listener);
+      }
+
+      postMessage(message: { id: number }): void {
+        queueMicrotask(() => this.listeners.get("message")?.forEach((listener) => listener({ data: { id: message.id, ok: false, error: { message: "simulated malformed worker payload" } } })));
+      }
+
+      terminate(): void {
+        terminated++;
+      }
+    }
+    Object.defineProperty(globalThis, "Worker", { configurable: true, value: ErrorResponseWorker });
+    try {
+      await expect(parsePptx(await pptxFile())).rejects.toThrow("simulated malformed worker payload");
+      expect(terminated).toBe(1);
+    } finally {
+      Object.defineProperty(globalThis, "Worker", { configurable: true, value: originalWorker });
+    }
+  });
+
   it("parses Excel saved values and exports a loadable PDF", async () => {
     const file = await xlsxFile();
     const parsed = await parseXlsx(file);
@@ -141,6 +208,25 @@ describe("bounded Office conversion", () => {
     const output = await parsePptx(new File([buffer(bytes)], "converted.pptx", { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }));
     expect(output.slides).toHaveLength(2);
     expect(output.slides.flatMap((slide) => slide.items).some((item) => item.kind === "text" && item.paragraphs.some((paragraph) => paragraph.runs.some((run) => run.text.includes("Keynote to PowerPoint marker"))))).toBe(true);
+
+    const archive = inspectZip(bytes);
+    const decode = async (path: string) => new TextDecoder().decode(await readZipEntry(bytes, archive, path));
+    const master = await decode("ppt/slideMasters/slideMaster1.xml");
+    const theme = await decode("ppt/theme/theme1.xml");
+    const presentationRelationships = await decode("ppt/_rels/presentation.xml.rels");
+    const masterRelationships = await decode("ppt/slideMasters/_rels/slideMaster1.xml.rels");
+    const contentTypes = await decode("[Content_Types].xml");
+
+    // Keynote enforces these schema details even though lenient OOXML readers
+    // accept a presentation that omits them or puts them out of order.
+    expect(master.indexOf("<p:clrMap ")).toBeLessThan(master.indexOf("<p:sldLayoutIdLst>"));
+    expect(master).toContain("<a:chExt cx=\"0\" cy=\"0\"/>");
+    expect((theme.match(/<a:effectStyle>/g) ?? [])).toHaveLength(3);
+    expect((theme.match(/<a:ln w=/g) ?? [])).toHaveLength(3);
+    expect(presentationRelationships).toContain("relationships/presProps");
+    expect(presentationRelationships).toContain("relationships/theme");
+    expect(masterRelationships).toContain("relationships/theme");
+    expect(contentTypes).toContain("/ppt/presProps.xml");
   });
 
   it("detects Office formats and advertises only validated public actions", async () => {

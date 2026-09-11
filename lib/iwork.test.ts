@@ -47,6 +47,16 @@ describe("local Apple document exports", () => {
     expect(await (await PDFDocument.load(bytes)).getPageCount()).toBe(2);
   });
 
+  it("keeps non-WinAnsi Apple text from aborting PDF export", async () => {
+    const file = await appleFile(
+      "unicode.pages",
+      `<document><page name="Unicode"><p>acción, niño, café, 日本語 👋</p></page></document>`,
+    );
+    const bytes = await appleToPdf(file, "pages");
+    expect(new TextDecoder().decode(bytes.subarray(0, 5))).toBe("%PDF-");
+    expect(await (await PDFDocument.load(bytes)).getPageCount()).toBe(1);
+  });
+
   it("exports saved Numbers tables to a valid XLSX archive", async () => {
     const file = await appleFile(
       "sample.numbers",
@@ -55,8 +65,14 @@ describe("local Apple document exports", () => {
     const bytes = await numbersToXlsx(file);
     const archive = inspectZip(bytes);
     expect(archive.entries.map((entry) => entry.path)).toContain("xl/workbook.xml");
+    expect(archive.entries.map((entry) => entry.path)).toContain("xl/sharedStrings.xml");
     const workbook = await readZipEntry(bytes, archive, "xl/workbook.xml");
     expect(new TextDecoder().decode(workbook)).toMatch(/Budget/);
+    const worksheet = new TextDecoder().decode(await readZipEntry(bytes, archive, "xl/worksheets/sheet1.xml"));
+    const sharedStrings = new TextDecoder().decode(await readZipEntry(bytes, archive, "xl/sharedStrings.xml"));
+    expect(worksheet).toContain('t="s"');
+    expect(worksheet).not.toContain('t="str"');
+    expect(sharedStrings).toContain("Alpha");
   });
 
   it("paginates a long Numbers table through the public parser path", async () => {

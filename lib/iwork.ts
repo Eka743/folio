@@ -220,6 +220,20 @@ async function fontFor(pdf: import("pdf-lib").PDFDocument, block: IworkTextBlock
   return pdf.embedFont(fontName);
 }
 
+/** pdf-lib's standard fonts are WinAnsi; preserve Latin glyphs and make other
+ * Unicode code points non-fatal rather than failing the whole export. */
+function safePdfText(font: import("pdf-lib").PDFFont, value: string): string {
+  return Array.from(value).map((character) => {
+    if (character === "\n" || character === "\r" || character === "\t") return character === "\t" ? " " : character;
+    try {
+      font.widthOfTextAtSize(character, 12);
+      return character;
+    } catch {
+      return "?";
+    }
+  }).join("");
+}
+
 function wrapText(text: string, font: import("pdf-lib").PDFFont, size: number, width: number): string[] {
   const lines: string[] = [];
   for (const paragraph of text.replace(/\r\n?/g, "\n").split("\n")) {
@@ -255,7 +269,7 @@ async function drawTextBlock(
   const x = number(block.x) + number(padding.left);
   const width = Math.max(20, number(block.width, 400) - number(padding.left) - number(padding.right));
   const lineHeight = number(block.lineHeight, size * 1.25);
-  const lines = wrapText(block.text, font, size, width);
+  const lines = wrapText(safePdfText(font, block.text), font, size, width);
   const top = sceneHeight - number(block.y) - number(padding.top);
   const [r, g, b] = color(block.color);
   for (const [index, line] of lines.entries()) {
@@ -324,7 +338,7 @@ async function drawTable(
         ? color(columnIndex < (table.headerColumns ?? 0) ? table.headerColumnBackground : table.headerRowBackground, [0.92, 0.92, 0.92])
         : [1, 1, 1] as [number, number, number];
       page.drawRectangle({ x, y: y - mergedHeight, width: mergedWidth, height: mergedHeight, color: rgb(...fill), borderColor: rgb(...border), borderWidth: 0.5 });
-      const cell = String(rows[rowIndex]?.[columnIndex] ?? "");
+      const cell = safePdfText(header ? headerFont : font, String(rows[rowIndex]?.[columnIndex] ?? ""));
       const lines = wrapText(cell, header ? headerFont : font, size, Math.max(8, mergedWidth - 8)).slice(0, 4);
       for (const [lineIndex, line] of lines.entries()) {
         page.drawText(line, { x: x + 4, y: y - size - 4 - lineIndex * size * 1.15, size, font: header ? headerFont : font, color: rgb(0.1, 0.12, 0.15) });
@@ -588,7 +602,17 @@ export async function numbersToXlsx(file: File): Promise<Uint8Array> {
     }
   }
   if (tableCount === 0) throw new AppleConversionError("This Numbers file has no exportable tables.");
-  const output = write(workbook, { bookType: "xlsx", type: "array", compression: true, cellStyles: true });
+  // Use the OOXML shared-string table instead of SheetJS's compact `t="str"`
+  // cells. The latter is intended for cached formula strings; Excel and
+  // LibreOffice tolerate it for ordinary text, but Numbers imports the sheet as
+  // empty. Shared strings are the interoperable representation for text cells.
+  const output = write(workbook, {
+    bookType: "xlsx",
+    type: "array",
+    compression: true,
+    cellStyles: true,
+    bookSST: true,
+  });
   const bytes = output instanceof ArrayBuffer
     ? new Uint8Array(output)
     : new Uint8Array(output as ArrayLike<number>);
