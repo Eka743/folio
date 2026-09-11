@@ -10,7 +10,9 @@ import {
   parsePptx,
   parseXlsx,
   powerpointToPdf,
+  renderPagesDocumentToDocx,
 } from "./office";
+import type { IworkDocument } from "@file-viewer/renderer-iwork";
 import { inspectZip, readZipEntry } from "./safeArchive";
 import { parseSafeXml } from "./safeXml";
 
@@ -96,6 +98,41 @@ describe("bounded Office conversion", () => {
     expect(document).toContain("Pages to Word marker");
     expect(document).toContain("acción");
     expect(() => parseSafeXml(document)).not.toThrow();
+  });
+
+  it("embeds Pages image media in the DOCX package", async () => {
+    const png = Uint8Array.from([
+      137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
+      0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137,
+      0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 248, 207, 192, 240,
+      31, 0, 3, 3, 1, 0, 24, 221, 141, 181, 0, 0, 0, 0, 73, 69,
+      78, 68, 174, 66, 96, 130,
+    ]);
+    const document: IworkDocument = {
+      kind: "pages",
+      generation: "iwork-09",
+      title: "Pages image",
+      scenes: [{
+        id: "page-1",
+        name: "Page 1",
+        width: 612,
+        height: 792,
+        blocks: [],
+        tables: [],
+        objects: [{ id: "image-1", kind: "image", x: 24, y: 24, width: 96, height: 96, bytes: png, mimeType: "image/png" }],
+        notes: [],
+      }],
+      diagnostics: [],
+      limits: [],
+      objectCount: 1,
+      limitedPreview: false,
+    };
+    const bytes = await renderPagesDocumentToDocx(document);
+    const archive = inspectZip(bytes);
+    expect(archive.entries.map((entry) => entry.path)).toContain("word/media/image1.png");
+    const rels = new TextDecoder().decode(await readZipEntry(bytes, archive, "word/_rels/document.xml.rels"));
+    expect(rels).toContain('Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"');
+    expect(await readZipEntry(bytes, archive, "word/media/image1.png")).toEqual(png);
   });
 
   it("writes a real PPTX from Keynote and reopens it through the safe parser", async () => {

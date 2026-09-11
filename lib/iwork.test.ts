@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
 import { inspectZip, readZipEntry } from "./safeArchive";
-import { appleToPdf, numbersToXlsx, parseAppleDocument } from "./iwork";
+import { appleToPdf, numbersToXlsx, parseAppleDocument, renderAppleDocumentToPdf } from "./iwork";
+import type { IworkDocument } from "@file-viewer/renderer-iwork";
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.length);
@@ -56,6 +57,51 @@ describe("local Apple document exports", () => {
     expect(archive.entries.map((entry) => entry.path)).toContain("xl/workbook.xml");
     const workbook = await readZipEntry(bytes, archive, "xl/workbook.xml");
     expect(new TextDecoder().decode(workbook)).toMatch(/Budget/);
+  });
+
+  it("paginates a long Numbers table through the public parser path", async () => {
+    const rows = Array.from({ length: 80 }, (_, index) => `<row><cell><string sfa:string="Row ${index + 1}"/></cell><cell><string sfa:string="${index * 10}"/></cell></row>`).join("");
+    const file = await appleFile(
+      "long.numbers",
+      `<document xmlns:sfa="http://developer.apple.com/namespaces/sfa"><workspace name="Long sheet"><table><row><cell><string sfa:string="Item"/></cell><cell><string sfa:string="Total"/></cell></row>${rows}</table></workspace></document>`,
+    );
+    const bytes = await appleToPdf(file, "numbers");
+    expect(await (await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThan(1);
+  });
+
+  it("renders merged Numbers cells across paginated output", async () => {
+    const document: IworkDocument = {
+      kind: "numbers",
+      generation: "iwork-09",
+      title: "Merged table",
+      scenes: [{
+        id: "sheet-1",
+        name: "Merged sheet",
+        width: 595.28,
+        height: 841.89,
+        blocks: [],
+        tables: [{
+          id: "table-1",
+          x: 24,
+          y: 120,
+          width: 480,
+          height: 2_000,
+          rows: Array.from({ length: 80 }, (_, index) => [index === 0 ? "Merged heading" : `A${index}`, index === 0 ? "" : `B${index}`]),
+          columnWidths: [240, 240],
+          rowHeights: Array.from({ length: 80 }, () => 24),
+          merges: [{ row: 0, col: 0, rowspan: 1, colspan: 2 }],
+          headerRows: 1,
+        }],
+        objects: [],
+        notes: [],
+      }],
+      diagnostics: [],
+      limits: [],
+      objectCount: 80,
+      limitedPreview: false,
+    };
+    const bytes = await renderAppleDocumentToPdf(document);
+    expect(await (await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThan(1);
   });
 
   it("fails closed for the renderer's limited generic preview", async () => {

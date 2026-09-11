@@ -184,6 +184,10 @@ function clampDimension(value: number, fallback: number): number {
     : fallback;
 }
 
+function clamp(value: number, min: number, max: number, fallback: number): number {
+  return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+}
+
 function number(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -278,9 +282,6 @@ async function drawTable(
   sceneHeight: number,
   table: IworkTable,
 ): Promise<void> {
-  if (table.merges?.length) {
-    throw new AppleConversionError("Merged Apple table cells are not in Folio’s supported export subset.");
-  }
   const rows = table.rows.slice(0, MAX_ROWS_PER_TABLE);
   const columns = Math.max(0, Math.min(MAX_COLUMNS_PER_TABLE, ...rows.map((row) => row.length)));
   if (!rows.length || !columns) return;
@@ -291,30 +292,100 @@ async function drawTable(
   const heights = table.rowHeights?.length === rows.length
     ? table.rowHeights
     : Array.from({ length: rows.length }, () => Math.max(20, number(table.fontSize, 11) * 1.8));
-  const font = await pdf.embedFont((await import("pdf-lib")).StandardFonts.Helvetica);
+  const { StandardFonts } = await import("pdf-lib");
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const headerFont = await pdf.embedFont(StandardFonts.HelveticaBold);
   const size = Math.min(24, Math.max(7, number(table.fontSize, 11)));
   let y = sceneHeight - number(table.y);
   const border = color(table.borderColor, [0.75, 0.77, 0.8]);
   const { rgb } = await import("pdf-lib");
+  const mergeAt = (row: number, column: number) => table.merges?.find((merge) => merge.row === row && merge.col === column);
+  const coveredByMerge = (row: number, column: number) => table.merges?.some((merge) =>
+    row >= merge.row && row < merge.row + merge.rowspan &&
+    column >= merge.col && column < merge.col + merge.colspan &&
+    (row !== merge.row || column !== merge.col),
+  ) ?? false;
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
     let x = number(table.x);
     const rowHeight = Math.max(12, heights[rowIndex] ?? 20);
     for (let columnIndex = 0; columnIndex < columns; columnIndex++) {
       const cellWidth = Math.max(12, widths[columnIndex] ?? 96);
+      if (coveredByMerge(rowIndex, columnIndex)) {
+        x += cellWidth;
+        continue;
+      }
+      const merge = mergeAt(rowIndex, columnIndex);
+      const colspan = Math.max(1, Math.min(columns - columnIndex, merge?.colspan ?? 1));
+      const rowspan = Math.max(1, Math.min(rows.length - rowIndex, merge?.rowspan ?? 1));
+      const mergedWidth = widths.slice(columnIndex, columnIndex + colspan).reduce((sum, width) => sum + Math.max(12, width ?? 96), 0);
+      const mergedHeight = heights.slice(rowIndex, rowIndex + rowspan).reduce((sum, height) => sum + Math.max(12, height ?? 20), 0);
       const header = rowIndex < (table.headerRows ?? 0) || columnIndex < (table.headerColumns ?? 0);
       const fill = header
         ? color(columnIndex < (table.headerColumns ?? 0) ? table.headerColumnBackground : table.headerRowBackground, [0.92, 0.92, 0.92])
         : [1, 1, 1] as [number, number, number];
-      page.drawRectangle({ x, y: y - rowHeight, width: cellWidth, height: rowHeight, color: rgb(...fill), borderColor: rgb(...border), borderWidth: 0.5 });
+      page.drawRectangle({ x, y: y - mergedHeight, width: mergedWidth, height: mergedHeight, color: rgb(...fill), borderColor: rgb(...border), borderWidth: 0.5 });
       const cell = String(rows[rowIndex]?.[columnIndex] ?? "");
-      const lines = wrapText(cell, font, size, Math.max(8, cellWidth - 8)).slice(0, 4);
+      const lines = wrapText(cell, header ? headerFont : font, size, Math.max(8, mergedWidth - 8)).slice(0, 4);
       for (const [lineIndex, line] of lines.entries()) {
-        page.drawText(line, { x: x + 4, y: y - size - 4 - lineIndex * size * 1.15, size, font, color: rgb(0.1, 0.12, 0.15) });
+        page.drawText(line, { x: x + 4, y: y - size - 4 - lineIndex * size * 1.15, size, font: header ? headerFont : font, color: rgb(0.1, 0.12, 0.15) });
       }
-      x += cellWidth;
+      x += mergedWidth;
+      columnIndex += colspan - 1;
     }
     y -= rowHeight;
   }
+}
+
+async function renderNumbersScenePages(
+  pdf: import("pdf-lib").PDFDocument,
+  scene: IworkScene,
+): Promise<boolean> {
+  if (scene.tables.length !== 1 || scene.tables[0].rows.length === 0 || scene.objects.some((object) => object.kind !== "table")) return false;
+  const table = scene.tables[0];
+  const width = Math.min(842, Math.max(595.28, clampDimension(scene.width, 595.28)));
+  const height = 841.89;
+  const rows = table.rows.slice(0, MAX_ROWS_PER_TABLE);
+  const rowHeights = table.rowHeights?.length === rows.length
+    ? table.rowHeights.map((rowHeight) => clamp(number(rowHeight, 20), 12, 72, 20))
+    : rows.map(() => Math.max(20, number(table.fontSize, 11) * 1.8));
+  const tableY = clamp(number(table.y, 120), 72, height - 120, 120);
+  const sourceWidths = Array.from({ length: Math.max(1, ...rows.map((row) => row.length)) }, (_, index) => Math.max(12, number(table.columnWidths?.[index], 96)));
+  const widthScale = Math.min(1, (width - 48) / sourceWidths.reduce((sum, columnWidth) => sum + columnWidth, 0));
+  const availableHeight = Math.max(120, height - tableY - 48);
+  let rowStart = 0;
+  while (rowStart < rows.length) {
+    let rowEnd = rowStart;
+    let consumedHeight = 0;
+    while (rowEnd < rows.length) {
+      const nextHeight = rowHeights[rowEnd] ?? 20;
+      if (rowEnd > rowStart && consumedHeight + nextHeight > availableHeight) break;
+      consumedHeight += nextHeight;
+      rowEnd++;
+    }
+    const page = pdf.addPage([width, height]);
+    page.drawRectangle({ x: 0, y: 0, width, height, color: (await import("pdf-lib")).rgb(1, 1, 1) });
+    for (const block of scene.blocks) await drawTextBlock(pdf, page, height, block);
+    const pageMerges = (table.merges ?? []).flatMap((merge) => {
+      const mergeEnd = Math.min(rowEnd, merge.row + merge.rowspan);
+      const mergeStart = Math.max(rowStart, merge.row);
+      return mergeEnd > mergeStart
+        ? [{ ...merge, row: mergeStart - rowStart, rowspan: mergeEnd - mergeStart }]
+        : [];
+    });
+    await drawTable(pdf, page, height, {
+      ...table,
+      x: 24,
+      y: tableY,
+      width: sourceWidths.reduce((sum, columnWidth) => sum + columnWidth * widthScale, 0),
+      height: consumedHeight,
+      rows: rows.slice(rowStart, rowEnd),
+      columnWidths: sourceWidths.map((columnWidth) => columnWidth * widthScale),
+      rowHeights: rowHeights.slice(rowStart, rowEnd),
+      merges: pageMerges,
+    });
+    rowStart = rowEnd;
+  }
+  return true;
 }
 
 async function drawChart(
@@ -393,10 +464,11 @@ async function drawObject(
   }
 }
 
-async function renderAppleDocumentToPdf(document: IworkDocument): Promise<Uint8Array> {
+export async function renderAppleDocumentToPdf(document: IworkDocument): Promise<Uint8Array> {
   const { PDFDocument, rgb } = await import("pdf-lib");
   const pdf = await PDFDocument.create();
   for (const scene of document.scenes) {
+    if (document.kind === "numbers" && await renderNumbersScenePages(pdf, scene)) continue;
     const width = clampDimension(scene.width, 595.28);
     const height = clampDimension(scene.height, 841.89);
     const page = pdf.addPage([width, height]);
@@ -422,7 +494,7 @@ async function renderAppleDocumentToPdf(document: IworkDocument): Promise<Uint8A
     throw new AppleConversionError("Folio could not validate the generated Apple PDF.");
   }
   const checked = await loadPdfDocument(bytes);
-  if (checked.getPageCount() !== document.scenes.length) {
+  if (checked.getPageCount() < document.scenes.length) {
     throw new AppleConversionError("Folio could not validate the generated Apple PDF page count.");
   }
   return bytes;

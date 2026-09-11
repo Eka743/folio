@@ -1249,7 +1249,7 @@ function docxPictureXml(relId: string, image: OfficeImage): string {
   return `<w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${emus(image.width)}" cy="${emus(image.height)}"/><wp:docPr id="${escapeAttr(relId.replace(/\D/g, "") || "1")}" name="${escapeAttr(name)}"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="${escapeAttr(name)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${escapeAttr(relId)}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emus(image.width)}" cy="${emus(image.height)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
 }
 
-async function renderPagesDocumentToDocx(document: IworkDocument): Promise<Uint8Array> {
+export async function renderPagesDocumentToDocx(document: IworkDocument): Promise<Uint8Array> {
   const media: Array<{ path: string; relId: string; image: OfficeImage }> = [];
   const body: string[] = [];
   let imageIndex = 0;
