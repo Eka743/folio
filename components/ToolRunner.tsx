@@ -453,8 +453,10 @@ export function ToolRunner({
           items={files}
           reorderable={tool.multiple && files.length > 1}
           disabled={busy}
+          accepts={tool.accepts}
           onRemove={removeFile}
           onMove={moveFile}
+          onAddFiles={tool.multiple ? addFiles : undefined}
           listRef={fileListRef}
         />
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dropzone } from "@/components/Dropzone";
+import { DocumentPreview } from "@/components/DocumentPreview";
 import { ToolRunner } from "@/components/ToolRunner";
 import { capabilityLabel, inspectFile, readEmbeddedPdfPreview, type FileCapabilityAction, type FileInspection } from "@/lib/fileIntelligence";
 import { formatBytes } from "@/lib/files";
@@ -194,18 +195,25 @@ export function UniversalDrop() {
 
         {inspection && selectedFile && (
           <div ref={selectionCardRef} tabIndex={-1} className="mt-5 max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(16,20,24,0.04)]" aria-label="Detected file">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-              <div className="min-w-0">
-                <p className="truncate text-[15px] font-semibold text-ink-950" title={selectedFile.name}>{selectedFile.name}</p>
-                <p className="mt-1 text-sm text-ink-500">
-                  Detected as <span className="font-medium text-ink-800">{inspection.formatLabel}</span>
-                  {inspection.generation !== "unknown" && ` · ${inspection.generation} container`}
-                </p>
-                <p className="mt-1 text-sm text-ink-500">{formatBytes(selectedFile.size)}</p>
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-5">
+              <div className="w-full max-w-[180px] shrink-0">
+                <DocumentPreview file={selectedFile} compact />
               </div>
-              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${inspection.valid && inspection.safety === "safe" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>
-                {inspection.valid && inspection.safety === "safe" ? "Recognized" : "Needs attention"}
-              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] font-semibold text-ink-950" title={selectedFile.name}>{selectedFile.name}</p>
+                    <p className="mt-1 text-sm text-ink-500">
+                      Detected as <span className="font-medium text-ink-800">{inspection.formatLabel}</span>
+                      {inspection.generation !== "unknown" && ` · ${inspection.generation} container`}
+                    </p>
+                    <p className="mt-1 text-sm text-ink-500">{formatBytes(selectedFile.size)}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${inspection.valid && inspection.safety === "safe" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>
+                    {inspection.valid && inspection.safety === "safe" ? "Recognized" : "Needs attention"}
+                  </span>
+                </div>
+              </div>
             </div>
 
             {inspection.warningMessages.length > 0 && (

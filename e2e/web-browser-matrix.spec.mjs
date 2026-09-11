@@ -182,6 +182,118 @@ test("all seven browser-local tools produce valid results", async ({ page }) => 
   await expectPdf(docxPdf, 1);
 });
 
+test("selected files use real PDF and image previews with honest format fallbacks", async ({ page }) => {
+  const requests = [];
+  page.on("request", (request) => requests.push(request));
+
+  await page.goto("/tools/merge-pdf");
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: "grammar-acción-📄.pdf", mimeType: "application/pdf", buffer: readFileSync(fixtures.textPdf) },
+    { name: "notes.pdf", mimeType: "application/pdf", buffer: readFileSync(fixtures.textPdf) },
+  ]);
+  await expect(page.locator('[data-file-preview-kind="pdf"][data-preview-state="ready"]')).toHaveCount(2);
+  await expect(page.locator('[data-preview-canvas="pdf"]')).toHaveCount(2);
+  const darkPixels = await page.locator('[data-preview-canvas="pdf"]').first().evaluate((canvas) => {
+    const context = canvas.getContext("2d");
+    if (!context) return 0;
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let dark = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] < 220 || pixels[i + 1] < 220 || pixels[i + 2] < 220) dark++;
+    }
+    return dark;
+  });
+  expect(darkPixels).toBeGreaterThan(0);
+  await expect(page.locator('p[title="grammar-acción-📄.pdf"]')).toBeVisible();
+  await expect(page.locator('p[title="grammar-acción-📄.pdf"]')).toHaveText("grammar-acción-📄.pdf");
+  await expect(page.getByRole("button", { name: "+ Add files" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Move notes.pdf up" }).click();
+  const orderedNames = await page.locator('[data-selected-file-preview-list="true"] ol > li p[title]').allTextContents();
+  expect(orderedNames).toEqual(["notes.pdf", "grammar-acción-📄.pdf"]);
+  await page.getByRole("button", { name: "Remove notes.pdf" }).click();
+  await expect(page.locator('[data-file-preview-kind="pdf"]')).toHaveCount(1);
+
+  await page.goto("/tools/images-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.image);
+  await expect(page.locator('[data-file-preview-kind="image"][data-preview-state="ready"]')).toBeVisible();
+  await expect(page.locator('[data-preview-image="true"]')).toHaveAttribute("src", /^blob:/);
+
+  await page.goto("/tools/docx-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.docx);
+  await expect(page.locator('[data-file-preview-kind="docx"][data-preview-state="ready"]')).toBeVisible();
+
+  await page.goto("/tools/markdown-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.markdown);
+  await expect(page.locator('[data-file-preview-kind="markdown"][data-preview-state="ready"]')).toBeVisible();
+
+  const externalRequests = requests.filter((request) => {
+    const url = new URL(request.url());
+    return ["http:", "https:"].includes(url.protocol) && url.origin !== BASE_ORIGIN;
+  });
+  const documentRequests = requests.filter((request) => {
+    const url = request.url().toLowerCase();
+    return request.method() !== "GET" || /\/api\/|upload|multipart|\.pdf(?:$|[?#])|\.png(?:$|[?#])|\.docx(?:$|[?#])|\.md(?:$|[?#])/.test(url);
+  });
+  expect(externalRequests).toEqual([]);
+  expect(documentRequests).toEqual([]);
+});
+
+test("preview failures fall back without blocking conversion and stale renders stay gone", async ({ page }) => {
+  await page.goto("/tools/merge-pdf");
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: "bad-one.pdf", mimeType: "application/pdf", buffer: readFileSync(fixtures.corruptPdf) },
+    { name: "bad-two.pdf", mimeType: "application/pdf", buffer: readFileSync(fixtures.corruptPdf) },
+  ]);
+  await expect(page.locator('[data-file-preview-kind="pdf"][data-preview-state="fallback"]')).toHaveCount(2);
+  await page.getByRole("button", { name: "Merge PDFs" }).click();
+  const mergeError = page.locator('div[role="alert"]').filter({ hasText: /Could not read this PDF/i });
+  await expect(mergeError).toBeVisible();
+  await expect(mergeError).not.toContainText(/TypeError|ArrayBuffer|stack/i);
+
+  await page.getByRole("button", { name: "Start over" }).click();
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: "fresh-one.pdf", mimeType: "application/pdf", buffer: readFileSync(fixtures.textPdf) },
+    { name: "fresh-two.pdf", mimeType: "application/pdf", buffer: readFileSync(fixtures.textPdf) },
+  ]);
+  await page.getByRole("button", { name: "Remove fresh-one.pdf" }).click();
+  await expect(page.locator('p[title="fresh-one.pdf"]')).toHaveCount(0);
+  await page.waitForTimeout(500);
+  await expect(page.locator('[data-file-preview-kind="pdf"]')).toHaveCount(1);
+  await expect(page.locator('p[title="fresh-one.pdf"]')).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Start over" }).click();
+  await page.locator('input[type="file"]').setInputFiles(fixtures.textPdf);
+  await page.getByRole("button", { name: "Start over" }).click();
+  await page.waitForTimeout(500);
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toHaveCount(0);
+});
+
+test("image preview object URLs are released on reset", async ({ page }) => {
+  await page.addInitScript(() => {
+    const originalCreate = URL.createObjectURL.bind(URL);
+    const originalRevoke = URL.revokeObjectURL.bind(URL);
+    window.__folioPreviewUrlStats = { created: 0, revoked: 0 };
+    URL.createObjectURL = (value) => {
+      window.__folioPreviewUrlStats.created++;
+      return originalCreate(value);
+    };
+    URL.revokeObjectURL = (value) => {
+      window.__folioPreviewUrlStats.revoked++;
+      return originalRevoke(value);
+    };
+  });
+  await page.goto("/tools/images-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles(fixtures.image);
+  await expect(page.locator('[data-file-preview-kind="image"][data-preview-state="ready"]')).toBeVisible();
+  await page.getByRole("button", { name: "Start over" }).click();
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => {
+    const stats = window.__folioPreviewUrlStats;
+    return stats.created > 0 && stats.created === stats.revoked;
+  })).toBe(true);
+});
+
 test("Markdown to PDF creates a valid multi-page PDF and PDF to Markdown extracts text", async ({ page }) => {
   const requests = [];
   page.on("request", (request) => requests.push(request));
@@ -322,7 +434,7 @@ test("Universal Drop detects content and hands off to the existing tools", async
   await expect(drop.getByRole("button", { name: "Merge PDFs" })).toBeVisible();
   await drop.getByRole("button", { name: "Merge PDFs" }).click();
   await expect(page.getByRole("heading", { name: "Merge PDF" })).toBeVisible();
-  const toolInput = page.locator('input[type="file"]');
+  const toolInput = page.getByLabel("Select .pdf files");
   await toolInput.setInputFiles(fixtures.onePage);
   const merged = await downloadFromResult(page, "Merge PDFs", /^Download /);
   await expectPdf(merged, 2);

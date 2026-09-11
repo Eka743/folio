@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { formatBytes } from "@/lib/files";
+
+export { FileList } from "@/components/DocumentPreview";
+export type { ListedFile } from "@/components/DocumentPreview";
 
 export function Dropzone({
   accepts,
@@ -106,78 +108,5 @@ export function Dropzone({
         }}
       />
     </div>
-  );
-}
-
-export interface ListedFile {
-  file: File;
-  id: string;
-}
-
-export function FileList({
-  items,
-  reorderable,
-  disabled,
-  onRemove,
-  onMove,
-  listRef,
-}: {
-  items: ListedFile[];
-  reorderable: boolean;
-  disabled?: boolean;
-  onRemove: (id: string) => void;
-  onMove: (id: string, dir: -1 | 1) => void;
-  listRef?: React.RefObject<HTMLOListElement | null>;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <ol ref={listRef} tabIndex={-1} className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white" aria-label="Selected files">
-      {items.map((item, i) => (
-        <li key={item.id} className="flex items-center gap-3 px-4 py-3">
-          {reorderable && (
-            <span className="w-6 shrink-0 text-center text-sm font-semibold tabular-nums text-ink-400" aria-hidden="true">
-              {i + 1}
-            </span>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-ink-900" title={item.file.name}>
-              {item.file.name}
-            </p>
-            <p className="text-[13px] text-ink-500">{formatBytes(item.file.size)}</p>
-          </div>
-          {reorderable && (
-            <div className="flex shrink-0 gap-1" role="group" aria-label={`Reorder ${item.file.name}`}>
-              <button
-                type="button"
-                disabled={disabled || i === 0}
-                onClick={() => onMove(item.id, -1)}
-                aria-label={`Move ${item.file.name} up`}
-                className="min-h-11 min-w-11 rounded-lg border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 disabled:opacity-30"
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                disabled={disabled || i === items.length - 1}
-                onClick={() => onMove(item.id, 1)}
-                aria-label={`Move ${item.file.name} down`}
-                className="min-h-11 min-w-11 rounded-lg border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 disabled:opacity-30"
-              >
-                ↓
-              </button>
-            </div>
-          )}
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => onRemove(item.id)}
-            aria-label={`Remove ${item.file.name}`}
-            className="min-h-11 shrink-0 rounded-lg border border-slate-200 px-3 py-1 text-sm text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 disabled:opacity-40"
-          >
-            Remove
-          </button>
-        </li>
-      ))}
-    </ol>
   );
 }
