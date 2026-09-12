@@ -25,7 +25,7 @@ const MAX_COLUMNS_PER_TABLE = 500;
 const MAX_OUTPUT_DIMENSION = 4_000;
 const MAX_XLSX_OUTPUT_BYTES = 50 * 1024 * 1024;
 const PDF_SIGNATURE = "%PDF-";
-const IWORK_WORKER_TIMEOUT_MS = 60_000;
+export const IWORK_WORKER_TIMEOUT_MS = 60_000;
 let iworkWorkerRequestId = 0;
 
 export class AppleConversionError extends Error {

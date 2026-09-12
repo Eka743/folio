@@ -221,6 +221,21 @@ test("Universal Drop detects the supported format matrix and enforces selection 
     "at-b.pdf": 75 * 1024 * 1024,
     "over-a.pdf": 75 * 1024 * 1024,
     "over-b.pdf": 75 * 1024 * 1024 + 1,
+    "pdf-under.pdf": 100 * 1024 * 1024 - 1,
+    "pdf-at.pdf": 100 * 1024 * 1024,
+    "pdf-over.pdf": 100 * 1024 * 1024 + 1,
+    "docx-under.docx": 50 * 1024 * 1024 - 1,
+    "docx-at.docx": 50 * 1024 * 1024,
+    "docx-over.docx": 50 * 1024 * 1024 + 1,
+    "image-under.png": 25 * 1024 * 1024 - 1,
+    "image-at.png": 25 * 1024 * 1024,
+    "image-over.png": 25 * 1024 * 1024 + 1,
+    "markdown-under.md": 10 * 1024 * 1024 - 1,
+    "markdown-at.md": 10 * 1024 * 1024,
+    "markdown-over.md": 10 * 1024 * 1024 + 1,
+    "apple-under.pages": 100 * 1024 * 1024 - 1,
+    "apple-at.pages": 100 * 1024 * 1024,
+    "apple-over.pages": 100 * 1024 * 1024 + 1,
   };
   await page.addInitScript((overrides) => {
     const owner = Object.getOwnPropertyDescriptor(File.prototype, "size")?.get
@@ -270,6 +285,29 @@ test("Universal Drop detects the supported format matrix and enforces selection 
     ]);
     if (message) await expect(limitedSection).toContainText(message);
     else await expect(limitedSection.getByRole("button", { name: "Merge 2 PDFs" })).toBeVisible();
+  }
+
+  for (const [name, source, mimeType, limitMessage] of [
+    ["pdf-under.pdf", pdfBytes, "application/pdf", null],
+    ["pdf-at.pdf", pdfBytes, "application/pdf", null],
+    ["pdf-over.pdf", pdfBytes, "application/pdf", "100 MB local limit"],
+    ["docx-under.docx", readFileSync(fixturePath("docx", "simple.docx")), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", null],
+    ["docx-at.docx", readFileSync(fixturePath("docx", "simple.docx")), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", null],
+    ["docx-over.docx", readFileSync(fixturePath("docx", "simple.docx")), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "50 MB local limit"],
+    ["image-under.png", ONE_PIXEL_PNG, "image/png", null],
+    ["image-at.png", ONE_PIXEL_PNG, "image/png", null],
+    ["image-over.png", ONE_PIXEL_PNG, "image/png", "25 MB local limit"],
+    ["markdown-under.md", Buffer.from("# Local\n"), "text/markdown", null],
+    ["markdown-at.md", Buffer.from("# Local\n"), "text/markdown", null],
+    ["markdown-over.md", Buffer.from("# Local\n"), "text/markdown", "10 MB local limit"],
+    ["apple-under.pages", readFileSync(fixturePath("apple", "sample.pages")), "application/vnd.apple.pages", null],
+    ["apple-at.pages", readFileSync(fixturePath("apple", "sample.pages")), "application/vnd.apple.pages", null],
+    ["apple-over.pages", readFileSync(fixturePath("apple", "sample.pages")), "application/vnd.apple.pages", "100 MB local limit"],
+  ]) {
+    await limitedSection.getByRole("button", { name: "Start over" }).click();
+    await limitedSection.locator('input[type="file"]').setInputFiles({ name, mimeType, buffer: source });
+    if (limitMessage) await expect(limitedSection).toContainText(limitMessage);
+    else await expect(limitedSection.locator('[data-universal-file-count="1"]')).toBeVisible();
   }
 });
 

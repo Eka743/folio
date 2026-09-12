@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
 import { inspectZip, readZipEntry } from "./safeArchive";
@@ -127,5 +127,37 @@ describe("local Apple document exports", () => {
     const bytes = await zip.generateAsync({ type: "uint8array" });
     const file = new File([toArrayBuffer(bytes)], "limited.pages");
     await expect(parseAppleDocument(file, "pages")).rejects.toThrow(/limited preview|couldn’t read/i);
+  });
+
+  it("falls back after an iWork worker timeout and terminates the worker", async () => {
+    const originalWorker = globalThis.Worker;
+    let terminated = 0;
+    class StalledWorker {
+      addEventListener(): void {}
+      removeEventListener(): void {}
+      postMessage(): void {
+        posted = true;
+      }
+      terminate(): void {
+        terminated++;
+      }
+    }
+    let posted = false;
+    Object.defineProperty(globalThis, "Worker", { configurable: true, value: StalledWorker });
+    const file = await appleFile("timeout.pages", "<document><page name=\"One\"><p>Timeout fallback</p></page></document>");
+    vi.useFakeTimers();
+    try {
+      const pending = parseAppleDocument(file, "pages");
+      for (let attempt = 0; attempt < 20 && !posted; attempt++) await Promise.resolve();
+      expect(posted).toBe(true);
+      vi.advanceTimersByTime(60_000);
+      vi.useRealTimers();
+      const parsed = await pending;
+      expect(parsed.scenes).toHaveLength(1);
+      expect(terminated).toBe(1);
+    } finally {
+      vi.useRealTimers();
+      Object.defineProperty(globalThis, "Worker", { configurable: true, value: originalWorker });
+    }
   });
 });

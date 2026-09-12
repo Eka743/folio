@@ -43,6 +43,7 @@ export const MAX_OFFICE_SHEETS = 100;
 export const MAX_OFFICE_ROWS = 20_000;
 export const MAX_OFFICE_COLUMNS = 500;
 export const MAX_OFFICE_IMAGE_PIXELS = 40_000_000;
+export const OFFICE_WORKER_TIMEOUT_MS = 60_000;
 
 const EMU_PER_POINT = 12_700;
 const PDF_SIGNATURE = "%PDF-";
@@ -822,7 +823,7 @@ async function parseOfficeInWorker(file: File, kind: OfficeKind): Promise<Parsed
   const buffer = copyArrayBuffer(await readFileBytes(file));
   return new Promise<ParsedPptx | ParsedXlsx>((resolve, reject) => {
     let settled = false;
-    const timeout = setTimeout(() => finish(() => reject(new OfficeWorkerUnavailableError("The Office Worker timed out."))), 60_000);
+    const timeout = setTimeout(() => finish(() => reject(new OfficeWorkerUnavailableError("The Office Worker timed out."))), OFFICE_WORKER_TIMEOUT_MS);
     const cleanup = () => {
       clearTimeout(timeout);
       worker.removeEventListener("message", onMessage);

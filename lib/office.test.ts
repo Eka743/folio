@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
 import { inspectFile } from "./fileIntelligence";
@@ -125,6 +125,37 @@ describe("bounded Office conversion", () => {
       await expect(parsePptx(await pptxFile())).rejects.toThrow("simulated malformed worker payload");
       expect(terminated).toBe(1);
     } finally {
+      Object.defineProperty(globalThis, "Worker", { configurable: true, value: originalWorker });
+    }
+  });
+
+  it("falls back after an Office worker timeout and terminates the worker", async () => {
+    const originalWorker = globalThis.Worker;
+    let terminated = 0;
+    class StalledWorker {
+      addEventListener(): void {}
+      removeEventListener(): void {}
+      postMessage(): void {
+        posted = true;
+      }
+      terminate(): void {
+        terminated++;
+      }
+    }
+    let posted = false;
+    Object.defineProperty(globalThis, "Worker", { configurable: true, value: StalledWorker });
+    const file = await pptxFile();
+    vi.useFakeTimers();
+    try {
+      const pending = parsePptx(file);
+      for (let attempt = 0; attempt < 20 && !posted; attempt++) await Promise.resolve();
+      expect(posted).toBe(true);
+      await vi.advanceTimersByTimeAsync(60_000);
+      const parsed = await pending;
+      expect(parsed.slides).toHaveLength(1);
+      expect(terminated).toBe(1);
+    } finally {
+      vi.useRealTimers();
       Object.defineProperty(globalThis, "Worker", { configurable: true, value: originalWorker });
     }
   });
