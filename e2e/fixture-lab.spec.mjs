@@ -68,14 +68,17 @@ async function parsePdf(bytes) {
     verbosity: 0,
   }).promise;
   let text = "";
+  const pageSizes = [];
   for (let index = 1; index <= pdf.numPages; index++) {
     const page = await pdf.getPage(index);
+    const viewport = page.getViewport({ scale: 1 });
+    pageSizes.push({ width: viewport.width, height: viewport.height });
     const content = await page.getTextContent();
     text += content.items.map((item) => item.str).join(" ") + "\n";
   }
   const pageCount = pdf.numPages;
   await pdf.destroy();
-  return { pageCount, text, hasImageResource };
+  return { pageCount, text, hasImageResource, pageSizes };
 }
 
 function names(kind, extension) {
@@ -98,6 +101,10 @@ test("generated DOCX corpus produces useful reparsable PDFs", async ({ page }) =
     expect(output.length, name).toBeGreaterThan(10_000);
     if (["multipage.docx", "mixed-complex.docx"].includes(name)) expect(parsed.pageCount, name).toBeGreaterThan(1);
     expect(parsed.text, name).not.toMatch(/undefined|TypeError|NaN/);
+    if (name === "mixed-complex.docx") {
+      expect(parsed.pageSizes[0].width).toBeCloseTo(595.28, 1);
+      expect(parsed.pageSizes[0].height).toBeCloseTo(841.89, 1);
+    }
   }
 });
 
@@ -111,6 +118,12 @@ test("generated PPTX corpus preserves slide count and text in PDF output", async
     expect(parsed.pageCount, name).toBe(expectedSlides);
     expect(parsed.text, name).toMatch(/Generated|Diapositiva/);
     expect(parsed.text, name).not.toMatch(/undefined|TypeError|NaN/);
+    if (name === "mixed.pptx") {
+      for (const size of parsed.pageSizes) {
+        expect(size.width).toBeCloseTo(960, 0);
+        expect(size.height).toBeCloseTo(540, 0);
+      }
+    }
   }
 });
 
@@ -123,6 +136,11 @@ test("generated XLSX corpus preserves sheets and readable cell content in PDF ou
     if (["multi-sheet.xlsx", "mixed.xlsx"].includes(name)) expect(parsed.pageCount, name).toBeGreaterThanOrEqual(2);
     expect(parsed.text, name).toMatch(/Item|Column|Generated|Resumen|Café|acción/);
     expect(parsed.text, name).not.toMatch(/undefined|TypeError|NaN/);
+    if (name === "mixed.xlsx") {
+      expect(parsed.text).toContain("2026-09-11");
+      expect(parsed.text).not.toContain("46276");
+      expect(parsed.pageSizes[0].width).toBeLessThan(parsed.pageSizes[0].height);
+    }
   }
 });
 

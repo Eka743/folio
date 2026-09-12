@@ -29,7 +29,7 @@ generated in the current tab and downloaded by your browser.
 | Combine documents → PDF | `/tools/combine-to-pdf` | Join PDFs, DOCX, Markdown and JPG/PNG in order | Browser Beta |
 | Pages → Word | `/tools/pages-to-word` | Export supported Pages content to DOCX | Browser Beta |
 | PowerPoint → PDF | `/tools/powerpoint-to-pdf` | Render supported PowerPoint slides locally | Browser Beta |
-| Keynote → PowerPoint | `/tools/keynote-to-powerpoint` | Export supported Keynote slides to PPTX | Browser Experimental |
+| Keynote → PowerPoint | `/tools/keynote-to-powerpoint` | Export supported Keynote slides to PPTX | Browser Beta |
 | Excel → PDF | `/tools/excel-to-pdf` | Render supported Excel worksheets locally | Browser Beta |
 | Pages → PDF | `/tools/pages-to-pdf` | Export supported Pages content to PDF | Browser Beta |
 | Keynote → PDF | `/tools/keynote-to-pdf` | Export supported Keynote slides to PDF | Browser Beta |
@@ -118,7 +118,7 @@ Node 20.19+ is required by the current Next.js/tooling release.
 - **Apple, PowerPoint and Excel:** Pages, Keynote and Numbers are detected
   locally. Pages → PDF, Pages → DOCX, Keynote → PDF, Keynote → PPTX,
   Numbers → XLSX, Numbers → PDF, PowerPoint → PDF and Excel → PDF are scoped
-  Beta/Experimental exports for supported structured content; unsupported
+  Beta exports for supported structured content; unsupported
   content fails closed. An embedded Apple QuickLook PDF is preview-only.
   Representative reverse outputs were opened, saved and reopened in Pages,
   Keynote and Numbers 15.3.1; advanced native features remain outside the

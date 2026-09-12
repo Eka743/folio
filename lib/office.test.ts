@@ -139,6 +139,15 @@ describe("bounded Office conversion", () => {
     expect((await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThanOrEqual(1);
   });
 
+  it("formats Excel date cells before PDF rendering", async () => {
+    const zip = await JSZip.loadAsync(await (await xlsxFile()).arrayBuffer());
+    zip.file("xl/styles.xml", `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="60" formatCode="yyyy-mm-dd"/></numFmts><fonts count="1"><font/></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0"/><xf numFmtId="60" fontId="0" fillId="0"/></cellXfs></styleSheet>`);
+    zip.file("xl/worksheets/sheet1.xml", `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Published</t></is></c><c r="B1" s="1"><v>46276</v></c></row></sheetData></worksheet>`);
+    const file = new File([buffer(await zip.generateAsync({ type: "uint8array" }))], "date.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const parsed = await parseXlsx(file);
+    expect(parsed.sheets[0].rows[0][1].value).toBe("2026-09-11");
+  });
+
   it("rejects external workbook relationships before reading worksheet content", async () => {
     const file = await xlsxFile();
     const zip = await JSZip.loadAsync(await file.arrayBuffer());

@@ -81,7 +81,7 @@ function actionDescription(action: CapabilityActionId, count: number): string {
     : "Convert this Word document locally. Beta.";
   if (action === "pages-to-word") return "Write a real DOCX package from supported Pages content locally. Beta.";
   if (action === "powerpoint-to-pdf") return "Render supported PowerPoint slides to a validated PDF locally. Beta.";
-  if (action === "keynote-to-powerpoint") return "Write a real PPTX package from supported Keynote slides locally. Experimental.";
+  if (action === "keynote-to-powerpoint") return "Write a real PPTX package from supported Keynote slides locally. Beta.";
   if (action === "excel-to-pdf") return "Render all supported Excel worksheets to a validated PDF locally. Beta.";
   if (action === "combine-to-pdf") return "Normalize each supported source locally. Nothing is silently skipped.";
   if (action === "pages-to-pdf") return "Export the supported Pages subset locally. Unsupported content fails closed.";

@@ -752,7 +752,12 @@ export async function docxToPdf(
   const arrayBuffer = stableBuffer.buffer;
   let html: string;
   try {
-    const result = await convertToHtml({ arrayBuffer });
+    const result = await convertToHtml({ arrayBuffer }, {
+      styleMap: [
+        "p[style-name='Title'] => h1:fresh",
+        "p[style-name='Subtitle'] => h2:fresh",
+      ],
+    });
     html = result.value;
   } catch {
     throw new Error(
@@ -771,18 +776,21 @@ export async function docxToPdf(
     "position:fixed;left:-10000px;top:0;width:794px;background:#fff;";
   host.innerHTML =
     `<div class="folio-docx" style="box-sizing:border-box;width:794px;background:#fff;color:#111;` +
-    `font-family:Georgia,'Times New Roman',serif;font-size:15px;line-height:1.6;` +
+    `font-family:Aptos,'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.5;` +
     `padding:48px 56px;word-wrap:break-word;overflow-wrap:anywhere;">${safeHtml}</div>` +
     `<style>
-      .folio-docx h1{font-size:28px;line-height:1.25;margin:0 0 12px;font-family:Inter,system-ui,sans-serif;font-weight:700}
-      .folio-docx h2{font-size:22px;margin:22px 0 8px;font-family:Inter,system-ui,sans-serif;font-weight:700}
-      .folio-docx h3{font-size:18px;margin:18px 0 8px;font-family:Inter,system-ui,sans-serif;font-weight:600}
-      .folio-docx p{margin:0 0 10px}
-      .folio-docx ul,.folio-docx ol{margin:0 0 12px;padding-left:28px}
-      .folio-docx li{margin-bottom:4px}
-      .folio-docx table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}
-      .folio-docx th,.folio-docx td{border:1px solid #999;padding:6px 8px;text-align:left}
-      .folio-docx img{max-width:100%;height:auto}
+      .folio-docx h1{font-size:24px;line-height:1.2;margin:0 0 12px;font-weight:700;letter-spacing:-.015em}
+      .folio-docx h2{font-size:19px;line-height:1.25;margin:18px 0 7px;font-weight:700}
+      .folio-docx h3{font-size:16px;line-height:1.3;margin:14px 0 6px;font-weight:600}
+      .folio-docx p{margin:0 0 8px}
+      .folio-docx ul,.folio-docx ol{display:block;margin:0 0 8px;padding-left:26px}
+      .folio-docx ul{list-style-type:disc}
+      .folio-docx ol{list-style-type:decimal}
+      .folio-docx li{display:list-item;margin-bottom:2px;padding-left:3px}
+      .folio-docx table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px;table-layout:fixed}
+      .folio-docx th,.folio-docx td{border:1px solid #94a3b8;padding:6px 8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+      .folio-docx th{background:#e2e8f0;font-weight:700}
+      .folio-docx img{display:block;width:96px;max-width:100%;height:auto;margin:6px 0}
       .folio-docx tr,.folio-docx img{break-inside:avoid}
       .folio-docx a{color:#1d4ed8;text-decoration:underline}
     </style>`;

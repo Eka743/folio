@@ -141,10 +141,10 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "keynote-to-powerpoint",
     category: "Documents",
     title: "Keynote to PowerPoint",
-    description: "Export supported Keynote slides to a real PowerPoint package locally. Experimental.",
+    description: "Export supported Keynote slides to a real PowerPoint package locally. Beta.",
     browser: "beta",
     status: "browser-beta",
-    limitation: "This emits a real OOXML PPTX package, but PowerPoint/Keynote native-app validation is still required before calling it Ready; advanced Apple features are not exported.",
+    limitation: "This emits a real OOXML PPTX package, and representative Keynote 15.3.1 open/save/reopen validation is complete; advanced Apple features are not exported.",
   },
   {
     id: "excel-to-pdf",

@@ -37,5 +37,6 @@ Office or iWork files have native-app fidelity.
 
 The Office renderers are schema-limited reconstructions, not Office engines.
 The iWork library supports a bounded subset of native containers, and reverse
-Apple outputs remain Beta or Experimental until opened and saved by the native
+At the time of this Phase 2G audit, Apple outputs remained Beta or Experimental
+until opened and saved by the native
 applications. No cloud conversion or remote fallback is permitted.

@@ -691,7 +691,7 @@ export function ToolRunner({
               : tool.slug === "pages-to-word"
                 ? "Beta: Folio writes a real DOCX package locally. Text, tables, images and basic shapes are supported; advanced Pages layout may differ."
                 : tool.slug === "keynote-to-powerpoint"
-                  ? "Experimental: Folio writes a real PPTX package locally. Review it in PowerPoint or Keynote before sharing; charts, media and animations are not exported."
+                  ? "Beta: Folio writes a real PPTX package locally. Review it in PowerPoint or Keynote before sharing; charts, media and animations are not exported."
                   : "Beta: Folio processes the Apple container locally. Saved text, tables, images and basic shapes are supported where the document exposes them; animations, transitions, formula recalculation and unsupported content are not exported."}
           </StatusBox>
         )}

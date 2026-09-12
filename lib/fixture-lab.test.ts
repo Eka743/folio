@@ -29,6 +29,9 @@ describe("generated fixture lab", () => {
         const file = fileFromPath(join(outputDir, "xlsx", name), name, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         const parsed = await parseXlsxDirect(file);
         expect(parsed.sheets.length, name).toBeGreaterThan(0);
+        if (name === "mixed.xlsx") {
+          expect(parsed.sheets[0].rows[1][2].value).toBe("2026-09-11");
+        }
         const output = await excelToPdf(file);
         expect(output.length, name).toBeGreaterThan(200);
       }

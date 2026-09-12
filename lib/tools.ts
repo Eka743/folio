@@ -170,7 +170,7 @@ export const TOOLS: FolioTool[] = [
     slug: "keynote-to-powerpoint",
     name: "Keynote to PowerPoint",
     shortName: "Keynote → PPTX",
-    description: "Export supported Keynote slides to a real PowerPoint file. Experimental.",
+    description: "Export supported Keynote slides to a real PowerPoint file. Beta.",
     longDescription:
       "Convert supported .key presentations into a real .pptx package locally. Slide text, tables, images and basic shapes are exported; charts, video, animations and unsupported objects fail closed.",
     accepts: ".key,.keynote",
@@ -181,7 +181,7 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_APPLE_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Experimental",
+    badge: "Beta",
   },
   {
     slug: "excel-to-pdf",

@@ -10,18 +10,22 @@ opened representative outputs in the relevant native application.
 | Path | Browser package validation | Native-app validation | Public status |
 | --- | --- | --- | --- |
 | Pages → DOCX | ZIP, content types, relationships, `word/document.xml`, expected text | Pages 15.3.1 opened, saved, closed and reopened | Beta |
-| Keynote → PPTX | ZIP, presentation parts, slide count, expected text, embedded media relationships | Keynote 15.3.1 opened, saved, closed and reopened | Experimental |
+| Keynote → PPTX | ZIP, presentation parts, slide count, expected text, embedded media relationships | Keynote 15.3.1 opened, saved, closed and reopened | Beta |
 | Numbers → XLSX | XLSX workbook/worksheet/shared-string/value checks | Numbers 15.3.1 opened, saved, closed and reopened | Beta |
 
-Validation record (2026-09-11, macOS local host): real native `.pages`, `.key`
+Validation record (2026-09-12, macOS local host): real native `.pages`, `.key`
 and `.numbers` source fixtures were generated in the installed Apple apps,
 converted through Folio in WebKit, opened in the corresponding native app,
 saved as native documents, closed, and reopened. Pages preserved the source
 text; Keynote preserved two slides and their text; Numbers preserved one table,
 Unicode text, numeric values and the date cell. The reverse outputs remain Beta
-or Experimental because this is a bounded subset check, not a claim of full
+because this is a bounded subset check, not a claim of full
 native fidelity. The saved validation artifacts were temporary and are not
-part of the repository.
+part of the repository. Phase 2I repeated the browser exports from fresh native
+fixtures: the Pages DOCX export was opened and re-exported by Pages, the
+Keynote PPTX was opened and saved as a native Keynote file, and the Numbers
+XLSX was opened and saved as a native Numbers file; each saved result reopened
+without a repair prompt.
 
 No Terminal or shell-based substitute counts as native validation. The
 application checks above are the evidence for this record; future changes to

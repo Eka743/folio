@@ -27,8 +27,8 @@ your browser. It also adds two real Markdown conversion workflows.
   Pages → DOCX, Keynote → PDF, Keynote → PPTX, Numbers → XLSX and Numbers →
   PDF locally for supported structured content; unsupported content fails
   closed. Representative Pages, Keynote and Numbers outputs were opened,
-  saved and reopened in the installed Apple apps; Keynote → PPTX remains
-  Experimental because advanced native features are outside the bounded writer.
+  saved and reopened in the installed Apple apps; these bounded Apple paths
+  remain Beta because advanced native features are outside the writers.
 - Selected files now show local visual previews across the public tools:
   first-page PDF thumbnails, JPG/PNG thumbnails, and honest DOCX, Markdown and
   Apple format cards. Preview rendering is bounded and cancellable, and a

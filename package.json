@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "playwright test",
+    "visual:fidelity": "node scripts/visual-fidelity.mjs",
     "release:check": "node scripts/release-check.mjs"
   },
   "dependencies": {

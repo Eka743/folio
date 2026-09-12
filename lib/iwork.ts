@@ -206,18 +206,34 @@ function color(value: string | undefined, fallback: [number, number, number] = [
   return fallback;
 }
 
-async function fontFor(pdf: import("pdf-lib").PDFDocument, block: IworkTextBlock) {
+type IworkTextRunLike = { text: string; color?: string; bold?: boolean; italic?: boolean };
+
+function pdfFontName(block: Pick<IworkTextBlock, "fontFamily" | "bold" | "italic">, run?: Pick<IworkTextRunLike, "bold" | "italic">): string {
+  const family = block.fontFamily?.toLowerCase() ?? "";
+  const bold = run?.bold ?? block.bold ?? false;
+  const italic = run?.italic ?? block.italic ?? false;
+  if (/courier|consolas|monaco/.test(family)) {
+    if (bold && italic) return "CourierBoldOblique";
+    if (bold) return "CourierBold";
+    if (italic) return "CourierOblique";
+    return "Courier";
+  }
+  if (/cambria|georgia|times/.test(family)) {
+    if (bold && italic) return "TimesRomanBoldItalic";
+    if (bold) return "TimesRomanBold";
+    if (italic) return "TimesRomanItalic";
+    return "TimesRoman";
+  }
+  if (bold && italic) return "HelveticaBoldOblique";
+  if (bold) return "HelveticaBold";
+  if (italic) return "HelveticaOblique";
+  return "Helvetica";
+}
+
+async function fontFor(pdf: import("pdf-lib").PDFDocument, block: Pick<IworkTextBlock, "fontFamily" | "bold" | "italic">, run?: Pick<IworkTextRunLike, "bold" | "italic">) {
+  const fontName = pdfFontName(block, run);
   const { StandardFonts } = await import("pdf-lib");
-  const bold = block.bold === true;
-  const italic = block.italic === true;
-  const fontName = bold && italic
-    ? StandardFonts.HelveticaBoldOblique
-    : bold
-      ? StandardFonts.HelveticaBold
-      : italic
-        ? StandardFonts.HelveticaOblique
-        : StandardFonts.Helvetica;
-  return pdf.embedFont(fontName);
+  return pdf.embedFont(StandardFonts[fontName as keyof typeof StandardFonts]);
 }
 
 /** pdf-lib's standard fonts are WinAnsi; preserve Latin glyphs and make other
@@ -263,23 +279,65 @@ async function drawTextBlock(
   sceneHeight: number,
   block: IworkTextBlock,
 ): Promise<void> {
-  const font = await fontFor(pdf, block);
   const size = Math.min(96, Math.max(6, number(block.fontSize, 12)));
   const padding = block.padding ?? { top: 0, right: 0, bottom: 0, left: 0 };
   const x = number(block.x) + number(padding.left);
   const width = Math.max(20, number(block.width, 400) - number(padding.left) - number(padding.right));
-  const lineHeight = number(block.lineHeight, size * 1.25);
-  const lines = wrapText(safePdfText(font, block.text), font, size, width);
   const top = sceneHeight - number(block.y) - number(padding.top);
-  const [r, g, b] = color(block.color);
-  for (const [index, line] of lines.entries()) {
-    const lineWidth = font.widthOfTextAtSize(line, size);
-    let lineX = x;
-    if (block.align === "center") lineX += Math.max(0, (width - lineWidth) / 2);
-    if (block.align === "right") lineX += Math.max(0, width - lineWidth);
-    const y = top - size - index * lineHeight;
-    if (y < -lineHeight || y > sceneHeight + size) continue;
-    page.drawText(line, { x: lineX, y, size, font, color: (await import("pdf-lib")).rgb(r, g, b) });
+  const paragraphs = block.paragraphs?.length
+    ? block.paragraphs
+    : [{ runs: [{ text: block.text, bold: block.bold, italic: block.italic, color: block.color }] }];
+  let cursor = 0;
+  for (const paragraph of paragraphs) {
+    const runs = paragraph.runs.length > 0 ? paragraph.runs : [{ text: "" }];
+    const lineHeight = Math.max(size * 1.1, number(block.lineHeight, size * 1.25));
+    cursor += number(paragraph.spaceBefore);
+    const lines: Array<Array<{ run: IworkTextRunLike; font: import("pdf-lib").PDFFont; text: string; width: number }>> = [];
+    let line: Array<{ run: IworkTextRunLike; font: import("pdf-lib").PDFFont; text: string; width: number }> = [];
+    let lineWidth = 0;
+    const pushLine = () => {
+      while (line.at(-1)?.text.trim() === "") line.pop();
+      lines.push(line);
+      line = [];
+      lineWidth = 0;
+    };
+    for (const rawRun of runs) {
+      const run = { ...rawRun, text: safePdfText(await fontFor(pdf, block, rawRun), rawRun.text) };
+      const font = await fontFor(pdf, block, run);
+      for (const token of run.text.split(/(\n|\s+)/).filter(Boolean)) {
+        if (token === "\n") {
+          pushLine();
+          continue;
+        }
+        const text = /^\s+$/.test(token) ? " " : token;
+        if (text === " " && line.length === 0) continue;
+        const tokenWidth = font.widthOfTextAtSize(text, size);
+        if (line.length > 0 && text !== " " && lineWidth + tokenWidth > width) pushLine();
+        line.push({ run, font, text, width: tokenWidth });
+        lineWidth += tokenWidth;
+      }
+    }
+    if (line.length > 0 || lines.length === 0) pushLine();
+    for (const [lineIndex, parts] of lines.entries()) {
+      const renderedWidth = parts.reduce((sum, part) => sum + part.width, 0);
+      const bullet = paragraph.bullet && lineIndex === 0 ? "• " : "";
+      const bulletFont = bullet ? await fontFor(pdf, block) : undefined;
+      const bulletWidth = bulletFont?.widthOfTextAtSize(bullet, size) ?? 0;
+      let lineX = x + bulletWidth;
+      if (block.align === "center") lineX = x + (width - renderedWidth) / 2;
+      if (block.align === "right") lineX = x + width - renderedWidth;
+      const y = top - size - cursor;
+      if (y >= -lineHeight && y <= sceneHeight + size) {
+        if (bulletFont) page.drawText(bullet, { x, y, size, font: bulletFont, color: (await import("pdf-lib")).rgb(...color(block.color)) });
+        for (const part of parts) {
+          const [r, g, b] = color(part.run.color ?? paragraph.color ?? block.color);
+          page.drawText(part.text, { x: lineX, y, size, font: part.font, color: (await import("pdf-lib")).rgb(r, g, b) });
+          lineX += part.width;
+        }
+      }
+      cursor += lineHeight;
+    }
+    cursor += number(paragraph.spaceAfter);
   }
 }
 
@@ -306,9 +364,8 @@ async function drawTable(
   const heights = table.rowHeights?.length === rows.length
     ? table.rowHeights
     : Array.from({ length: rows.length }, () => Math.max(20, number(table.fontSize, 11) * 1.8));
-  const { StandardFonts } = await import("pdf-lib");
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const headerFont = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const font = await fontFor(pdf, { fontFamily: table.fontFamily }, { bold: false, italic: false });
+  const headerFont = await fontFor(pdf, { fontFamily: table.fontFamily }, { bold: true, italic: false });
   const size = Math.min(24, Math.max(7, number(table.fontSize, 11)));
   let y = sceneHeight - number(table.y);
   const border = color(table.borderColor, [0.75, 0.77, 0.8]);
@@ -356,14 +413,15 @@ async function renderNumbersScenePages(
 ): Promise<boolean> {
   if (scene.tables.length !== 1 || scene.tables[0].rows.length === 0 || scene.objects.some((object) => object.kind !== "table")) return false;
   const table = scene.tables[0];
-  const width = Math.min(842, Math.max(595.28, clampDimension(scene.width, 595.28)));
-  const height = 841.89;
   const rows = table.rows.slice(0, MAX_ROWS_PER_TABLE);
+  const sourceWidths = Array.from({ length: Math.max(1, ...rows.map((row) => row.length)) }, (_, index) => Math.max(12, number(table.columnWidths?.[index], 96)));
+  const landscape = sourceWidths.reduce((sum, columnWidth) => sum + columnWidth, 0) > 547;
+  const width = landscape ? 841.89 : 595.28;
+  const height = landscape ? 595.28 : 841.89;
   const rowHeights = table.rowHeights?.length === rows.length
     ? table.rowHeights.map((rowHeight) => clamp(number(rowHeight, 20), 12, 72, 20))
     : rows.map(() => Math.max(20, number(table.fontSize, 11) * 1.8));
-  const tableY = clamp(number(table.y, 120), 72, height - 120, 120);
-  const sourceWidths = Array.from({ length: Math.max(1, ...rows.map((row) => row.length)) }, (_, index) => Math.max(12, number(table.columnWidths?.[index], 96)));
+  const tableY = 48;
   const widthScale = Math.min(1, (width - 48) / sourceWidths.reduce((sum, columnWidth) => sum + columnWidth, 0));
   const availableHeight = Math.max(120, height - tableY - 48);
   let rowStart = 0;

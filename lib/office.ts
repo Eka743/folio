@@ -69,12 +69,16 @@ export interface OfficeRun {
   underline?: boolean;
   color?: string;
   fontSize?: number;
+  fontFamily?: string;
 }
 
 export interface OfficeParagraph {
   runs: OfficeRun[];
   bullet?: boolean;
   align?: "left" | "center" | "right";
+  spaceBefore?: number;
+  spaceAfter?: number;
+  lineHeight?: number;
 }
 
 export interface OfficeTextBox {
@@ -122,6 +126,7 @@ export interface OfficeTableCell {
   color?: string;
   fill?: string;
   align?: "left" | "center" | "right";
+  numFmtCode?: string;
 }
 
 export interface OfficeTable {
@@ -135,6 +140,11 @@ export interface OfficeTable {
   columnWidths?: number[];
   rowHeights?: number[];
   merges?: Array<{ row: number; col: number; rowspan: number; colspan: number }>;
+  headerRows?: number;
+  headerColumns?: number;
+  headerRowBackground?: string;
+  headerColumnBackground?: string;
+  borderColor?: string;
 }
 
 export type OfficeSlideItem = OfficeTextBox | OfficeShape | OfficeImage | OfficeTable;
@@ -234,7 +244,7 @@ function colorFromNode(node: SafeXmlElement | undefined): string | undefined {
   return undefined;
 }
 
-function firstDescendant(node: SafeXmlElement, name: string): SafeXmlElement | undefined {
+function firstDescendant(node: SafeXmlElement | undefined, name: string): SafeXmlElement | undefined {
   return xmlDescendants(node, name)[0];
 }
 
@@ -456,6 +466,7 @@ function parseRunProperties(node: SafeXmlElement | undefined): OfficeRun {
     underline: Boolean(xmlAttr(props, "u") && xmlAttr(props, "u") !== "none"),
     color: colorFromNode(firstDescendant(props as SafeXmlElement, "solidFill")),
     fontSize: size ? clamp(numeric(size) / 100, 6, 96, 18) : undefined,
+    fontFamily: xmlAttr(firstDescendant(props as SafeXmlElement, "latin"), "typeface") ?? undefined,
   };
 }
 
@@ -476,10 +487,13 @@ function parseTextParagraphs(txBody: SafeXmlElement | undefined): OfficeParagrap
     }
     const align = xmlAttr(pPr, "algn");
     const paragraphAlign: OfficeParagraph["align"] = align === "ctr" ? "center" : align === "r" ? "right" : "left";
+    const lineSpacing = firstDescendant(pPr as SafeXmlElement, "lnSpc");
+    const spacingPoints = numeric(xmlAttr(firstDescendant(lineSpacing, "spcPts"), "val")) / 100;
     return {
       runs,
       bullet: Boolean(firstDescendant(pPr as SafeXmlElement, "buChar") || firstDescendant(pPr as SafeXmlElement, "buAutoNum")),
       align: paragraphAlign,
+      lineHeight: spacingPoints > 0 ? spacingPoints : undefined,
     };
   }).filter((paragraph) => paragraph.runs.length > 0);
 }
@@ -516,7 +530,20 @@ function parsePptxTable(frame: SafeXmlElement, transform: ReturnType<typeof pars
     const rowSpan = Math.max(1, Math.floor(numeric(xmlAttr(tc, "rowSpan"), 1)));
     if (gridSpan > 1 || rowSpan > 1) merges.push({ row: rowIndex, col: colIndex, rowspan: rowSpan, colspan: gridSpan });
   }));
-  return { kind: "table", ...transform, zIndex, rows, columnWidths, rowHeights, merges };
+  const properties = firstDescendant(table, "tblPr");
+  return {
+    kind: "table",
+    ...transform,
+    zIndex,
+    rows,
+    columnWidths,
+    rowHeights,
+    merges,
+    headerRows: xmlAttr(properties, "firstRow") === "1" ? 1 : undefined,
+    headerColumns: xmlAttr(properties, "firstCol") === "1" ? 1 : undefined,
+    headerRowBackground: "#e2e8f0",
+    borderColor: "#94a3b8",
+  };
 }
 
 function parseShapeItem(shape: SafeXmlElement, zIndex: number): OfficeTextBox | OfficeShape {
@@ -645,8 +672,23 @@ function parseOfficeCellValue(cell: SafeXmlElement, sharedStrings: string[]): Of
   return { value, formula: formula || undefined };
 }
 
-function parseStyleTable(styles: SafeXmlElement | undefined): Array<Pick<OfficeTableCell, "bold" | "italic" | "underline" | "color" | "fill"> & { numFmtId?: number }> {
+function parseStyleTable(styles: SafeXmlElement | undefined): Array<Pick<OfficeTableCell, "bold" | "italic" | "underline" | "color" | "fill" | "align" | "numFmtCode"> & { numFmtId?: number }> {
   if (!styles) return [];
+  const customFormats = new Map(
+    xmlChildren(firstDescendant(styles, "numFmts") as SafeXmlElement, "numFmt")
+      .map((format) => [numeric(xmlAttr(format, "numFmtId")), xmlAttr(format, "formatCode") ?? ""] as const),
+  );
+  const builtInFormats: Record<number, string> = {
+    14: "m/d/yy",
+    15: "d-mmm-yy",
+    16: "d-mmm",
+    17: "mmm-yy",
+    18: "h:mm AM/PM",
+    19: "h:mm:ss AM/PM",
+    20: "h:mm",
+    21: "h:mm:ss",
+    22: "m/d/yy h:mm",
+  };
   const fonts = xmlChildren(firstDescendant(styles, "fonts") as SafeXmlElement, "font").map((font) => ({
     bold: Boolean(xmlChild(font, "b")),
     italic: Boolean(xmlChild(font, "i")),
@@ -658,13 +700,32 @@ function parseStyleTable(styles: SafeXmlElement | undefined): Array<Pick<OfficeT
   return xfs.map((xf) => ({
     ...fonts[numeric(xmlAttr(xf, "fontId"))],
     fill: fills[numeric(xmlAttr(xf, "fillId"))],
+    align: (() => {
+      const alignment = xmlChild(xf, "alignment");
+      const horizontal = xmlAttr(alignment, "horizontal");
+      return horizontal === "center" ? "center" : horizontal === "right" ? "right" : horizontal === "left" ? "left" : undefined;
+    })(),
     numFmtId: numeric(xmlAttr(xf, "numFmtId")),
+    numFmtCode: customFormats.get(numeric(xmlAttr(xf, "numFmtId"))) ?? builtInFormats[numeric(xmlAttr(xf, "numFmtId"))],
   }));
+}
+
+function formatExcelDate(value: number, formatCode: string | undefined): string | number {
+  const normalized = (formatCode ?? "").replace(/"[^"]*"/g, "").replace(/\[[^\]]+\]/g, "");
+  if (!/[yd]/i.test(normalized)) return value;
+  const date = new Date(Date.UTC(1899, 11, 30) + value * 86_400_000);
+  if (!Number.isFinite(date.getTime())) return value;
+  const year = String(date.getUTCFullYear()).padStart(4, "0");
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function applyStyle(cell: OfficeTableCell, styles: ReturnType<typeof parseStyleTable>, styleIndex: number): OfficeTableCell {
   const style = styles[styleIndex];
-  return style ? { ...cell, ...style } : cell;
+  if (!style) return cell;
+  const value = typeof cell.value === "number" ? formatExcelDate(cell.value, style.numFmtCode) : cell.value;
+  return { ...cell, value, ...style };
 }
 
 async function parseSharedStrings(packageData: OfficePackage): Promise<string[]> {
@@ -854,6 +915,24 @@ function hexRgb(value: string | undefined, fallback = "#111827"): [number, numbe
 }
 
 function officeFontName(run: OfficeRun): string {
+  const family = run.fontFamily?.toLowerCase() ?? "";
+  const prefix = /courier|consolas|monaco/.test(family)
+    ? "Courier"
+    : /cambria|georgia|times/.test(family)
+      ? "TimesRoman"
+      : "Helvetica";
+  if (prefix === "Courier") {
+    if (run.bold && run.italic) return "CourierBoldOblique";
+    if (run.bold) return "CourierBold";
+    if (run.italic) return "CourierOblique";
+    return "Courier";
+  }
+  if (prefix === "TimesRoman") {
+    if (run.bold && run.italic) return "TimesRomanBoldItalic";
+    if (run.bold) return "TimesRomanBold";
+    if (run.italic) return "TimesRomanItalic";
+    return "TimesRoman";
+  }
   if (run.bold && run.italic) return "HelveticaBoldOblique";
   if (run.bold) return "HelveticaBold";
   if (run.italic) return "HelveticaOblique";
@@ -882,6 +961,49 @@ async function officeFont(pdf: import("pdf-lib").PDFDocument, run: OfficeRun) {
   return pdf.embedFont(StandardFonts[officeFontName(run) as keyof typeof StandardFonts]);
 }
 
+type OfficeDrawRun = {
+  run: OfficeRun;
+  font: import("pdf-lib").PDFFont;
+  text: string;
+  width: number;
+};
+
+async function wrapOfficeRuns(
+  pdf: import("pdf-lib").PDFDocument,
+  runs: OfficeRun[],
+  size: number,
+  maxWidth: number,
+): Promise<OfficeDrawRun[][]> {
+  const lines: OfficeDrawRun[][] = [];
+  let line: OfficeDrawRun[] = [];
+  let lineWidth = 0;
+  const pushLine = () => {
+    while (line.at(-1)?.text.trim() === "") line.pop();
+    lines.push(line);
+    line = [];
+    lineWidth = 0;
+  };
+  for (const run of runs) {
+    const font = await officeFont(pdf, run);
+    const text = safePdfText(font, run.text);
+    const tokens = text.split(/(\n|\s+)/).filter(Boolean);
+    for (const token of tokens) {
+      if (token === "\n") {
+        pushLine();
+        continue;
+      }
+      const normalized = /^\s+$/.test(token) ? " " : token;
+      if (normalized === " " && line.length === 0) continue;
+      const width = font.widthOfTextAtSize(normalized, size);
+      if (line.length > 0 && normalized !== " " && lineWidth + width > maxWidth) pushLine();
+      line.push({ run: { ...run, text: normalized }, font, text: normalized, width });
+      lineWidth += width;
+    }
+  }
+  if (line.length > 0 || lines.length === 0) pushLine();
+  return lines;
+}
+
 async function drawOfficeParagraphs(
   pdf: import("pdf-lib").PDFDocument,
   page: import("pdf-lib").PDFPage,
@@ -893,45 +1015,38 @@ async function drawOfficeParagraphs(
   for (const paragraph of paragraphs) {
     const runs = paragraph.runs.length > 0 ? paragraph.runs : [{ text: "" }];
     const size = Math.max(6, Math.min(72, Math.max(...runs.map((run) => run.fontSize ?? 18))));
-    const lineHeight = Math.max(9, size * 1.2);
-    cursor -= lineHeight;
-    if (cursor < -lineHeight) break;
-    let x = box.x + (paragraph.bullet ? 12 : 0);
-    const prefix = paragraph.bullet ? "• " : "";
-    if (prefix) {
-      const bulletFont = await officeFont(pdf, { text: prefix, fontSize: size });
-      page.drawText(prefix, { x: box.x, y: pageHeight - box.y - box.height + cursor, size, font: bulletFont });
-      x += bulletFont.widthOfTextAtSize(prefix, size);
-    }
-    const totalWidth = runs.reduce((sum, run) => sum + run.text.length, 0);
-    const alignmentOffset = paragraph.align === "center" ? box.width / 2 : paragraph.align === "right" ? box.width : 0;
-    let lineWidth = 0;
-    const measured: Array<{ run: OfficeRun; font: import("pdf-lib").PDFFont; width: number }> = [];
-    for (const run of runs) {
-      const font = await officeFont(pdf, run);
-      const text = safePdfText(font, run.text);
-      const width = font.widthOfTextAtSize(text, size);
-      measured.push({ run: { ...run, text }, font, width });
-      lineWidth += width;
-    }
-    if (paragraph.align === "center") x = box.x + alignmentOffset - lineWidth / 2;
-    if (paragraph.align === "right") x = box.x + alignmentOffset - lineWidth;
-    for (const { run, font, width } of measured) {
-      const [r, g, b] = hexRgb(run.color);
-      page.drawText(run.text, { x, y: pageHeight - box.y - box.height + cursor, size, font, color: (await import("pdf-lib")).rgb(r, g, b) });
+    const lineHeight = Math.max(9, paragraph.lineHeight ?? size * 1.2);
+    cursor -= paragraph.spaceBefore ?? 0;
+    const lines = await wrapOfficeRuns(pdf, runs, size, Math.max(20, box.width - (paragraph.bullet ? 14 : 0)));
+    for (const [lineIndex, measured] of lines.entries()) {
+      cursor -= lineHeight;
+      if (cursor < -lineHeight) return;
+      const lineWidth = measured.reduce((sum, part) => sum + part.width, 0);
+      const bullet = paragraph.bullet && lineIndex === 0 ? "• " : "";
+      const bulletFont = bullet ? await officeFont(pdf, { text: bullet, fontSize: size }) : undefined;
+      const bulletWidth = bulletFont?.widthOfTextAtSize(bullet, size) ?? 0;
+      const availableWidth = Math.max(20, box.width - bulletWidth);
+      let x = box.x + (bullet ? bulletWidth : 0);
+      if (paragraph.align === "center") x = box.x + (box.width - lineWidth) / 2;
+      if (paragraph.align === "right") x = box.x + box.width - lineWidth;
+      const baseline = pageHeight - box.y - box.height + cursor;
+      if (bulletFont) page.drawText(bullet, { x: box.x, y: baseline, size, font: bulletFont });
+      for (const { run, font, width } of measured) {
+        const [r, g, b] = hexRgb(run.color);
+        page.drawText(run.text, { x, y: baseline, size, font, color: (await import("pdf-lib")).rgb(r, g, b) });
         if (run.underline) {
           page.drawLine({
-          start: { x, y: pageHeight - box.y - box.height + cursor - 2 },
-          end: { x: x + width, y: pageHeight - box.y - box.height + cursor - 2 },
-          thickness: 0.6,
-          color: (await import("pdf-lib")).rgb(r, g, b),
-        });
+            start: { x, y: baseline - 2 },
+            end: { x: x + width, y: baseline - 2 },
+            thickness: 0.6,
+            color: (await import("pdf-lib")).rgb(r, g, b),
+          });
+        }
+        x += width;
       }
-      x += width;
+      void availableWidth;
     }
-    // Keep the unused value explicit. It documents that an empty paragraph is
-    // still laid out and prevents future changes from treating it as absent.
-    void totalWidth;
+    cursor -= paragraph.spaceAfter ?? 0;
   }
 }
 
@@ -980,17 +1095,26 @@ async function drawOfficeTable(
       const cellWidth = widths.slice(colIndex, colIndex + colspan).reduce((sum, width) => sum + (width ?? 80), 0);
       const cellHeight = rowHeights.slice(rowIndex, rowIndex + rowspan).reduce((sum, height) => sum + (height ?? 22), 0);
       const cell = table.rows[rowIndex]?.[colIndex] ?? { value: "" };
-      const fill = hexRgb(cell.fill, "#ffffff");
-      const border = hexRgb("#cbd5e1");
+      const header = rowIndex < (table.headerRows ?? 0) || colIndex < (table.headerColumns ?? 0);
+      const fill = hexRgb(cell.fill, header
+        ? (colIndex < (table.headerColumns ?? 0) ? table.headerColumnBackground : table.headerRowBackground) ?? "#e2e8f0"
+        : "#ffffff");
+      const border = hexRgb(table.borderColor, "#cbd5e1");
       page.drawRectangle({ x, y: y - (cellHeight - rowHeight), width: cellWidth, height: cellHeight, color: rgb(...fill), borderColor: rgb(...border), borderWidth: 0.5 });
       const value = String(cell.value ?? "");
       if (value) {
-        const run: OfficeRun = { text: value, bold: cell.bold, italic: cell.italic, underline: cell.underline, color: cell.color, fontSize: 10 };
+        const run: OfficeRun = { text: value, bold: cell.bold || header, italic: cell.italic, underline: cell.underline, color: cell.color, fontSize: 10 };
         const font = await officeFont(pdf, run);
         const lines = value.split(/\r?\n/).map((line) => safePdfText(font, line)).slice(0, 4);
         for (const [lineIndex, line] of lines.entries()) {
           const text = line.length > 160 ? `${line.slice(0, 157)}…` : line;
-          page.drawText(text, { x: x + 4, y: y + cellHeight - 13 - lineIndex * 11, size: 10, font, color: rgb(...hexRgb(cell.color)) });
+          const textWidth = font.widthOfTextAtSize(text, 10);
+          const textX = cell.align === "center"
+            ? x + Math.max(4, (cellWidth - textWidth) / 2)
+            : cell.align === "right"
+              ? x + Math.max(4, cellWidth - textWidth - 4)
+              : x + 4;
+          page.drawText(text, { x: textX, y: y + cellHeight - 13 - lineIndex * 11, size: 10, font, color: rgb(...hexRgb(cell.color, header ? "#0f172a" : "#111827")) });
         }
       }
       x += widths[colIndex] ?? 80;
@@ -1037,48 +1161,78 @@ export async function powerpointToPdf(file: File): Promise<Uint8Array> {
 async function renderXlsxToPdf(document: ParsedXlsx): Promise<Uint8Array> {
   const { PDFDocument, rgb } = await import("pdf-lib");
   const pdf = await PDFDocument.create();
-  const pageWidth = 842;
-  const pageHeight = 595;
-  const margin = 28;
+  const portrait = { width: 595.28, height: 841.89 };
+  const landscape = { width: 841.89, height: 595.28 };
+  const margin = 32;
   const { StandardFonts } = await import("pdf-lib");
   const titleFont = await pdf.embedFont(StandardFonts.HelveticaBold);
   for (const sheet of document.sheets) {
     const columns = Math.max(1, Math.min(MAX_OFFICE_COLUMNS, ...sheet.rows.map((row) => row.length)));
-    const sourceWidths = Array.from({ length: columns }, (_, index) => clamp(sheet.columnWidths[index] ?? 12, 3, 28, 12) * 5.5);
-    const scale = Math.min(1, (pageWidth - margin * 2) / sourceWidths.reduce((sum, width) => sum + width, 0));
-    const widths = sourceWidths.map((width) => width * scale);
-    const rowHeights = sheet.rowHeights.map((height) => clamp(height * 1.2 * Math.max(0.7, scale), 12, 72, 24));
-    let rowIndex = 0;
-    while (rowIndex < sheet.rows.length) {
-      const page = pdf.addPage([pageWidth, pageHeight]);
-      page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: pageHeight, color: rgb(1, 1, 1) });
-      page.drawText(sheet.name, { x: margin, y: pageHeight - margin - 2, size: 14, font: titleFont, color: rgb(0.08, 0.1, 0.14) });
-      const availableHeight = pageHeight - 2 * margin - 28;
-      let consumedHeight = 0;
-      let rowEnd = rowIndex;
-      while (rowEnd < sheet.rows.length) {
-        const nextHeight = rowHeights[rowEnd] ?? 24;
-        if (rowEnd > rowIndex && consumedHeight + nextHeight > availableHeight) break;
-        consumedHeight += nextHeight;
-        rowEnd++;
+    const sourceWidths = Array.from({ length: columns }, (_, index) => clamp(sheet.columnWidths[index] ?? 12, 3, 28, 12) * 7);
+    const rowHeights = Array.from({ length: sheet.rows.length }, (_, index) => clamp(sheet.rowHeights[index] ?? 20, 12, 72, 24));
+    const wide = sourceWidths.reduce((sum, width) => sum + width, 0) > portrait.width - margin * 2;
+    const pageSize = wide ? landscape : portrait;
+    const availableWidth = pageSize.width - margin * 2;
+    const columnWindows: Array<{ start: number; end: number }> = [];
+    let columnStart = 0;
+    while (columnStart < columns) {
+      let columnEnd = columnStart;
+      let consumedWidth = 0;
+      while (columnEnd < columns) {
+        const nextWidth = sourceWidths[columnEnd] ?? 84;
+        if (columnEnd > columnStart && consumedWidth + nextWidth > availableWidth) break;
+        consumedWidth += nextWidth;
+        columnEnd++;
       }
-      const rows = sheet.rows.slice(rowIndex, rowEnd);
-      const table: OfficeTable = {
-        kind: "table",
-        x: margin,
-        y: margin,
-        width: widths.reduce((sum, width) => sum + width, 0),
-        height: consumedHeight,
-        zIndex: 0,
-        rows,
-        columnWidths: widths,
-        rowHeights: rowHeights.slice(rowIndex, rowEnd),
-        merges: sheet.merges
-          .filter((merge) => merge.row >= rowIndex && merge.row < rowIndex + rows.length)
-          .map((merge) => ({ ...merge, row: merge.row - rowIndex })),
-      };
-      await drawOfficeTable(pdf, page, table);
-      rowIndex += rows.length;
+      columnWindows.push({ start: columnStart, end: Math.max(columnStart + 1, columnEnd) });
+      columnStart = Math.max(columnStart + 1, columnEnd);
+    }
+
+    for (const window of columnWindows) {
+      let rowIndex = 0;
+      while (rowIndex < sheet.rows.length) {
+        const continuation = rowIndex > 0 && sheet.rows.length > 1;
+        const rowIndices: number[] = continuation ? [0] : [];
+        let consumedHeight = continuation ? rowHeights[0] ?? 24 : 0;
+        let nextRow = rowIndex;
+        const availableHeight = pageSize.height - 2 * margin - 34;
+        while (nextRow < sheet.rows.length) {
+          const nextHeight = rowHeights[nextRow] ?? 24;
+          if (rowIndices.length > (continuation ? 1 : 0) && consumedHeight + nextHeight > availableHeight) break;
+          rowIndices.push(nextRow);
+          consumedHeight += nextHeight;
+          nextRow++;
+        }
+        if (nextRow === rowIndex) nextRow++;
+        const page = pdf.addPage([pageSize.width, pageSize.height]);
+        page.drawRectangle({ x: 0, y: 0, width: pageSize.width, height: pageSize.height, color: rgb(1, 1, 1) });
+        const windowLabel = columnWindows.length > 1 ? ` (${window.start + 1}-${window.end} of ${columns})` : "";
+        page.drawText(`${sheet.name}${windowLabel}`, { x: margin, y: pageSize.height - margin - 2, size: 14, font: titleFont, color: rgb(0.08, 0.1, 0.14) });
+        const rows = rowIndices.map((index) => sheet.rows[index]?.slice(window.start, window.end) ?? []);
+        const widths = sourceWidths.slice(window.start, window.end);
+        const localRowIndex = new Map(rowIndices.map((index, localIndex) => [index, localIndex]));
+        const merges = sheet.merges
+          .filter((merge) => merge.col >= window.start && merge.col + merge.colspan <= window.end && localRowIndex.has(merge.row))
+          .map((merge) => ({ ...merge, row: localRowIndex.get(merge.row) ?? 0, col: merge.col - window.start }));
+        const tableHeight = Math.min(consumedHeight, pageSize.height - margin * 2);
+        const table: OfficeTable = {
+          kind: "table",
+          x: margin,
+          y: Math.max(margin, pageSize.height - margin - 26 - tableHeight),
+          width: widths.reduce((sum, width) => sum + width, 0),
+          height: tableHeight,
+          zIndex: 0,
+          rows,
+          columnWidths: widths,
+          rowHeights: rowIndices.map((index) => rowHeights[index] ?? 24),
+          merges,
+          headerRows: rows.length > 0 ? 1 : 0,
+          headerRowBackground: "#e2e8f0",
+          borderColor: "#94a3b8",
+        };
+        await drawOfficeTable(pdf, page, table);
+        rowIndex = nextRow;
+      }
     }
   }
   const bytes = await pdf.save({ useObjectStreams: true });
@@ -1108,9 +1262,13 @@ function officeParagraphsFromBlock(block: IworkTextBlock): OfficeParagraph[] {
         bold: run.bold ?? paragraph.bold ?? block.bold,
         italic: run.italic ?? paragraph.italic ?? block.italic,
         fontSize: block.fontSize,
+        fontFamily: block.fontFamily,
       })),
       bullet: paragraph.bullet,
       align: block.align,
+      spaceBefore: paragraph.spaceBefore,
+      spaceAfter: paragraph.spaceAfter,
+      lineHeight: block.lineHeight,
     }))
     .filter((paragraph) => paragraph.runs.some((run) => run.text.length > 0));
 }
@@ -1133,6 +1291,11 @@ function officeTableFromIwork(table: IworkTable, scene: IworkScene, zIndex: numb
     columnWidths: table.columnWidths?.slice(0, columns),
     rowHeights: table.rowHeights?.slice(0, rows.length),
     merges: table.merges?.slice(0, MAX_OFFICE_ROWS),
+    headerRows: table.headerRows,
+    headerColumns: table.headerColumns,
+    headerRowBackground: table.headerRowBackground,
+    headerColumnBackground: table.headerColumnBackground,
+    borderColor: table.borderColor,
   };
 }
 
@@ -1201,7 +1364,9 @@ function officeHex(value: string | undefined, fallback = "111827"): string {
 }
 
 function wordRunXml(run: OfficeRun): string {
+  const family = run.fontFamily?.trim() || "Aptos";
   const properties = [
+    `<w:rFonts w:ascii="${escapeAttr(family)}" w:hAnsi="${escapeAttr(family)}"/>`,
     run.bold ? "<w:b/>" : "",
     run.italic ? "<w:i/>" : "",
     run.underline ? '<w:u w:val="single"/>' : "",
@@ -1214,7 +1379,10 @@ function wordRunXml(run: OfficeRun): string {
 function wordParagraphXml(paragraph: OfficeParagraph): string {
   const alignment = paragraph.align ? `<w:jc w:val="${paragraph.align}"/>` : "";
   const numbering = paragraph.bullet ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>' : "";
-  const properties = alignment || numbering ? `<w:pPr>${alignment}${numbering}</w:pPr>` : "";
+  const spacing = paragraph.spaceBefore || paragraph.spaceAfter || paragraph.lineHeight
+    ? `<w:spacing${paragraph.spaceBefore ? ` w:before="${Math.round(paragraph.spaceBefore * 20)}"` : ""}${paragraph.spaceAfter ? ` w:after="${Math.round(paragraph.spaceAfter * 20)}"` : ""}${paragraph.lineHeight ? ` w:line="${Math.round(paragraph.lineHeight * 20)}" w:lineRule="auto"` : ""}/>`
+    : "";
+  const properties = alignment || numbering || spacing ? `<w:pPr>${alignment}${numbering}${spacing}</w:pPr>` : "";
   const runs = paragraph.runs.length > 0 ? paragraph.runs.map(wordRunXml).join("") : "<w:r><w:t/></w:r>";
   return `<w:p>${properties}${runs}</w:p>`;
 }

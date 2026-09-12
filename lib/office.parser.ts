@@ -51,12 +51,16 @@ export interface OfficeRun {
   underline?: boolean;
   color?: string;
   fontSize?: number;
+  fontFamily?: string;
 }
 
 export interface OfficeParagraph {
   runs: OfficeRun[];
   bullet?: boolean;
   align?: "left" | "center" | "right";
+  spaceBefore?: number;
+  spaceAfter?: number;
+  lineHeight?: number;
 }
 
 export interface OfficeTextBox {
@@ -104,6 +108,7 @@ export interface OfficeTableCell {
   color?: string;
   fill?: string;
   align?: "left" | "center" | "right";
+  numFmtCode?: string;
 }
 
 export interface OfficeTable {
@@ -117,6 +122,11 @@ export interface OfficeTable {
   columnWidths?: number[];
   rowHeights?: number[];
   merges?: Array<{ row: number; col: number; rowspan: number; colspan: number }>;
+  headerRows?: number;
+  headerColumns?: number;
+  headerRowBackground?: string;
+  headerColumnBackground?: string;
+  borderColor?: string;
 }
 
 export type OfficeSlideItem = OfficeTextBox | OfficeShape | OfficeImage | OfficeTable;
@@ -207,8 +217,8 @@ function colorFromNode(node: SafeXmlElement | undefined): string | undefined {
   return undefined;
 }
 
-function firstDescendant(node: SafeXmlElement, name: string): SafeXmlElement | undefined {
-  return xmlDescendants(node, name)[0];
+function firstDescendant(node: SafeXmlElement | undefined, name: string): SafeXmlElement | undefined {
+  return node ? xmlDescendants(node, name)[0] : undefined;
 }
 
 function childText(node: SafeXmlElement | undefined, name: string): string {
@@ -416,6 +426,7 @@ function parseRunProperties(node: SafeXmlElement | undefined): OfficeRun {
     underline: Boolean(xmlAttr(props, "u") && xmlAttr(props, "u") !== "none"),
     color: colorFromNode(firstDescendant(props as SafeXmlElement, "solidFill")),
     fontSize: size ? clamp(numeric(size) / 100, 6, 96, 18) : undefined,
+    fontFamily: xmlAttr(firstDescendant(props as SafeXmlElement, "latin"), "typeface") ?? undefined,
   };
 }
 
@@ -436,10 +447,13 @@ function parseTextParagraphs(txBody: SafeXmlElement | undefined): OfficeParagrap
     }
     const align = xmlAttr(pPr, "algn");
     const paragraphAlign: OfficeParagraph["align"] = align === "ctr" ? "center" : align === "r" ? "right" : "left";
+    const lineSpacing = firstDescendant(pPr as SafeXmlElement, "lnSpc");
+    const spacingPoints = numeric(xmlAttr(firstDescendant(lineSpacing, "spcPts"), "val")) / 100;
     return {
       runs,
       bullet: Boolean(firstDescendant(pPr as SafeXmlElement, "buChar") || firstDescendant(pPr as SafeXmlElement, "buAutoNum")),
       align: paragraphAlign,
+      lineHeight: spacingPoints > 0 ? spacingPoints : undefined,
     };
   }).filter((paragraph) => paragraph.runs.length > 0);
 }
@@ -476,7 +490,20 @@ function parsePptxTable(frame: SafeXmlElement, transform: ReturnType<typeof pars
     const rowSpan = Math.max(1, Math.floor(numeric(xmlAttr(tc, "rowSpan"), 1)));
     if (gridSpan > 1 || rowSpan > 1) merges.push({ row: rowIndex, col: colIndex, rowspan: rowSpan, colspan: gridSpan });
   }));
-  return { kind: "table", ...transform, zIndex, rows, columnWidths, rowHeights, merges };
+  const properties = firstDescendant(table, "tblPr");
+  return {
+    kind: "table",
+    ...transform,
+    zIndex,
+    rows,
+    columnWidths,
+    rowHeights,
+    merges,
+    headerRows: xmlAttr(properties, "firstRow") === "1" ? 1 : undefined,
+    headerColumns: xmlAttr(properties, "firstCol") === "1" ? 1 : undefined,
+    headerRowBackground: "#e2e8f0",
+    borderColor: "#94a3b8",
+  };
 }
 
 function parseShapeItem(shape: SafeXmlElement, zIndex: number): OfficeTextBox | OfficeShape {
@@ -605,8 +632,23 @@ function parseOfficeCellValue(cell: SafeXmlElement, sharedStrings: string[]): Of
   return { value, formula: formula || undefined };
 }
 
-function parseStyleTable(styles: SafeXmlElement | undefined): Array<Pick<OfficeTableCell, "bold" | "italic" | "underline" | "color" | "fill"> & { numFmtId?: number }> {
+function parseStyleTable(styles: SafeXmlElement | undefined): Array<Pick<OfficeTableCell, "bold" | "italic" | "underline" | "color" | "fill" | "align" | "numFmtCode"> & { numFmtId?: number }> {
   if (!styles) return [];
+  const customFormats = new Map(
+    xmlChildren(firstDescendant(styles, "numFmts") as SafeXmlElement, "numFmt")
+      .map((format) => [numeric(xmlAttr(format, "numFmtId")), xmlAttr(format, "formatCode") ?? ""] as const),
+  );
+  const builtInFormats: Record<number, string> = {
+    14: "m/d/yy",
+    15: "d-mmm-yy",
+    16: "d-mmm",
+    17: "mmm-yy",
+    18: "h:mm AM/PM",
+    19: "h:mm:ss AM/PM",
+    20: "h:mm",
+    21: "h:mm:ss",
+    22: "m/d/yy h:mm",
+  };
   const fonts = xmlChildren(firstDescendant(styles, "fonts") as SafeXmlElement, "font").map((font) => ({
     bold: Boolean(xmlChild(font, "b")),
     italic: Boolean(xmlChild(font, "i")),
@@ -618,13 +660,32 @@ function parseStyleTable(styles: SafeXmlElement | undefined): Array<Pick<OfficeT
   return xfs.map((xf) => ({
     ...fonts[numeric(xmlAttr(xf, "fontId"))],
     fill: fills[numeric(xmlAttr(xf, "fillId"))],
+    align: (() => {
+      const alignment = xmlChild(xf, "alignment");
+      const horizontal = xmlAttr(alignment, "horizontal");
+      return horizontal === "center" ? "center" : horizontal === "right" ? "right" : horizontal === "left" ? "left" : undefined;
+    })(),
     numFmtId: numeric(xmlAttr(xf, "numFmtId")),
+    numFmtCode: customFormats.get(numeric(xmlAttr(xf, "numFmtId"))) ?? builtInFormats[numeric(xmlAttr(xf, "numFmtId"))],
   }));
+}
+
+function formatExcelDate(value: number, formatCode: string | undefined): string | number {
+  const normalized = (formatCode ?? "").replace(/"[^"]*"/g, "").replace(/\[[^\]]+\]/g, "");
+  if (!/[yd]/i.test(normalized)) return value;
+  const date = new Date(Date.UTC(1899, 11, 30) + value * 86_400_000);
+  if (!Number.isFinite(date.getTime())) return value;
+  const year = String(date.getUTCFullYear()).padStart(4, "0");
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function applyStyle(cell: OfficeTableCell, styles: ReturnType<typeof parseStyleTable>, styleIndex: number): OfficeTableCell {
   const style = styles[styleIndex];
-  return style ? { ...cell, ...style } : cell;
+  if (!style) return cell;
+  const value = typeof cell.value === "number" ? formatExcelDate(cell.value, style.numFmtCode) : cell.value;
+  return { ...cell, value, ...style };
 }
 
 async function parseSharedStrings(packageData: OfficePackage): Promise<string[]> {
