@@ -1,0 +1,84 @@
+name: Scheduled Folio v0.2 Merge
+
+on:
+  schedule:
+    # 22:35 en España peninsular (CEST = UTC+2)
+    # 12 septiembre 2026
+    - cron: "35 20 12 9 *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+jobs:
+  merge-v02:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verify date
+        id: date
+        run: |
+          TODAY="$(date -u +'%Y-%m-%d')"
+
+          if [ "$TODAY" != "2026-09-12" ]; then
+            echo "This was a one-time Folio v0.2 release workflow."
+            echo "Current date: $TODAY"
+            exit 1
+          fi
+
+      - name: Verify and merge PR #13
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: c396318109e74e1a1237856c324ece99248c735f
+        run: |
+          set -euo pipefail
+
+          PR=13
+
+          echo "Checking PR #$PR..."
+
+          STATE=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json state --jq '.state')
+          HEAD=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')
+          MERGEABLE=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json mergeable --jq '.mergeable')
+
+          echo "State: $STATE"
+          echo "HEAD: $HEAD"
+          echo "Mergeable: $MERGEABLE"
+
+          if [ "$STATE" != "OPEN" ]; then
+            echo "PR is not open. Aborting."
+            exit 1
+          fi
+
+          if [ "$HEAD" != "$EXPECTED_HEAD" ]; then
+            echo "PR HEAD changed since release approval."
+            echo "Expected: $EXPECTED_HEAD"
+            echo "Actual:   $HEAD"
+            exit 1
+          fi
+
+          if [ "$MERGEABLE" != "MERGEABLE" ]; then
+            echo "PR is not mergeable. Aborting."
+            exit 1
+          fi
+
+          echo "Checking status checks..."
+
+          gh pr checks "$PR" \
+            --repo "$GITHUB_REPOSITORY" \
+            --required \
+            --watch
+
+          echo "All required checks are green."
+
+          echo "Merging Folio v0.2..."
+
+          gh pr merge "$PR" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --delete-branch
+
+          echo "Folio v0.2 merged successfully."
