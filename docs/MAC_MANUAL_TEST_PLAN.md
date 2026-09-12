@@ -1,5 +1,10 @@
 # Mac Manual Test Plan (Folio v0.2)
 
+This plan covers the dormant Folio for Mac helper routes. The public
+browser-local Apple exports are validated separately in
+`docs/IWORK_NATIVE_OUTPUT_VALIDATION.md`; the Keynote deferral below applies
+only to native helper automation.
+
 GitHub-hosted macOS runners lack Pages / Keynote / Numbers / Microsoft
 Office, so native export paths are mocked in CI by design. This matrix must
 be executed on a real Mac with the apps installed, in Safari, with zero
@@ -20,8 +25,8 @@ Terminal use.
 |---|---|---|
 | .pages | .pdf | Pages |
 | .pages | .docx | Pages |
-| .key | .pdf | Keynote — deferred, do not count as validated |
-| .key | .pptx | Keynote — deferred, do not count as validated |
+| .key | .pdf | Keynote helper — deferred, do not count as native-helper validated |
+| .key | .pptx | Keynote helper — deferred, do not count as native-helper validated |
 | .numbers | .pdf | Numbers |
 | .numbers | .xlsx | Numbers |
 
@@ -50,9 +55,11 @@ Terminal use.
 - Temporary dirs removed after success and failure.
 - No document content in error messages or logs.
 
-Keynote Automation permission is a known unresolved macOS/TCC limitation. Do
-not spend this validation pass debugging it, and do not include either Keynote
-route in the v0.2 release acceptance result.
+Keynote Automation permission is a known unresolved macOS/TCC limitation for
+the dormant native helper. Do not spend this helper validation pass debugging
+it, and do not include either Keynote helper route in the native-helper
+acceptance result. This does not invalidate the separately tested browser-local
+Keynote Beta exports.
 
 ## Latest non-Keynote validation record
 

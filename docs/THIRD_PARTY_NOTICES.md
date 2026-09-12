@@ -15,7 +15,16 @@ the applicable upstream notices and license terms.
 | jsPDF | Browser PDF generation | MIT |
 | html2canvas | Browser rendering support | MIT |
 | JSZip | ZIP output | MIT or GPL-3.0-or-later, at the recipient's option |
+| @file-viewer/renderer-iwork | Apple Pages/Keynote/Numbers parser for scoped local Beta exports | Apache-2.0 |
+| styled-exceljs | Numbers saved-value XLSX output (loaded with the Apple renderer) | Apache-2.0 |
+| keynote-archives | Typed Keynote/iWork archive definitions (loaded with the Apple renderer) | MIT |
 | Tailwind CSS | Stylesheet generation | MIT |
+
+PPTX/XLSX parsing and the Keynote → PPTX / Pages → DOCX writers use Folio’s
+bounded local OOXML reader and writer over the existing JSZip dependency. The
+candidate `pptxgenjs` package was evaluated but not adopted because its
+transitive `image-size` dependency has a high-severity image parsing advisory
+in the candidate install; it is not part of the Folio lockfile.
 
 The complete dependency graph and its license metadata are recorded in
 `package-lock.json`. The macOS helper and Folio for Mac packages use Apple

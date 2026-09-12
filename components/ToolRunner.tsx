@@ -19,6 +19,7 @@ import {
   validateFiles,
   withExtension,
 } from "@/lib/files";
+import { describeError } from "@/lib/errors";
 import { parsePageRanges, summarizePages } from "@/lib/pageRanges";
 import type { RotationDegrees } from "@/lib/pdfOpsTypes";
 import type { FolioTool } from "@/lib/tools";
@@ -35,8 +36,16 @@ type Result =
   | { kind: "images"; pages: Array<{ page: number; url: string; size: number }> }
   | null;
 
-export function ToolRunner({ tool }: { tool: FolioTool }) {
-  const [files, setFiles] = useState<ListedFile[]>([]);
+export function ToolRunner({
+  tool,
+  initialFiles = [],
+}: {
+  tool: FolioTool;
+  initialFiles?: File[];
+}) {
+  const [files, setFiles] = useState<ListedFile[]>(() =>
+    initialFiles.map((file) => ({ file, id: nextId() })),
+  );
   const [complaints, setComplaints] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
@@ -51,12 +60,45 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
   const [degrees, setDegrees] = useState<RotationDegrees>(90);
   const [zipMeta, setZipMeta] = useState<{ name: string; size: number } | null>(null);
   const runGuardRef = useRef(false);
+  const fileListRef = useRef<HTMLOListElement>(null);
+  const selectionFocusPendingRef = useRef(false);
+  const complaintRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(true);
   const fileObjs = useMemo(() => files.map((f) => f.file), [files]);
+  const selectedBytes = useMemo(
+    () => fileObjs.reduce((total, file) => total + file.size, 0),
+    [fileObjs],
+  );
+
+  useEffect(() => {
+    if (selectionFocusPendingRef.current && files.length > 0) {
+      selectionFocusPendingRef.current = false;
+      fileListRef.current?.focus();
+    }
+  }, [files.length]);
+
+  useEffect(() => {
+    if (complaints.length > 0) complaintRef.current?.focus();
+  }, [complaints]);
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
+
+  useEffect(() => {
+    if (result) resultRef.current?.focus();
+  }, [result]);
 
   // Single registry for every object URL this component creates, so cleanup
   // never depends on stale state closures or double-revokes.
   const urlsRef = useRef<Set<string>>(new Set());
   const trackUrl = useCallback((url: string): string => {
+    if (!mountedRef.current) {
+      URL.revokeObjectURL(url);
+      return url;
+    }
     urlsRef.current.add(url);
     return url;
   }, []);
@@ -67,8 +109,10 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
 
   // Revoke any remaining object URLs on unmount only.
   useEffect(() => {
+    mountedRef.current = true;
     const registry = urlsRef.current;
     return () => {
+      mountedRef.current = false;
       for (const url of registry) URL.revokeObjectURL(url);
       registry.clear();
     };
@@ -83,6 +127,11 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
     setEngineUsed(null);
   }, [revokeAllUrls]);
 
+  const handleDropIssue = useCallback((message: string) => {
+    resetResults();
+    setComplaints([message]);
+  }, [resetResults]);
+
   function blobUrl(bytes: Uint8Array, mime: string): string {
     const copy = new Uint8Array(bytes.length);
     copy.set(bytes);
@@ -91,22 +140,23 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
 
   const addFiles = useCallback(
     (incoming: File[]) => {
-      setError(null);
+      resetResults();
       const { accepted, complaints: found } = validateFiles(
         tool,
         incoming,
         files.length,
+        selectedBytes,
       );
       if (accepted.length > 0) {
+        selectionFocusPendingRef.current = true;
         const listed = accepted.map((file) => ({ file, id: nextId() }));
         setFiles((prev) =>
           tool.multiple ? [...prev, ...listed] : listed.slice(0, 1),
         );
-        resetResults();
       }
       setComplaints(found.map((c) => `${c.fileName}: ${c.reason}`));
     },
-    [tool, files.length, resetResults],
+    [tool, files.length, resetResults, selectedBytes],
   );
 
   const removeFile = useCallback(
@@ -152,6 +202,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           setProgress("Merging PDFs…");
           const { mergePdfs } = await import("@/lib/pdfOps");
           const bytes = await mergePdfs(fileObjs);
+          if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(fileObjs[0].name)}-merged`,
             "pdf",
@@ -173,6 +224,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           if (parsed.error) throw new Error(parsed.error);
           setProgress(`Extracting ${summarizePages(parsed.pages)}…`);
           const bytes = await splitPdf(file, parsed.pages);
+          if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(file.name)}-pages-${parsed.pages[0]}-${parsed.pages[parsed.pages.length - 1]}`,
             "pdf",
@@ -193,6 +245,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           setProgress(`Building PDF from ${fileObjs.length} image${fileObjs.length === 1 ? "" : "s"}…`);
           const { imagesToPdf } = await import("@/lib/pdfOps");
           const bytes = await imagesToPdf(fileObjs);
+          if (!mountedRef.current) return;
           const name = withExtension(
             fileObjs.length === 1
               ? `${safeFileName(fileObjs[0].name)}`
@@ -206,9 +259,144 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           break;
         }
         case "docx-to-pdf": {
+          if (fileObjs.length === 0) throw new Error("Add at least one Word document.");
+          const { combineFilesToPdf, docxToPdf } = await import("@/lib/pdfOps");
+          let bytes: Uint8Array;
+          let note: string;
+          if (fileObjs.length > 1) {
+            const combined = await combineFilesToPdf(fileObjs, (stage) => {
+              if (mountedRef.current) setProgress(stage);
+            });
+            bytes = combined.bytes;
+            note = `Combined ${fileObjs.length} Word documents in your selected order. Review pagination and complex layouts before sharing.`;
+          } else {
+            bytes = await docxToPdf(fileObjs[0], (stage) => {
+              if (mountedRef.current) setProgress(stage);
+            });
+            note = "Converted in your browser. Review pagination and complex layouts before sharing.";
+          }
+          if (!mountedRef.current) return;
+          const name = withExtension(
+            fileObjs.length > 1 ? "folio-word-documents" : safeFileName(fileObjs[0].name),
+            "pdf",
+          );
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({
+            kind: "file",
+            fileName: name,
+            sizeBytes: bytes.length,
+            note,
+          });
+          break;
+        }
+        case "pages-to-word": {
           const file = needSingle(fileObjs);
-          const { docxToPdf } = await import("@/lib/pdfOps");
-          const bytes = await docxToPdf(file, (stage) => setProgress(stage));
+          setProgress("Reading Pages content…");
+          const { pagesToDocx } = await import("@/lib/office");
+          const bytes = await pagesToDocx(file);
+          if (!mountedRef.current) return;
+          const name = withExtension(safeFileName(file.name), "docx");
+          const url = blobUrl(bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({ kind: "file", fileName: name, sizeBytes: bytes.length, note: "Exported a real DOCX package locally. Review advanced layout before sharing." });
+          break;
+        }
+        case "powerpoint-to-pdf": {
+          const file = needSingle(fileObjs);
+          setProgress("Reading PowerPoint slides…");
+          const { powerpointToPdf } = await import("@/lib/office");
+          const bytes = await powerpointToPdf(file);
+          if (!mountedRef.current) return;
+          const name = withExtension(safeFileName(file.name), "pdf");
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({ kind: "file", fileName: name, sizeBytes: bytes.length, note: "Converted locally and validated as a loadable PDF. Animations and unsupported PowerPoint objects are not exported." });
+          break;
+        }
+        case "keynote-to-powerpoint": {
+          const file = needSingle(fileObjs);
+          setProgress("Reading Keynote slides…");
+          const { keynoteToPptx } = await import("@/lib/office");
+          const bytes = await keynoteToPptx(file);
+          if (!mountedRef.current) return;
+          const name = withExtension(safeFileName(file.name), "pptx");
+          const url = blobUrl(bytes, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({ kind: "file", fileName: name, sizeBytes: bytes.length, note: "Exported a real PPTX package locally. Native-app validation is still recommended before sharing." });
+          break;
+        }
+        case "excel-to-pdf": {
+          const file = needSingle(fileObjs);
+          setProgress("Reading Excel worksheets…");
+          const { excelToPdf } = await import("@/lib/office");
+          const bytes = await excelToPdf(file);
+          if (!mountedRef.current) return;
+          const name = withExtension(safeFileName(file.name), "pdf");
+          const url = blobUrl(bytes, "application/pdf");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({ kind: "file", fileName: name, sizeBytes: bytes.length, note: "Converted all worksheets locally and validated the resulting PDF." });
+          break;
+        }
+        case "pages-to-pdf":
+        case "keynote-to-pdf":
+        case "numbers-to-pdf":
+        case "numbers-to-xlsx": {
+          const file = needSingle(fileObjs);
+          const isXlsx = tool.slug === "numbers-to-xlsx";
+          setProgress(isXlsx ? "Reading Numbers tables…" : "Rendering Apple document…");
+          const { appleToPdf, numbersToXlsx } = await import("@/lib/iwork");
+          const bytes = isXlsx
+            ? await numbersToXlsx(file)
+            : await appleToPdf(file, tool.slug === "pages-to-pdf" ? "pages" : tool.slug === "keynote-to-pdf" ? "keynote" : "numbers");
+          if (!mountedRef.current) return;
+          const extension = isXlsx ? "xlsx" : "pdf";
+          const name = withExtension(safeFileName(file.name), extension);
+          const url = blobUrl(bytes, isXlsx
+            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            : "application/pdf");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({
+            kind: "file",
+            fileName: name,
+            sizeBytes: bytes.length,
+            note: isXlsx
+              ? "Saved Numbers cell values and table structure were exported locally. Formulas are not recalculated."
+              : "Exported locally from the supported Apple content subset. Review the PDF before sharing.",
+          });
+          break;
+        }
+        case "combine-to-pdf": {
+          const { combineFilesToPdf } = await import("@/lib/pdfOps");
+          const combined = await combineFilesToPdf(fileObjs, (stage) => {
+            if (mountedRef.current) setProgress(stage);
+          });
+          if (!mountedRef.current) return;
+          const name = withExtension("folio-combined-documents", "pdf");
+          const url = blobUrl(combined.bytes, "application/pdf");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({
+            kind: "file",
+            fileName: name,
+            sizeBytes: combined.bytes.length,
+            note: `Combined ${fileObjs.length} document${fileObjs.length === 1 ? "" : "s"} in your selected order. Each source converted locally and validated before merging.`,
+          });
+          break;
+        }
+        case "markdown-to-pdf": {
+          const file = needSingle(fileObjs);
+          const { markdownToPdf } = await import("@/lib/pdfOps");
+          const bytes = await markdownToPdf(file, (stage) => {
+            if (mountedRef.current) setProgress(stage);
+          });
+          if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "pdf");
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
@@ -217,7 +405,27 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
             kind: "file",
             fileName: name,
             sizeBytes: bytes.length,
-            note: "Converted in your browser. Review pagination and complex layouts before sharing.",
+            note: "Rendered from sanitized Markdown in your browser. Remote images are not fetched.",
+          });
+          break;
+        }
+        case "pdf-to-markdown": {
+          const file = needSingle(fileObjs);
+          const { pdfToMarkdown } = await import("@/lib/pdfOps");
+          const markdown = await pdfToMarkdown(file, (stage) => {
+            if (mountedRef.current) setProgress(stage);
+          });
+          if (!mountedRef.current) return;
+          const bytes = new TextEncoder().encode(markdown);
+          const name = withExtension(safeFileName(file.name), "md");
+          const url = blobUrl(bytes, "text/markdown;charset=utf-8");
+          setResultUrl(url);
+          setEngineUsed("browser");
+          setResult({
+            kind: "file",
+            fileName: name,
+            sizeBytes: bytes.length,
+            note: "Extracted locally. This is a readable reconstruction, not a perfect copy of the original document layout.",
           });
           break;
         }
@@ -228,8 +436,9 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           const pages = await renderPdfPages(file, {
             scale: 2,
             onProgress: (done, total) =>
-              setProgress(`Rendering page ${done} of ${total}…`),
+              mountedRef.current && setProgress(`Rendering page ${done} of ${total}…`),
           });
+          if (!mountedRef.current) return;
           const withUrls = pages.map((p) => ({
             page: p.pageNumber,
             blob: p.blob,
@@ -253,6 +462,11 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               zip.file(`${base}-p${p.page}.jpg`, p.blob);
             }
             const zipBlob = await zip.generateAsync({ type: "blob" });
+            const checkedZip = await JSZip.loadAsync(await readFileBytes(zipBlob));
+            const zipEntries = Object.values(checkedZip.files).filter((entry) => !entry.dir);
+            if (zipEntries.length !== withUrls.length || zipEntries.some((entry) => !/\.jpg$/i.test(entry.name))) {
+              throw new Error("Folio could not validate the JPG archive.");
+            }
             const url = trackUrl(URL.createObjectURL(zipBlob));
             setResultUrl(url);
             setResult({
@@ -287,6 +501,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
             setProgress(`Rotating all pages by ${degrees}°…`);
           }
           const bytes = await rotatePdf(file, targets, degrees);
+          if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(file.name)}-rotated-${degrees}`,
             "pdf",
@@ -302,6 +517,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           setProgress("Optimizing PDF…");
           const { optimizePdf } = await import("@/lib/pdfOps");
           const { bytes, beforeBytes, afterBytes } = await optimizePdf(file);
+          if (!mountedRef.current) return;
           const name = withExtension(`${safeFileName(file.name)}-optimized`, "pdf");
           const url = blobUrl(bytes, "application/pdf");
           setResultUrl(url);
@@ -311,16 +527,13 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
         }
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Something went wrong.";
-      setError(
-        /I\/O read operation failed|NotReadableError/i.test(message)
-          ? "We couldn’t read this file. Remove it and select it again."
-          : message,
-      );
+      if (mountedRef.current) setError(describeError(e).message);
     } finally {
-      runGuardRef.current = false;
-      setBusy(false);
-      setProgress("");
+      if (mountedRef.current) {
+        runGuardRef.current = false;
+        setBusy(false);
+        setProgress("");
+      }
     }
   }
 
@@ -330,6 +543,8 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
       ? fileObjs.length >= 2
       : tool.slug === "images-to-pdf"
         ? fileObjs.length >= 1
+        : tool.slug === "docx-to-pdf" || tool.slug === "combine-to-pdf"
+          ? fileObjs.length >= 1
         : fileObjs.length === 1);
 
   return (
@@ -346,10 +561,11 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           multiple={tool.multiple}
           disabled={busy}
           onFiles={addFiles}
+          onDropIssue={handleDropIssue}
         />
 
         {complaints.length > 0 && (
-          <StatusBox kind="error">
+          <StatusBox ref={complaintRef} tabIndex={-1} kind="error">
             <ul className="list-disc pl-5">
               {complaints.map((c, i) => (
                 <li key={i}>{c}</li>
@@ -362,8 +578,11 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           items={files}
           reorderable={tool.multiple && files.length > 1}
           disabled={busy}
+          accepts={tool.accepts}
           onRemove={removeFile}
           onMove={moveFile}
+          onAddFiles={tool.multiple ? addFiles : undefined}
+          listRef={fileListRef}
         />
 
         {/* Per-tool options */}
@@ -385,7 +604,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               autoComplete="off"
               placeholder="1-3,5,8-10"
               aria-describedby="range-help"
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-mono text-[15px] text-ink-900 placeholder:text-ink-400 focus:border-accent-600"
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-mono text-[15px] text-ink-900 placeholder:text-ink-400 focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-600 focus:ring-offset-1"
             />
             <p id="range-help" className="mt-1.5 text-[13px] text-ink-500">
               Page numbers start at 1. Use commas to combine pages and dashes
@@ -441,7 +660,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
         {tool.slug === "compress-pdf" && (
           <StatusBox kind="info">
             Folio rewrites the PDF with optimized object streams and cleans
-            redundant metadata — entirely offline. Already-optimized files may
+            redundant metadata in this browser. Already-optimized files may
             barely shrink; the result always shows honest before/after sizes.
           </StatusBox>
         )}
@@ -455,13 +674,40 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
           </StatusBox>
         )}
 
+        {tool.slug === "markdown-to-pdf" && (
+          <StatusBox kind="info">
+            Markdown is rendered locally into a readable A4 PDF. Raw HTML is
+            disabled and remote images are omitted instead of being fetched.
+          </StatusBox>
+        )}
+
+        {tool.slug === "pdf-to-markdown" && (
+          <StatusBox kind="info">
+            Beta: Folio extracts text and only reconstructs headings and lists
+            when the PDF layout makes them reasonably clear. Scanned PDFs and
+            complex columns need OCR or manual cleanup.
+          </StatusBox>
+        )}
+
+        {(tool.slug === "pages-to-pdf" || tool.slug === "keynote-to-pdf" || tool.slug === "numbers-to-pdf" || tool.slug === "numbers-to-xlsx" || tool.slug === "pages-to-word" || tool.slug === "keynote-to-powerpoint" || tool.slug === "powerpoint-to-pdf" || tool.slug === "excel-to-pdf") && (
+          <StatusBox kind="info">
+            {tool.slug === "powerpoint-to-pdf" || tool.slug === "excel-to-pdf"
+              ? "Beta: Folio reads the Office package locally. Saved text, tables, images and basic formatting are represented; macros, external content and unsupported objects are rejected or omitted safely."
+              : tool.slug === "pages-to-word"
+                ? "Beta: Folio writes a real DOCX package locally. Text, tables, images and basic shapes are supported; advanced Pages layout may differ."
+                : tool.slug === "keynote-to-powerpoint"
+                  ? "Beta: Folio writes a real PPTX package locally. Review it in PowerPoint or Keynote before sharing; charts, media and animations are not exported."
+                  : "Beta: Folio processes the Apple container locally. Saved text, tables, images and basic shapes are supported where the document exposes them; animations, transitions, formula recalculation and unsupported content are not exported."}
+          </StatusBox>
+        )}
+
         {busy && <ProgressBar label={progress || "Working…"} />}
 
-        {error && <StatusBox kind="error">{error}</StatusBox>}
+        {error && <StatusBox ref={errorRef} tabIndex={-1} kind="error">{error}</StatusBox>}
 
         <div className="flex flex-wrap items-center gap-3">
           <PrimaryButton onClick={run} disabled={!canRun}>
-            {busy ? "Working…" : actionLabel(tool.slug)}
+            {busy ? "Working…" : actionLabel(tool.slug, fileObjs.length)}
           </PrimaryButton>
           {(files.length > 0 || result || complaints.length > 0 || error) && (
             <SecondaryButton onClick={startOver} disabled={busy}>
@@ -472,7 +718,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
 
         {/* Results */}
         {result?.kind === "file" && resultUrl && (
-          <StatusBox kind="success">
+          <StatusBox ref={resultRef} tabIndex={-1} kind="success">
             <p className="font-medium">
               Done — {result.fileName} ({formatBytes(result.sizeBytes)})
             </p>
@@ -482,7 +728,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               <a
                 href={resultUrl}
                 download={result.fileName}
-                className="inline-flex items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                className="inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2"
               >
                 Download {result.fileName}
               </a>
@@ -491,7 +737,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
         )}
 
         {result?.kind === "compress" && resultUrl && (
-          <StatusBox kind={result.after < result.before ? "success" : "info"}>
+          <StatusBox ref={resultRef} tabIndex={-1} kind={result.after < result.before ? "success" : "info"}>
             <p className="font-medium">
               {result.after < result.before ? (
                 <>
@@ -519,7 +765,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               <a
                 href={resultUrl}
                 download={result.fileName}
-                className="inline-flex items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                className="inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2"
               >
                 Download {result.fileName}
               </a>
@@ -537,7 +783,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
               <a
                 href={resultUrl}
                 download={zipMeta.name}
-                className="mt-3 inline-flex items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2"
               >
                 Download all as ZIP ({formatBytes(zipMeta.size)})
               </a>
@@ -557,7 +803,7 @@ export function ToolRunner({ tool }: { tool: FolioTool }) {
                       `${safeFileName(files[0]?.file.name ?? "page", "page")}-p${p.page}`,
                       "jpg",
                     )}
-                    className="font-medium text-accent-600 hover:underline"
+                    className="rounded-lg px-2 py-2 font-medium text-accent-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600"
                   >
                     Download JPG
                   </a>
@@ -576,7 +822,7 @@ function needSingle(objs: File[]): File {
   return objs[0];
 }
 
-function actionLabel(slug: string): string {
+function actionLabel(slug: string, count: number): string {
   switch (slug) {
     case "merge-pdf":
       return "Merge PDFs";
@@ -585,13 +831,35 @@ function actionLabel(slug: string): string {
     case "images-to-pdf":
       return "Create PDF";
     case "docx-to-pdf":
+      return count > 1 ? `Convert ${count} Word files to one PDF` : "Convert to PDF";
+    case "pages-to-word":
+      return "Convert to DOCX";
+    case "powerpoint-to-pdf":
       return "Convert to PDF";
+    case "keynote-to-powerpoint":
+      return "Convert to PPTX";
+    case "excel-to-pdf":
+      return "Convert to PDF";
+    case "markdown-to-pdf":
+      return "Convert to PDF";
+    case "pdf-to-markdown":
+      return "Convert to Markdown";
     case "pdf-to-jpg":
       return "Convert to JPG";
     case "rotate-pdf":
       return "Rotate PDF";
     case "compress-pdf":
       return "Compress PDF";
+    case "combine-to-pdf":
+      return `Combine ${count} document${count === 1 ? "" : "s"} into PDF`;
+    case "pages-to-pdf":
+      return "Convert to PDF";
+    case "keynote-to-pdf":
+      return "Convert to PDF";
+    case "numbers-to-xlsx":
+      return "Convert to XLSX";
+    case "numbers-to-pdf":
+      return "Convert to PDF";
     default:
       return "Process";
   }

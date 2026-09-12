@@ -25,6 +25,17 @@ describe("public format matrix", () => {
       "pdf-to-jpg",
       "images-to-pdf",
       "docx-to-pdf",
+      "pages-to-word",
+      "powerpoint-to-pdf",
+      "keynote-to-powerpoint",
+      "excel-to-pdf",
+      "markdown-to-pdf",
+      "pdf-to-markdown",
+      "combine-to-pdf",
+      "pages-to-pdf",
+      "keynote-to-pdf",
+      "numbers-to-xlsx",
+      "numbers-to-pdf",
     ]);
   });
 
@@ -34,6 +45,18 @@ describe("public format matrix", () => {
     expect(docx.status).toBe("browser-beta");
     expect(docx.limitation).toMatch(/pagination/i);
     expect(docx.limitation).toMatch(/complex/i);
+  });
+
+  it("keeps Markdown conversions browser-local and honest about reconstruction", () => {
+    const toPdf = getConversion("markdown-to-pdf")!;
+    expect(toPdf.browser).toBe("full");
+    expect(toPdf.status).toBe("browser");
+    expect(toPdf.limitation).toMatch(/HTML|remote images/i);
+
+    const toMarkdown = getConversion("pdf-to-markdown")!;
+    expect(toMarkdown.browser).toBe("beta");
+    expect(toMarkdown.status).toBe("browser-beta");
+    expect(toMarkdown.limitation).toMatch(/scanned|complex columns|original Markdown/i);
   });
 
   it("keeps browser PDF and image tools fully local", () => {
@@ -99,7 +122,7 @@ describe("dormant native format matrix", () => {
   });
 
   it("keeps Keynote explicitly deferred", () => {
-    for (const id of ["key-to-pdf", "key-to-pptx"]) {
+    for (const id of ["key-to-pptx"]) {
       const conversion = DORMANT_NATIVE_CONVERSIONS.find((item) => item.id === id)!;
       expect(conversion.status).toBe("helper-beta");
       expect(conversion.limitation).toMatch(/deferred|unvalidated/i);

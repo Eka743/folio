@@ -1,22 +1,35 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { formatBytes } from "@/lib/files";
+
+export { FileList } from "@/components/DocumentPreview";
+export type { ListedFile } from "@/components/DocumentPreview";
 
 export function Dropzone({
   accepts,
   multiple,
   disabled,
   onFiles,
+  onDropIssue,
 }: {
   accepts: string;
   multiple: boolean;
   disabled?: boolean;
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[]) => void | Promise<void>;
+  onDropIssue?: (message: string) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
+
+  const openPicker = useCallback(() => {
+    if (disabled || !inputRef.current) return;
+    // Clear the previous selection before opening the picker. Clearing after
+    // change invalidates picker-backed File handles in some WebKit builds
+    // while an async inspection or conversion is still reading them.
+    inputRef.current.value = "";
+    inputRef.current.click();
+  }, [disabled]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -24,10 +37,25 @@ export function Dropzone({
       dragDepth.current = 0;
       setDragging(false);
       if (disabled) return;
+      const hasDirectory = [...(e.dataTransfer?.items ?? [])].some((item) => {
+        const entry = (item as DataTransferItem & {
+          webkitGetAsEntry?: () => { isDirectory?: boolean } | null;
+        }).webkitGetAsEntry?.();
+        return entry?.isDirectory === true;
+      });
+      if (hasDirectory) {
+        onDropIssue?.("Folders aren’t supported here. Select a file instead.");
+        return;
+      }
       const files = [...(e.dataTransfer?.files ?? [])];
-      if (files.length > 0) onFiles(files);
+      if (files.length === 0) return;
+      if (!multiple && files.length > 1) {
+        onDropIssue?.("Select one file at a time here.");
+        return;
+      }
+      onFiles(files);
     },
-    [disabled, onFiles],
+    [disabled, multiple, onDropIssue, onFiles],
   );
 
   return (
@@ -36,11 +64,11 @@ export function Dropzone({
       tabIndex={disabled ? -1 : 0}
       aria-disabled={disabled}
       aria-label={`Drop files here or press Enter to browse. Accepted: ${accepts}`}
-      onClick={() => !disabled && inputRef.current?.click()}
+      onClick={openPicker}
       onKeyDown={(e) => {
         if ((e.key === "Enter" || e.key === " ") && !disabled) {
           e.preventDefault();
-          inputRef.current?.click();
+          openPicker();
         }
       }}
       onDragEnter={(e) => {
@@ -56,7 +84,7 @@ export function Dropzone({
         if (dragDepth.current === 0) setDragging(false);
       }}
       onDrop={handleDrop}
-      className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${
+      className={`flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 ${
         dragging
           ? "border-accent-600 bg-accent-50"
           : "border-slate-300 bg-paper hover:border-slate-400 hover:bg-slate-50"
@@ -68,7 +96,7 @@ export function Dropzone({
       <p className="mt-3 font-medium text-ink-900">
         Drop files here or <span className="text-accent-600 underline">browse</span>
       </p>
-      <p className="mt-1 text-sm text-ink-500">
+      <p className="mt-1 max-w-full break-words text-sm text-ink-500">
         {accepts} {multiple ? "· multiple files" : "· single file"}
       </p>
       <input
@@ -82,83 +110,8 @@ export function Dropzone({
         onChange={(e) => {
           const files = [...(e.target.files ?? [])];
           if (files.length > 0) onFiles(files);
-          // Clear after dispatching the File objects. This preserves the
-          // native picker-backed handles long enough for callers to snapshot
-          // them on Safari before the input is reset.
-          e.target.value = "";
         }}
       />
     </div>
-  );
-}
-
-export interface ListedFile {
-  file: File;
-  id: string;
-}
-
-export function FileList({
-  items,
-  reorderable,
-  disabled,
-  onRemove,
-  onMove,
-}: {
-  items: ListedFile[];
-  reorderable: boolean;
-  disabled?: boolean;
-  onRemove: (id: string) => void;
-  onMove: (id: string, dir: -1 | 1) => void;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <ol className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white" aria-label="Selected files">
-      {items.map((item, i) => (
-        <li key={item.id} className="flex items-center gap-3 px-4 py-3">
-          {reorderable && (
-            <span className="w-6 shrink-0 text-center text-sm font-semibold tabular-nums text-ink-400" aria-hidden="true">
-              {i + 1}
-            </span>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-ink-900" title={item.file.name}>
-              {item.file.name}
-            </p>
-            <p className="text-[13px] text-ink-500">{formatBytes(item.file.size)}</p>
-          </div>
-          {reorderable && (
-            <div className="flex shrink-0 gap-1" role="group" aria-label={`Reorder ${item.file.name}`}>
-              <button
-                type="button"
-                disabled={disabled || i === 0}
-                onClick={() => onMove(item.id, -1)}
-                aria-label={`Move ${item.file.name} up`}
-                className="rounded-lg border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-30"
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                disabled={disabled || i === items.length - 1}
-                onClick={() => onMove(item.id, 1)}
-                aria-label={`Move ${item.file.name} down`}
-                className="rounded-lg border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-30"
-              >
-                ↓
-              </button>
-            </div>
-          )}
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => onRemove(item.id)}
-            aria-label={`Remove ${item.file.name}`}
-            className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-sm text-red-700 hover:bg-red-50"
-          >
-            Remove
-          </button>
-        </li>
-      ))}
-    </ol>
   );
 }

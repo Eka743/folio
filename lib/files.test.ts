@@ -66,6 +66,69 @@ describe("readFileBytes", () => {
       message: "We couldn’t read this file. Remove it and select it again.",
     });
   });
+
+  it("reports when both browser read paths fail", async () => {
+    const originalReader = globalThis.FileReader;
+    class FailingReader {
+      result: ArrayBuffer | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+
+      readAsArrayBuffer(): void {
+        this.onerror?.();
+      }
+    }
+    Object.defineProperty(globalThis, "FileReader", {
+      configurable: true,
+      value: FailingReader,
+    });
+    try {
+      const unreadable = {
+        arrayBuffer: async () => {
+          throw new DOMException("The I/O read operation failed.", "NotReadableError");
+        },
+      } as unknown as Blob;
+      await expect(readFileBytes(unreadable)).rejects.toMatchObject({
+        name: "FileReadError",
+        message: "We couldn’t read this file. Remove it and select it again.",
+      });
+    } finally {
+      Object.defineProperty(globalThis, "FileReader", {
+        configurable: true,
+        value: originalReader,
+      });
+    }
+  });
+
+  it("falls back when WebKit leaves FileReader pending", async () => {
+    const originalReader = globalThis.FileReader;
+    class StalledReader {
+      result: ArrayBuffer | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      readAsArrayBuffer(): void {
+        // Simulate the WebKit picker-backed Blob regression: no event is
+        // delivered, but the Blob's independent arrayBuffer path is healthy.
+      }
+    }
+    Object.defineProperty(globalThis, "FileReader", {
+      configurable: true,
+      value: StalledReader,
+    });
+    try {
+      const readable = {
+        arrayBuffer: async () => new Uint8Array([7, 8, 9]).buffer,
+      } as unknown as Blob;
+      await expect(readFileBytes(readable)).resolves.toEqual(new Uint8Array([7, 8, 9]));
+    } finally {
+      Object.defineProperty(globalThis, "FileReader", {
+        configurable: true,
+        value: originalReader,
+      });
+    }
+  });
 });
 
 describe("validateFiles", () => {
@@ -103,5 +166,15 @@ describe("validateFiles", () => {
     const capped = validateFiles(merge, many, 0);
     expect(capped.accepted).toHaveLength(merge.maxFiles);
     expect(capped.complaints.length).toBeGreaterThan(0);
+  });
+
+  it("enforces the aggregate byte limit across repeated additions", () => {
+    const first = fakeFile("first.pdf", merge.maxTotalBytes - 100, "application/pdf");
+    const second = fakeFile("second.pdf", 101, "application/pdf");
+    const result = validateFiles(merge, [second], 1, first.size);
+
+    expect(result.accepted).toHaveLength(0);
+    expect(result.complaints[0].fileName).toBe("second.pdf");
+    expect(result.complaints[0].reason).toMatch(/total limit/i);
   });
 });

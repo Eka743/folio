@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import {
+  combineFilesToPdf,
   getPdfPageCount,
   imagesToPdf,
   loadPdfDocument,
@@ -15,6 +16,7 @@ import {
   rotatePdf,
   sanitizeMammothHtml,
   splitPdf,
+  validatePdfOutput,
 } from "./pdfOps";
 
 async function makePdf(pages: number): Promise<File> {
@@ -53,6 +55,30 @@ describe("pdf engine", () => {
     const out = await mergePdfs([source, source]);
 
     expect(await getPdfPageCount(out)).toBe(4);
+  });
+
+  it("fails closed for empty, truncated, and wrong-page-count PDF output", async () => {
+    await expect(validatePdfOutput(new Uint8Array())).rejects.toThrow(/validate the generated PDF/);
+    const source = await makePdf(1);
+    const bytes = new Uint8Array(await source.arrayBuffer());
+    await expect(validatePdfOutput(bytes.subarray(0, 100))).rejects.toThrow(/Could not read this PDF/);
+    await expect(validatePdfOutput(bytes, 2)).rejects.toThrow(/page count/);
+  });
+
+  it("combines PDF and image sources into validated PDF segments in order", async () => {
+    const pdf = await makePdf(2);
+    const result = await combineFilesToPdf([pdf, makePng("photo.png")]);
+
+    expect(result.pageCount).toBe(3);
+    expect(await getPdfPageCount(result.bytes)).toBe(3);
+    expect([...result.bytes.slice(0, 5)]).toEqual([0x25, 0x50, 0x44, 0x46, 0x2d]);
+  });
+
+  it("names the exact source when a combined document cannot be converted", async () => {
+    const bad = new File(["not a PDF"], "failed-middle.pdf", { type: "application/pdf" });
+    await expect(combineFilesToPdf([await makePdf(1), bad, await makePdf(1)])).rejects.toThrow(
+      /Could not convert failed-middle\.pdf\./,
+    );
   });
 
   it("splits out exactly the requested pages", async () => {

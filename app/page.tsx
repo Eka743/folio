@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { TOOLS, type ToolCategory, type ToolSlug } from "@/lib/tools";
+import { UniversalDrop } from "@/components/UniversalDrop";
+import { conversionsByCategory, HOMEPAGE_CATEGORIES } from "@/lib/formatMatrix";
+import { getTool, type ToolCategory, type ToolSlug } from "@/lib/tools";
 
-const CATEGORY_ORDER: ToolCategory[] = ["PDF", "Documents", "Images"];
+const CATEGORY_ORDER: ToolCategory[] = [...HOMEPAGE_CATEGORIES];
 
 const ICONS: Record<ToolSlug, React.ReactNode> = {
   "merge-pdf": (
@@ -16,6 +18,18 @@ const ICONS: Record<ToolSlug, React.ReactNode> = {
   "docx-to-pdf": (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>
   ),
+  "pages-to-word": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 12h6M9 16h6"/><path d="M12 9v2"/></svg>
+  ),
+  "powerpoint-to-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 15v-4l2-2 3 3 2-2 2 2M12 3v2"/></svg>
+  ),
+  "keynote-to-powerpoint": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 3v2M8 15h8M12 9v6"/></svg>
+  ),
+  "excel-to-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 8h16M9 8v13M15 8v13M4 13h16M4 17h16"/></svg>
+  ),
   "pdf-to-jpg": (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="13" height="13" rx="2"/><path d="M16 8h4a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-4"/></svg>
   ),
@@ -24,6 +38,27 @@ const ICONS: Record<ToolSlug, React.ReactNode> = {
   ),
   "compress-pdf": (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 14h6v6H4zM14 4h6v6h-6z"/><path d="M10 17h7a3 3 0 0 0 3-3v-1M14 7H7a3 3 0 0 0-3 3v1"/></svg>
+  ),
+  "markdown-to-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="m7 9 2 2 2-2M7 14h5M15 9v6m0 0 2-2m-2 2-2-2"/></svg>
+  ),
+  "pdf-to-markdown": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h4M9 12h6M9 16h6"/></svg>
+  ),
+  "combine-to-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 3h7l3 3v5H7z"/><path d="M7 13h10v8H7z"/><path d="M14 3v3h3M10 16v3M14 16v3"/></svg>
+  ),
+  "pages-to-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 12h6M9 16h6"/></svg>
+  ),
+  "keynote-to-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 15v-4l2-2 3 3 2-2 2 2M12 3v2"/></svg>
+  ),
+  "numbers-to-xlsx": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 8h16M9 8v13M15 8v13M4 13h16M4 17h16"/></svg>
+  ),
+  "numbers-to-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 11h6M9 15h6M9 19h3"/></svg>
   ),
 };
 
@@ -37,12 +72,12 @@ export default function HomePage() {
             Free, private, browser-local
           </p>
           <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.035em] text-ink-950 sm:text-6xl sm:leading-[1.05]">
-            Everyday PDF tools, without uploading your files.
+            Everyday document tools, without uploading your files.
           </h1>
           <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-500 sm:text-xl">
-            Merge, split, rotate, compress and convert documents in your
-            browser. No account, no cloud processing, and no document bytes
-            sent to Folio.
+            Drop, combine, convert and organize PDFs, images and everyday
+            documents in your browser. No account, no cloud processing, and no
+            document bytes sent to Folio.
           </p>
           <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-medium text-ink-700">
             <a href="#tools" className="inline-flex items-center gap-2 rounded-xl bg-ink-950 px-4 py-2.5 text-white shadow-sm transition hover:bg-ink-900">
@@ -60,6 +95,8 @@ export default function HomePage() {
         </div>
       </section>
 
+      <UniversalDrop />
+
       <section id="tools" className="scroll-mt-20 border-y border-slate-200 bg-paper" aria-labelledby="tools-heading">
         <div className="mx-auto max-w-5xl px-5 py-12 sm:py-14">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -76,30 +113,48 @@ export default function HomePage() {
 
           <div className="mt-9 space-y-10">
             {CATEGORY_ORDER.map((category) => {
-              const tools = TOOLS.filter((tool) => tool.category === category);
-              if (tools.length === 0) return null;
+              const conversions = conversionsByCategory(category);
+              const groups = category === "Documents"
+                ? [
+                    { label: "Microsoft formats", items: conversions.filter((conversion) => conversion.inputs.some((input) => ["docx", "pptx", "xlsx"].includes(input))) },
+                    { label: "Apple formats", items: conversions.filter((conversion) => conversion.inputs.some((input) => ["pages", "keynote", "numbers"].includes(input))) },
+                    { label: "Cross-format and text", items: conversions.filter((conversion) => !conversion.inputs.some((input) => ["docx", "pptx", "xlsx", "pages", "keynote", "numbers"].includes(input))) },
+                  ]
+                : [{ label: null, items: conversions }];
+              if (conversions.length === 0) return null;
               return (
                 <div key={category}>
                   <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-ink-400">{category}</h3>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {tools.map((tool) => (
-                      <Link
-                        key={tool.slug}
-                        href={`/tools/${tool.slug}`}
-                        className="group flex min-h-44 flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_1px_2px_rgba(16,20,24,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_10px_28px_rgba(16,20,24,0.08)]"
-                      >
-                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-50 text-accent-600 [&>svg]:h-[22px] [&>svg]:w-[22px]">
-                          {ICONS[tool.slug]}
-                        </span>
-                        <span className="mt-5 flex items-center gap-2">
-                          <span className="text-[17px] font-semibold tracking-tight text-ink-950">{tool.name}</span>
-                          {tool.badge && <span className="rounded-full bg-accent-50 px-2 py-0.5 text-xs font-semibold text-accent-700">{tool.badge}</span>}
-                        </span>
-                        <span className="mt-1 flex-1 text-[15px] leading-relaxed text-ink-500">{tool.description}</span>
-                        <span className="mt-4 text-sm font-semibold text-accent-700 group-hover:underline">Open tool <span aria-hidden="true">→</span></span>
-                      </Link>
-                    ))}
-                  </div>
+                  {groups.map((group) => {
+                    const tools = group.items
+                      .map((conversion) => getTool(conversion.toolSlug))
+                      .filter((tool): tool is NonNullable<typeof tool> => Boolean(tool));
+                    if (tools.length === 0) return null;
+                    return (
+                      <div key={group.label ?? category} className={group.label ? "mt-7 first:mt-0" : ""}>
+                        {group.label && <h4 className="mb-3 text-sm font-semibold text-ink-700">{group.label}</h4>}
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {tools.map((tool) => (
+                            <Link
+                              key={tool.slug}
+                              href={`/tools/${tool.slug}`}
+                              className="group flex min-h-44 flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_1px_2px_rgba(16,20,24,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_10px_28px_rgba(16,20,24,0.08)]"
+                            >
+                              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-50 text-accent-600 [&>svg]:h-[22px] [&>svg]:w-[22px]">
+                                {ICONS[tool.slug]}
+                              </span>
+                              <span className="mt-5 flex items-center gap-2">
+                                <span className="text-[17px] font-semibold tracking-tight text-ink-950">{tool.name}</span>
+                                {tool.badge && <span className="rounded-full bg-accent-50 px-2 py-0.5 text-xs font-semibold text-accent-700">{tool.badge}</span>}
+                              </span>
+                              <span className="mt-1 flex-1 text-[15px] leading-relaxed text-ink-500">{tool.description}</span>
+                              <span className="mt-4 text-sm font-semibold text-accent-700 group-hover:underline">Open tool <span aria-hidden="true">→</span></span>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}

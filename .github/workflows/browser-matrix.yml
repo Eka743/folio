@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
 jobs:
   browser-matrix:
     name: ${{ matrix.browser }}

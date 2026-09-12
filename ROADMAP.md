@@ -17,6 +17,8 @@ particular date.
 
 - Add PDF operations only when they can run reliably without uploads or remote
   processing.
+- Markdown to PDF is available as a browser-local, sanitized A4 renderer;
+  PDF to Markdown is available as a conservative text-extraction Beta.
 - Improve large-file performance while preserving honest size and fidelity
   reporting.
 - Expand browser DOCX coverage only when limitations can be clearly labelled.
