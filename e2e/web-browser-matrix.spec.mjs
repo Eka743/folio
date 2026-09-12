@@ -230,6 +230,26 @@ test("Office and reverse Apple tools produce validated packages and PDFs", async
   expect(await keynoteArchive.file("ppt/slides/slide1.xml").async("string")).toContain("Keynote browser fixture");
 });
 
+test("repeated local reads remain valid for images, DOCX and Apple documents", async ({ page }) => {
+  await page.goto("/tools/images-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles([fixtures.image, fixtures.image]);
+  await expectPdf(await downloadFromResult(page, "Create PDF", /^Download /), 2);
+
+  for (const [route, fixture, button, expectedPages] of [
+    ["docx-to-pdf", fixtures.docx, "Convert to PDF", 1],
+    ["pages-to-pdf", fixtures.pages, "Convert to PDF", 1],
+    ["keynote-to-pdf", fixtures.keynote, "Convert to PDF", 2],
+    ["numbers-to-pdf", fixtures.numbers, "Convert to PDF", 1],
+  ]) {
+    await page.goto(`/tools/${route}`);
+    await page.locator('input[type="file"]').setInputFiles(fixture);
+    await expectPdf(await downloadFromResult(page, button, /^Download /), expectedPages);
+    await page.getByRole("button", { name: "Start over" }).click();
+    await selectViaPicker(page, fixture);
+    await expectPdf(await downloadFromResult(page, button, /^Download /), expectedPages);
+  }
+});
+
 test("PDF to JPG stops safely before rendering an excessive page count", async ({ page }) => {
   await page.goto("/tools/pdf-to-jpg");
   await page.locator('input[type="file"]').setInputFiles(fixtures.manyPage);
@@ -1080,6 +1100,13 @@ async function downloadFromResult(page, buttonName, linkName) {
   const link = page.getByRole("link", { name: linkName }).first();
   await expect(link).toBeVisible();
   return downloadFromLink(page, link);
+}
+
+async function selectViaPicker(page, files) {
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: /Drop files here or press Enter/i }).click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles(files);
 }
 
 async function downloadFromLink(page, link) {

@@ -16,6 +16,7 @@ import {
   rotatePdf,
   sanitizeMammothHtml,
   splitPdf,
+  validatePdfOutput,
 } from "./pdfOps";
 
 async function makePdf(pages: number): Promise<File> {
@@ -54,6 +55,14 @@ describe("pdf engine", () => {
     const out = await mergePdfs([source, source]);
 
     expect(await getPdfPageCount(out)).toBe(4);
+  });
+
+  it("fails closed for empty, truncated, and wrong-page-count PDF output", async () => {
+    await expect(validatePdfOutput(new Uint8Array())).rejects.toThrow(/validate the generated PDF/);
+    const source = await makePdf(1);
+    const bytes = new Uint8Array(await source.arrayBuffer());
+    await expect(validatePdfOutput(bytes.subarray(0, 100))).rejects.toThrow(/Could not read this PDF/);
+    await expect(validatePdfOutput(bytes, 2)).rejects.toThrow(/page count/);
   });
 
   it("combines PDF and image sources into validated PDF segments in order", async () => {

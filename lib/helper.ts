@@ -12,6 +12,7 @@
  *    convertViaHelper). Only invoked from client components.
  */
 
+import { readFileBytes } from "./files";
 import { isHelperConversionAllowed } from "./dormantFormatMatrix";
 
 export const HELPER_HOST = "127.0.0.1";
@@ -463,7 +464,7 @@ export async function convertViaHelper(opts: {
   opts.onProgress?.(
     opts.permissionMessage ?? "Uploading to Folio for Mac (localhost)…",
   );
-  const buffer = new Uint8Array(await opts.file.arrayBuffer());
+  const buffer = await readFileBytes(opts.file);
   // Base64 without blowing the stack on large files.
   let binary = "";
   const CHUNK = 0x8000;

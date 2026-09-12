@@ -462,6 +462,11 @@ export function ToolRunner({
               zip.file(`${base}-p${p.page}.jpg`, p.blob);
             }
             const zipBlob = await zip.generateAsync({ type: "blob" });
+            const checkedZip = await JSZip.loadAsync(await readFileBytes(zipBlob));
+            const zipEntries = Object.values(checkedZip.files).filter((entry) => !entry.dir);
+            if (zipEntries.length !== withUrls.length || zipEntries.some((entry) => !/\.jpg$/i.test(entry.name))) {
+              throw new Error("Folio could not validate the JPG archive.");
+            }
             const url = trackUrl(URL.createObjectURL(zipBlob));
             setResultUrl(url);
             setResult({

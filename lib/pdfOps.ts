@@ -38,6 +38,28 @@ export async function loadPdfDocument(
   }
 }
 
+const PDF_SIGNATURE = "%PDF-";
+
+/** Re-open generated PDF bytes before exposing them as a successful result. */
+export async function validatePdfOutput(
+  bytes: Uint8Array,
+  expectedPages?: number,
+): Promise<Uint8Array> {
+  if (
+    bytes.length < PDF_SIGNATURE.length ||
+    new TextDecoder().decode(bytes.subarray(0, PDF_SIGNATURE.length)) !== PDF_SIGNATURE
+  ) {
+    throw new Error("Folio could not validate the generated PDF.");
+  }
+  const parsed = await loadPdfDocument(bytes);
+  const pageCount = parsed.getPageCount();
+  if (pageCount < 1) throw new Error("Folio could not validate the generated PDF pages.");
+  if (expectedPages !== undefined && pageCount !== expectedPages) {
+    throw new Error("Folio could not validate the generated PDF page count.");
+  }
+  return bytes;
+}
+
 /**
  * Strip dangerous constructs from mammoth HTML before injecting it into
  * the layout host. Content tags (p/h1-h6/ul/ol/table/img/a/strong/em)
@@ -87,7 +109,7 @@ export async function mergePdfBytes(
     for (const p of pages) out.addPage(p);
   }
   if (out.getPageCount() === 0) throw new Error("No PDF pages were available to merge.");
-  return out.save({ useObjectStreams: true });
+  return validatePdfOutput(await out.save({ useObjectStreams: true }), out.getPageCount());
 }
 
 export type CombineProgress = (stage: string) => void;
@@ -185,7 +207,7 @@ export async function splitPdf(
   if (indices.length === 0) throw new Error("No valid pages selected.");
   const pages = await out.copyPages(src, indices);
   for (const p of pages) out.addPage(p);
-  return out.save({ useObjectStreams: true });
+  return validatePdfOutput(await out.save({ useObjectStreams: true }), indices.length);
 }
 
 export type RotationDegrees = 90 | 180 | 270;
@@ -212,7 +234,7 @@ export async function rotatePdf(
     const current = page.getRotation().angle;
     page.setRotation(toDegrees((current + degrees) % 360));
   }
-  return doc.save({ useObjectStreams: true });
+  return validatePdfOutput(await doc.save({ useObjectStreams: true }), count);
 }
 
 export interface OptimizeResult {
@@ -233,7 +255,8 @@ export async function optimizePdf(file: File): Promise<OptimizeResult> {
   doc.setProducer("Folio");
   doc.setCreator("Folio (local processing)");
   const out = await doc.save({ useObjectStreams: true, addDefaultPage: false });
-  return { bytes: out, beforeBytes, afterBytes: out.length };
+  const validated = await validatePdfOutput(out, doc.getPageCount());
+  return { bytes: validated, beforeBytes, afterBytes: validated.length };
 }
 
 async function imageDimensions(
@@ -338,7 +361,7 @@ export async function imagesToPdf(files: File[]): Promise<Uint8Array> {
   }
 
   if (doc.getPageCount() === 0) throw new Error("No images to convert.");
-  return doc.save({ useObjectStreams: true });
+  return validatePdfOutput(await doc.save({ useObjectStreams: true }), doc.getPageCount());
 }
 
 export interface RenderedPage {
@@ -351,6 +374,24 @@ export interface RenderedPage {
 const PDF_WORKER_SRC = "/pdf.worker.min.mjs";
 export const MAX_PDF_TO_JPG_PAGES = 100;
 export const MAX_IMAGE_PIXELS = 24_000_000;
+
+async function validateJpegBlob(blob: Blob, pageNumber: number): Promise<void> {
+  if (blob.type && blob.type !== "image/jpeg") {
+    throw new Error(`Could not validate the rendered JPG for page ${pageNumber}.`);
+  }
+  const bytes = await readFileBytes(blob);
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) {
+    throw new Error(`Could not validate the rendered JPG for page ${pageNumber}.`);
+  }
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(blob);
+    try {
+      if (bitmap.width < 1 || bitmap.height < 1) throw new Error(`Could not validate the rendered JPG for page ${pageNumber}.`);
+    } finally {
+      bitmap.close();
+    }
+  }
+}
 
 export async function renderPdfPages(
   file: File,
@@ -395,6 +436,7 @@ export async function renderPdfPages(
         canvas.toBlob(res, "image/jpeg", 0.92),
       );
       if (!blob) throw new Error(`Could not render page ${n}.`);
+      await validateJpegBlob(blob, n);
       out.push({ pageNumber: n, blob, width: canvas.width, height: canvas.height });
       opts.onProgress?.(n, pdf.numPages);
       page.cleanup();
@@ -701,9 +743,7 @@ async function renderMarkdownPagesToPdf(
       pdf.text(`${index + 1} / ${pages.length}`, 195, 290, { align: "right" });
     }
     const output = new Uint8Array(pdf.output("arraybuffer") as ArrayBuffer);
-    const parsed = await loadPdfDocument(output);
-    if (parsed.getPageCount() < 1) throw new Error("Folio could not create a readable PDF.");
-    return output;
+    return validatePdfOutput(output, pages.length);
   } finally {
     source.remove();
   }
@@ -849,7 +889,7 @@ export async function docxToPdf(
     }
 
     const buf = pdf.output("arraybuffer") as ArrayBuffer;
-    return new Uint8Array(buf);
+    return validatePdfOutput(new Uint8Array(buf), totalPages);
   } finally {
     host.remove();
   }
