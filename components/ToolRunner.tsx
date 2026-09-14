@@ -61,7 +61,9 @@ export function ToolRunner({
   const [zipMeta, setZipMeta] = useState<{ name: string; size: number } | null>(null);
   const runGuardRef = useRef(false);
   const fileListRef = useRef<HTMLOListElement>(null);
-  const selectionFocusPendingRef = useRef(false);
+  const dropzoneRef = useRef<HTMLDivElement>(null);
+  const selectionFocusPendingRef = useRef(initialFiles.length > 0);
+  const previousFileCountRef = useRef(initialFiles.length);
   const complaintRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -77,6 +79,13 @@ export function ToolRunner({
       selectionFocusPendingRef.current = false;
       fileListRef.current?.focus();
     }
+  }, [files.length]);
+
+  useEffect(() => {
+    if (previousFileCountRef.current > 0 && files.length === 0) {
+      dropzoneRef.current?.focus();
+    }
+    previousFileCountRef.current = files.length;
   }, [files.length]);
 
   useEffect(() => {
@@ -157,6 +166,24 @@ export function ToolRunner({
       setComplaints(found.map((c) => `${c.fileName}: ${c.reason}`));
     },
     [tool, files.length, resetResults, selectedBytes],
+  );
+
+  const replaceFile = useCallback(
+    (incoming: File[]) => {
+      resetResults();
+      const { accepted, complaints: found } = validateFiles(
+        tool,
+        incoming.slice(0, 1),
+        0,
+        0,
+      );
+      if (accepted.length > 0) {
+        selectionFocusPendingRef.current = true;
+        setFiles(accepted.map((file) => ({ file, id: nextId() })));
+      }
+      setComplaints(found.map((c) => `${c.fileName}: ${c.reason}`));
+    },
+    [tool, resetResults],
   );
 
   const removeFile = useCallback(
@@ -556,13 +583,17 @@ export function ToolRunner({
       />
 
       <div className="mt-8 space-y-4">
-        <Dropzone
-          accepts={tool.accepts}
-          multiple={tool.multiple}
-          disabled={busy}
-          onFiles={addFiles}
-          onDropIssue={handleDropIssue}
-        />
+        {(tool.multiple || files.length === 0) && (
+          <Dropzone
+            ref={dropzoneRef}
+            accepts={tool.accepts}
+            multiple={tool.multiple}
+            compact={tool.multiple && files.length > 0}
+            disabled={busy}
+            onFiles={addFiles}
+            onDropIssue={handleDropIssue}
+          />
+        )}
 
         {complaints.length > 0 && (
           <StatusBox ref={complaintRef} tabIndex={-1} kind="error">
@@ -582,6 +613,8 @@ export function ToolRunner({
           onRemove={removeFile}
           onMove={moveFile}
           onAddFiles={tool.multiple ? addFiles : undefined}
+          onReplace={!tool.multiple ? replaceFile : undefined}
+          replaceAccepts={!tool.multiple ? tool.accepts : undefined}
           listRef={fileListRef}
         />
 
@@ -705,15 +738,23 @@ export function ToolRunner({
 
         {error && <StatusBox ref={errorRef} tabIndex={-1} kind="error">{error}</StatusBox>}
 
-        <div className="flex flex-wrap items-center gap-3">
-          <PrimaryButton onClick={run} disabled={!canRun}>
-            {busy ? "Working…" : actionLabel(tool.slug, fileObjs.length)}
-          </PrimaryButton>
+        <div className="flex flex-wrap items-center gap-3" data-tool-actions="true">
           {(files.length > 0 || result || complaints.length > 0 || error) && (
             <SecondaryButton onClick={startOver} disabled={busy}>
               Start over
             </SecondaryButton>
           )}
+          <PrimaryButton
+            onClick={run}
+            disabled={!canRun}
+            aria-label={
+              files.length === 1
+                ? `${busy ? "Working" : actionLabel(tool.slug, fileObjs.length)} for ${fileObjs[0].name}`
+                : undefined
+            }
+          >
+            {busy ? "Working…" : actionLabel(tool.slug, fileObjs.length)}
+          </PrimaryButton>
         </div>
 
         {/* Results */}

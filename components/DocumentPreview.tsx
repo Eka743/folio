@@ -279,6 +279,8 @@ export function FileList({
   onRemove,
   onMove,
   onAddFiles,
+  onReplace,
+  replaceAccepts,
   listRef,
 }: {
   items: ListedFile[];
@@ -288,9 +290,12 @@ export function FileList({
   onRemove: (id: string) => void;
   onMove: (id: string, dir: -1 | 1) => void;
   onAddFiles?: (files: File[]) => void;
+  onReplace?: (files: File[]) => void;
+  replaceAccepts?: string;
   listRef?: React.RefObject<HTMLOListElement | null>;
 }) {
   const addInputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
   if (items.length === 0) return null;
   return (
     <div data-selected-file-preview-list="true">
@@ -303,6 +308,7 @@ export function FileList({
         {items.map((item, index) => (
           <li
             key={item.id}
+            data-selected-file-card="true"
             className="min-w-0 rounded-2xl border border-slate-200 bg-white p-2.5 shadow-[0_1px_2px_rgba(16,20,24,0.04)]"
             aria-posinset={index + 1}
             aria-setsize={items.length}
@@ -319,7 +325,9 @@ export function FileList({
               <p className="truncate text-center text-sm font-medium text-ink-900" title={item.file.name}>
                 {item.file.name}
               </p>
-              <p className="mt-0.5 text-center text-xs text-ink-500">{formatBytes(item.file.size)}</p>
+              <p className="mt-0.5 text-center text-xs text-ink-500">
+                {documentLabel(previewKind(item.file))} · {formatBytes(item.file.size)}
+              </p>
             </div>
             <div className="mt-2 flex flex-wrap justify-center gap-1" role="group" aria-label={`Actions for ${item.file.name}`}>
               {reorderable && (
@@ -343,6 +351,23 @@ export function FileList({
                     ↓
                   </button>
                 </>
+              )}
+              {onReplace && replaceAccepts && items.length === 1 && (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    if (!replaceInputRef.current) return;
+                    // Clear before opening so selecting the same file again
+                    // still dispatches a change event in every browser.
+                    replaceInputRef.current.value = "";
+                    replaceInputRef.current.click();
+                  }}
+                  aria-label={`Replace ${item.file.name}`}
+                  className="min-h-10 rounded-lg border border-slate-200 px-3 py-1 text-sm font-medium text-ink-900 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 disabled:opacity-40"
+                >
+                  Replace
+                </button>
               )}
               <button
                 type="button"
@@ -383,6 +408,21 @@ export function FileList({
             }}
           />
         </div>
+      )}
+      {onReplace && replaceAccepts && items.length === 1 && (
+        <input
+          ref={replaceInputRef}
+          type="file"
+          accept={replaceAccepts}
+          data-replace-input="true"
+          disabled={disabled}
+          className="sr-only"
+          aria-label="Replace selected file"
+          onChange={(event) => {
+            const files = [...(event.target.files ?? [])];
+            if (files.length > 0) onReplace(files);
+          }}
+        />
       )}
     </div>
   );

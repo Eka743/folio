@@ -286,6 +286,7 @@ export function UniversalDrop() {
           <Dropzone
             accepts={ACCEPTS}
             multiple
+            compact={items.length > 0}
             disabled={busy}
             onFiles={inspectSelection}
             onDropIssue={(message) => {

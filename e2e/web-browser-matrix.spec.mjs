@@ -250,6 +250,91 @@ test("repeated local reads remain valid for images, DOCX and Apple documents", a
   }
 });
 
+test("single-file tools make selection state explicit and restore the empty state", async ({ page }) => {
+  const cases = [
+    ["split-pdf", fixtures.twoPage, "two-page.pdf", "PDF document"],
+    ["pages-to-word", fixtures.pages, "proposal.pages", "Pages document"],
+    ["powerpoint-to-pdf", fixtures.pptx, "presentation.pptx", "PowerPoint presentation"],
+    ["keynote-to-powerpoint", fixtures.keynote, "presentation.key", "Keynote presentation"],
+    ["excel-to-pdf", fixtures.xlsx, "budget.xlsx", "Excel workbook"],
+    ["pdf-to-jpg", fixtures.twoPage, "two-page.pdf", "PDF document"],
+    ["rotate-pdf", fixtures.twoPage, "two-page.pdf", "PDF document"],
+    ["compress-pdf", fixtures.twoPage, "two-page.pdf", "PDF document"],
+    ["markdown-to-pdf", fixtures.markdown, "guide.md", "Markdown document"],
+    ["pdf-to-markdown", fixtures.twoPage, "two-page.pdf", "PDF document"],
+    ["pages-to-pdf", fixtures.pages, "proposal.pages", "Pages document"],
+    ["keynote-to-pdf", fixtures.keynote, "presentation.key", "Keynote presentation"],
+    ["numbers-to-xlsx", fixtures.numbers, "budget.numbers", "Numbers spreadsheet"],
+    ["numbers-to-pdf", fixtures.numbers, "budget.numbers", "Numbers spreadsheet"],
+  ];
+
+  for (const [route, fixture, fileName, typeLabel] of cases) {
+    await page.goto(`/tools/${route}`);
+    const dropzone = page.locator('[data-dropzone="true"]');
+    await expect(dropzone).toBeVisible();
+    await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixture);
+
+    await expect(dropzone).toHaveCount(0);
+    const selected = page.locator('[data-selected-file-preview-list="true"]');
+    await expect(selected).toBeVisible();
+    await expect(selected).toContainText(fileName);
+    await expect(selected).toContainText(typeLabel);
+    await expect(page.getByRole("button", { name: `Replace ${fileName}` })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Remove ${fileName}` })).toBeVisible();
+
+    await page.getByRole("button", { name: `Remove ${fileName}` }).click();
+    await expect(dropzone).toBeVisible();
+    await expect(selected).toHaveCount(0);
+    await expect(dropzone).toBeFocused();
+  }
+});
+
+test("Pages to PDF supports explicit replace, same-file reselect, and a clear primary action", async ({ page }) => {
+  await page.goto("/tools/pages-to-pdf");
+  const dropzone = page.locator('[data-dropzone="true"]');
+  await expect(dropzone).toBeVisible();
+
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.pages);
+  await expect(dropzone).toHaveCount(0);
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toContainText("proposal.pages");
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toContainText("Pages document");
+
+  const actionButtons = page.locator('[data-tool-actions="true"] button');
+  await expect(actionButtons).toHaveText(["Start over", "Convert to PDF"]);
+
+  const replaceButton = page.getByRole("button", { name: "Replace proposal.pages" });
+  const replaceWith = async (files) => {
+    const chooserPromise = page.waitForEvent("filechooser");
+    await replaceButton.click();
+    const chooser = await chooserPromise;
+    await chooser.setFiles(files);
+  };
+
+  await replaceWith(fixtures.pages);
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toContainText("proposal.pages");
+
+  const replacementBytes = readFileSync(fixtures.pages);
+  await replaceWith({
+    name: "replacement.pages",
+    mimeType: "application/vnd.apple.pages",
+    buffer: replacementBytes,
+  });
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toContainText("replacement.pages");
+  await expect(page.getByRole("button", { name: "Replace replacement.pages" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Remove replacement.pages" }).click();
+  await expect(dropzone).toBeVisible();
+  await expect(dropzone).toBeFocused();
+
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.pages);
+  const output = await downloadFromResult(page, "Convert to PDF", /^Download /);
+  await expectPdf(output, 1);
+
+  await page.getByRole("button", { name: "Start over" }).click();
+  await expect(dropzone).toBeVisible();
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toHaveCount(0);
+});
+
 test("PDF to JPG stops safely before rendering an excessive page count", async ({ page }) => {
   await page.goto("/tools/pdf-to-jpg");
   await page.locator('input[type="file"]').setInputFiles(fixtures.manyPage);
@@ -597,6 +682,7 @@ test("Universal Drop accepts multi-file batches and keeps order controls usable"
   const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
   await section.locator('input[type="file"]').setInputFiles([fixtures.onePage, fixtures.secondPage]);
   await expect(section.locator('[data-universal-file-count="2"]')).toBeVisible();
+  await expect(section.locator('[data-dropzone-state="compact"]')).toBeVisible();
   await expect(section.getByRole("button", { name: "Merge 2 PDFs" })).toBeVisible();
   await section.getByRole("button", { name: "Move second-page.pdf up" }).click();
   await expect(section.getByRole("list", { name: "Selected files" }).locator("li").first()).toContainText("second-page.pdf");
