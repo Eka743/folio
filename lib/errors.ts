@@ -57,6 +57,9 @@ function knownMessage(message: string): { code: UserErrorCode; message: string }
   if (/^Could not read this Markdown|valid UTF-8|binary data|larger than Folio’s 10 MB/i.test(message)) {
     return { code: "invalid-markdown", message: "We couldn’t read this Markdown file. Choose a valid UTF-8 .md file and try again." };
   }
+  if (/signature image is too large/i.test(message)) {
+    return { code: "input", message: "That signature image is too large. Choose a PNG or JPG up to 4096 × 4096 pixels." };
+  }
   if (/^Could not read .+\.|^Could not render page|^Generated JPEG could not be decoded/i.test(message)) {
     return { code: "invalid-image", message: "We couldn’t read this image. Choose a valid JPG or PNG and try again." };
   }

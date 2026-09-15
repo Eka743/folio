@@ -37,6 +37,10 @@ const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
+const HUGE_SIGNATURE_PNG = Buffer.alloc(24);
+Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(HUGE_SIGNATURE_PNG);
+HUGE_SIGNATURE_PNG.writeUInt32BE(5000, 16);
+HUGE_SIGNATURE_PNG.writeUInt32BE(5000, 20);
 
 async function expectNoUserHorizontalOverflow(page) {
   const overflow = await page.evaluate(() => {
@@ -81,6 +85,8 @@ test.beforeAll(async () => {
     textPdf: writeFixture("text.pdf", textPdf),
     secondPage: writeFixture("second-page.pdf", onePage),
     image: writeFixture("pixel.png", ONE_PIXEL_PNG),
+    hugeImage: writeFixture("huge-signature.png", HUGE_SIGNATURE_PNG),
+    svgImage: writeFixture("signature.svg", Buffer.from("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"></svg>", "utf8")),
     docx: writeFixture("simple.docx", docx),
     richDocx: writeFixture("realistic.docx", richDocx),
     pages: writeFixture("proposal.pages", pages),
@@ -410,6 +416,10 @@ test("Sign PDF keeps the workflow local and exports draw, type, and image signat
   await page.getByRole("tab", { name: "Upload" }).click();
   await page.locator('input[aria-label="Upload signature image"]').setInputFiles(fixtures.corruptImage);
   await expect(page.locator('[data-sign-pdf-workspace="true"] [role="alert"]').filter({ hasText: /valid PNG or JPG|couldn't use that image/i })).toBeVisible();
+  await page.locator('input[aria-label="Upload signature image"]').setInputFiles(fixtures.hugeImage);
+  await expect(page.locator('[data-sign-pdf-workspace="true"] [role="alert"]').filter({ hasText: /too large/i })).toBeVisible();
+  await page.locator('input[aria-label="Upload signature image"]').setInputFiles(fixtures.svgImage);
+  await expect(page.locator('[data-sign-pdf-workspace="true"] [role="alert"]').filter({ hasText: /valid PNG or JPG/i })).toBeVisible();
   await page.locator('input[aria-label="Upload signature image"]').setInputFiles({
     name: "signature.png",
     mimeType: "image/png",
@@ -448,6 +458,29 @@ test("Sign PDF stays usable and exportable at mobile widths", async ({ page }) =
     await expectPdf(output, 1);
     await expectNoUserHorizontalOverflow(page);
   }
+});
+
+test("Sign PDF recovers from invalid PDF selection", async ({ page }) => {
+  await page.goto("/tools/sign-pdf");
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.corruptPdf);
+  await page.getByRole("button", { name: "Continue / Sign PDF" }).click();
+  await expect(page.locator('[data-sign-pdf-workspace="true"] [role="alert"]').filter({ hasText: /Could not read this PDF/i })).toBeVisible();
+  await page.getByRole("button", { name: "Start over" }).click();
+
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles({ name: "empty.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(0) });
+  await expect(page.locator('div[role="alert"]').filter({ hasText: "0 bytes" })).toBeVisible();
+  await page.getByRole("button", { name: "Start over" }).click();
+
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles({ name: "wrong.png", mimeType: "image/png", buffer: readFileSync(fixtures.onePage) });
+  await expect(page.locator('div[role="alert"]').filter({ hasText: "accepts .pdf" })).toBeVisible();
+  await page.getByRole("button", { name: "Start over" }).click();
+
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.onePage);
+  await page.getByRole("button", { name: "Continue / Sign PDF" }).click();
+  await page.getByRole("tab", { name: "Type" }).click();
+  await page.getByLabel("Your name").fill("Grace Hopper");
+  await page.getByRole("button", { name: "Use signature" }).click();
+  await expectPdf(await downloadFromResult(page, "Finish & download", /^Download /), 1);
 });
 
 test("PDF to JPG stops safely before rendering an excessive page count", async ({ page }) => {
