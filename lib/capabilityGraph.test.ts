@@ -17,7 +17,15 @@ describe("public capability graph", () => {
   });
 
   it("selects actions from the entire batch shape", () => {
-    expect(actionsForKinds(["pdf"])).toContain("split-pdf");
+    expect(actionsForKinds(["pdf"])).toEqual([
+      "merge-pdf",
+      "split-pdf",
+      "rotate-pdf",
+      "compress-pdf",
+      "pdf-to-jpg",
+      "sign-pdf",
+      "pdf-to-markdown",
+    ]);
     expect(actionsForKinds(["pdf", "pdf"])).toEqual(["merge-pdf"]);
     expect(actionsForKinds(["docx", "docx", "docx"])).toEqual(["docx-to-pdf"]);
     expect(actionsForKinds(["jpeg", "png"])).toEqual(["image-to-pdf"]);

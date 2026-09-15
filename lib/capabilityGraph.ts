@@ -29,6 +29,7 @@ export type CapabilityActionId =
   | "rotate-pdf"
   | "compress-pdf"
   | "pdf-to-jpg"
+  | "sign-pdf"
   | "image-to-pdf"
   | "docx-to-pdf"
   | "markdown-to-pdf"
@@ -143,6 +144,7 @@ export function actionsForKinds(
       "rotate-pdf",
       "compress-pdf",
       "pdf-to-jpg",
+      "sign-pdf",
       "pdf-to-markdown",
     ];
   }

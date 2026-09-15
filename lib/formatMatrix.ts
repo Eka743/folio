@@ -86,6 +86,18 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     limitation: "Pages are rasterized at 2x scale; very large PDFs may be slow on low-end devices.",
   },
   {
+    id: "sign-pdf",
+    inputs: ["pdf"],
+    output: "pdf",
+    toolSlug: "sign-pdf",
+    category: "PDF",
+    title: "Sign PDF",
+    description: "Add your signature visually to a PDF in your browser.",
+    browser: "full",
+    status: "browser",
+    limitation: "This places a visual signature into a new PDF; it does not create a certificate-based digital signature.",
+  },
+  {
     id: "images-to-pdf",
     inputs: ["jpg", "jpeg", "png"],
     output: "pdf",

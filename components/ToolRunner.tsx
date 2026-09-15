@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dropzone, FileList, type ListedFile } from "@/components/Dropzone";
+import { SignPdfWorkspace } from "@/components/SignPdfWorkspace";
 import {
   EngineBadge,
   FieldLabel,
@@ -53,6 +54,7 @@ export function ToolRunner({
   const [result, setResult] = useState<Result>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [engineUsed, setEngineUsed] = useState<string | null>(null);
+  const [signEditorOpen, setSignEditorOpen] = useState(false);
 
   // Per-tool options
   const [rangeText, setRangeText] = useState("1-3,5");
@@ -216,6 +218,14 @@ export function ToolRunner({
   }, [resetResults]);
 
   async function run(): Promise<void> {
+    if (tool.slug === "sign-pdf") {
+      if (fileObjs.length !== 1) {
+        setError("Add one PDF before opening the signing workspace.");
+        return;
+      }
+      setSignEditorOpen(true);
+      return;
+    }
     if (runGuardRef.current) return;
     runGuardRef.current = true;
     setError(null);
@@ -574,6 +584,25 @@ export function ToolRunner({
           ? fileObjs.length >= 1
         : fileObjs.length === 1);
 
+  if (signEditorOpen && tool.slug === "sign-pdf" && fileObjs.length === 1) {
+    return (
+      <div className="mx-auto max-w-5xl px-5 py-10" aria-busy="false">
+        <ToolHeader
+          name={tool.name}
+          description={tool.longDescription}
+          accepts={tool.accepts}
+        />
+        <SignPdfWorkspace
+          file={fileObjs[0]}
+          onStartOver={() => {
+            setSignEditorOpen(false);
+            startOver();
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-5 py-10" aria-busy={busy}>
       <ToolHeader
@@ -719,6 +748,12 @@ export function ToolRunner({
             Beta: Folio extracts text and only reconstructs headings and lists
             when the PDF layout makes them reasonably clear. Scanned PDFs and
             complex columns need OCR or manual cleanup.
+          </StatusBox>
+        )}
+
+        {tool.slug === "sign-pdf" && (
+          <StatusBox kind="info">
+            Add your signature visually to the PDF. Folio does not create a certificate-based digital signature.
           </StatusBox>
         )}
 
@@ -887,6 +922,8 @@ function actionLabel(slug: string, count: number): string {
       return "Convert to Markdown";
     case "pdf-to-jpg":
       return "Convert to JPG";
+    case "sign-pdf":
+      return "Continue / Sign PDF";
     case "rotate-pdf":
       return "Rotate PDF";
     case "compress-pdf":

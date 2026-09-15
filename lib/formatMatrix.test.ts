@@ -23,6 +23,7 @@ describe("public format matrix", () => {
       "compress-pdf",
       "rotate-pdf",
       "pdf-to-jpg",
+      "sign-pdf",
       "images-to-pdf",
       "docx-to-pdf",
       "pages-to-word",

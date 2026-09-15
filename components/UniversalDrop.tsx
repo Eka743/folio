@@ -68,6 +68,7 @@ function actionTitle(action: CapabilityActionId, count: number): string {
   if (action === "numbers-to-pdf") return "Convert Numbers to PDF";
   if (action === "split-pdf") return "Extract PDF pages";
   if (action === "pdf-to-jpg") return "Convert PDF to JPG";
+  if (action === "sign-pdf") return "Sign PDF";
   if (action === "pdf-to-markdown") return "Convert PDF to Markdown";
   if (action === "markdown-to-pdf") return "Convert Markdown to PDF";
   return capabilityLabel(action);
@@ -88,6 +89,7 @@ function actionDescription(action: CapabilityActionId, count: number): string {
   if (action === "keynote-to-pdf") return "Export supported Keynote slides locally. Unsupported content fails closed.";
   if (action === "numbers-to-xlsx") return "Export saved Numbers tables and values to an XLSX workbook locally.";
   if (action === "numbers-to-pdf") return "Render saved Numbers tables to a readable PDF locally.";
+  if (action === "sign-pdf") return "Place a visual signature on one or more PDF pages locally.";
   return getCapability(action)?.description ?? "Available locally in this browser.";
 }
 
