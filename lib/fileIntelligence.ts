@@ -607,6 +607,7 @@ export async function inspectFilesWithBytes(
   files: File[],
   options: InspectFileOptions = {},
   onFile?: (index: number, total: number) => void,
+  sourceBytesByFile?: ReadonlyMap<File, Uint8Array>,
 ): Promise<Array<{ inspection: FileInspection; bytes: Uint8Array }>> {
   const inspections: FileInspection[] = Array.from({ length: files.length });
   const snapshots = new WeakMap<File, Uint8Array>();
@@ -619,7 +620,7 @@ export async function inspectFilesWithBytes(
       if (!bytes) {
         bytes = file.size === 0 || file.size > MAX_INSPECTION_BYTES
           ? new Uint8Array()
-          : await readFileBytes(file);
+          : sourceBytesByFile?.get(file) ?? await readFileBytes(file);
         snapshots.set(file, bytes);
       }
       inspections[index] = await inspectFileBytes(file, bytes, options);
@@ -639,8 +640,9 @@ export async function inspectFilesWithBytes(
 export async function readEmbeddedPdfPreview(
   file: File,
   options: InspectFileOptions = {},
+  sourceBytes?: Uint8Array,
 ): Promise<Uint8Array> {
-  const bytes = await readFileBytes(file);
+  const bytes = sourceBytes ?? await readFileBytes(file);
   const archive = inspectZip(bytes, options.limits ?? DESKTOP_ARCHIVE_LIMITS);
   const previewPath = findPath(
     archive,

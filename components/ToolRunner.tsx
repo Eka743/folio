@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { Dropzone, FileList, type ListedFile } from "@/components/Dropzone";
-import { SignPdfWorkspace } from "@/components/SignPdfWorkspace";
 import {
   EngineBadge,
   FieldLabel,
@@ -31,6 +31,11 @@ function nextId(): string {
   return `f-${Date.now().toString(36)}-${idCounter}`;
 }
 
+const SignPdfWorkspace = dynamic(
+  () => import("@/components/SignPdfWorkspace").then((module) => module.SignPdfWorkspace),
+  { ssr: false },
+);
+
 type Result =
   | { kind: "file"; fileName: string; sizeBytes: number; note?: string }
   | { kind: "compress"; fileName: string; before: number; after: number }
@@ -40,12 +45,14 @@ type Result =
 export function ToolRunner({
   tool,
   initialFiles = [],
+  initialSourceBytesByFile,
 }: {
   tool: FolioTool;
   initialFiles?: File[];
+  initialSourceBytesByFile?: ReadonlyMap<File, Uint8Array>;
 }) {
   const [files, setFiles] = useState<ListedFile[]>(() =>
-    initialFiles.map((file) => ({ file, id: nextId() })),
+    initialFiles.map((file) => ({ file, id: nextId(), sourceBytes: initialSourceBytesByFile?.get(file) })),
   );
   const [complaints, setComplaints] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -71,6 +78,10 @@ export function ToolRunner({
   const resultRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(true);
   const fileObjs = useMemo(() => files.map((f) => f.file), [files]);
+  const sourceBytesByFile = useMemo(
+    () => new Map(files.flatMap((listed) => listed.sourceBytes ? [[listed.file, listed.sourceBytes] as const] : [])),
+    [files],
+  );
   const selectedBytes = useMemo(
     () => fileObjs.reduce((total, file) => total + file.size, 0),
     [fileObjs],
@@ -238,7 +249,7 @@ export function ToolRunner({
             throw new Error("Add at least two PDFs to merge.");
           setProgress("Merging PDFs…");
           const { mergePdfs } = await import("@/lib/pdfOps");
-          const bytes = await mergePdfs(fileObjs);
+          const bytes = await mergePdfs(fileObjs, sourceBytesByFile);
           if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(fileObjs[0].name)}-merged`,
@@ -280,7 +291,10 @@ export function ToolRunner({
           if (fileObjs.length === 0) throw new Error("Add at least one image.");
           setProgress(`Building PDF from ${fileObjs.length} image${fileObjs.length === 1 ? "" : "s"}…`);
           const { imagesToPdf } = await import("@/lib/pdfOps");
-          const bytes = await imagesToPdf(fileObjs);
+          const bytes = await imagesToPdf(
+            fileObjs,
+            fileObjs.map((file) => sourceBytesByFile.get(file)),
+          );
           if (!mountedRef.current) return;
           const name = withExtension(
             fileObjs.length === 1
@@ -302,13 +316,13 @@ export function ToolRunner({
           if (fileObjs.length > 1) {
             const combined = await combineFilesToPdf(fileObjs, (stage) => {
               if (mountedRef.current) setProgress(stage);
-            });
+            }, sourceBytesByFile);
             bytes = combined.bytes;
             note = `Combined ${fileObjs.length} Word documents in your selected order. Review pagination and complex layouts before sharing.`;
           } else {
             bytes = await docxToPdf(fileObjs[0], (stage) => {
               if (mountedRef.current) setProgress(stage);
-            });
+            }, sourceBytesByFile.get(fileObjs[0]));
             note = "Converted in your browser. Review pagination and complex layouts before sharing.";
           }
           if (!mountedRef.current) return;
@@ -331,7 +345,7 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Reading Pages content…");
           const { pagesToDocx } = await import("@/lib/office");
-          const bytes = await pagesToDocx(file);
+          const bytes = await pagesToDocx(file, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "docx");
           const url = blobUrl(bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
@@ -344,7 +358,7 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Reading PowerPoint slides…");
           const { powerpointToPdf } = await import("@/lib/office");
-          const bytes = await powerpointToPdf(file);
+          const bytes = await powerpointToPdf(file, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "pdf");
           const url = blobUrl(bytes, "application/pdf");
@@ -357,7 +371,7 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Reading Keynote slides…");
           const { keynoteToPptx } = await import("@/lib/office");
-          const bytes = await keynoteToPptx(file);
+          const bytes = await keynoteToPptx(file, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "pptx");
           const url = blobUrl(bytes, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
@@ -370,7 +384,7 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Reading Excel worksheets…");
           const { excelToPdf } = await import("@/lib/office");
-          const bytes = await excelToPdf(file);
+          const bytes = await excelToPdf(file, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "pdf");
           const url = blobUrl(bytes, "application/pdf");
@@ -388,8 +402,8 @@ export function ToolRunner({
           setProgress(isXlsx ? "Reading Numbers tables…" : "Rendering Apple document…");
           const { appleToPdf, numbersToXlsx } = await import("@/lib/iwork");
           const bytes = isXlsx
-            ? await numbersToXlsx(file)
-            : await appleToPdf(file, tool.slug === "pages-to-pdf" ? "pages" : tool.slug === "keynote-to-pdf" ? "keynote" : "numbers");
+            ? await numbersToXlsx(file, sourceBytesByFile.get(file))
+            : await appleToPdf(file, tool.slug === "pages-to-pdf" ? "pages" : tool.slug === "keynote-to-pdf" ? "keynote" : "numbers", sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const extension = isXlsx ? "xlsx" : "pdf";
           const name = withExtension(safeFileName(file.name), extension);
@@ -412,7 +426,7 @@ export function ToolRunner({
           const { combineFilesToPdf } = await import("@/lib/pdfOps");
           const combined = await combineFilesToPdf(fileObjs, (stage) => {
             if (mountedRef.current) setProgress(stage);
-          });
+          }, sourceBytesByFile);
           if (!mountedRef.current) return;
           const name = withExtension("folio-combined-documents", "pdf");
           const url = blobUrl(combined.bytes, "application/pdf");
@@ -431,7 +445,7 @@ export function ToolRunner({
           const { markdownToPdf } = await import("@/lib/pdfOps");
           const bytes = await markdownToPdf(file, (stage) => {
             if (mountedRef.current) setProgress(stage);
-          });
+          }, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "pdf");
           const url = blobUrl(bytes, "application/pdf");
@@ -450,7 +464,7 @@ export function ToolRunner({
           const { pdfToMarkdown } = await import("@/lib/pdfOps");
           const markdown = await pdfToMarkdown(file, (stage) => {
             if (mountedRef.current) setProgress(stage);
-          });
+          }, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const bytes = new TextEncoder().encode(markdown);
           const name = withExtension(safeFileName(file.name), "md");
@@ -473,7 +487,7 @@ export function ToolRunner({
             scale: 2,
             onProgress: (done, total) =>
               mountedRef.current && setProgress(`Rendering page ${done} of ${total}…`),
-          });
+          }, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const withUrls = pages.map((p) => ({
             page: p.pageNumber,
@@ -523,9 +537,9 @@ export function ToolRunner({
           setProgress("Reading PDF…");
           const { getPdfPageCount, rotatePdf } = await import("@/lib/pdfOps");
           let targets: number[] | null = null;
-          let sourceBytes: Uint8Array | undefined;
+          let sourceBytes: Uint8Array | undefined = sourceBytesByFile.get(file);
           if (rotateMode === "pages") {
-            sourceBytes = await readFileBytes(file);
+            sourceBytes ??= await readFileBytes(file);
             const count = await getPdfPageCount(sourceBytes);
             const parsed = parsePageRanges(rangeText, count);
             if (parsed.error) throw new Error(parsed.error);
@@ -552,7 +566,7 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Optimizing PDF…");
           const { optimizePdf } = await import("@/lib/pdfOps");
-          const { bytes, beforeBytes, afterBytes } = await optimizePdf(file);
+          const { bytes, beforeBytes, afterBytes } = await optimizePdf(file, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(`${safeFileName(file.name)}-optimized`, "pdf");
           const url = blobUrl(bytes, "application/pdf");

@@ -11,7 +11,7 @@ import {
 } from "@/lib/capabilityGraph";
 import {
   capabilityLabel,
-  inspectFiles,
+  inspectFilesWithBytes,
   MAX_UNIVERSAL_FILES,
   MAX_UNIVERSAL_TOTAL_BYTES,
   readEmbeddedPdfPreview,
@@ -104,7 +104,7 @@ function inspectionKindLabel(inspection: FileInspection): string {
 
 export function UniversalDrop() {
   const [items, setItems] = useState<UniversalItem[]>([]);
-  const [activeTool, setActiveTool] = useState<{ tool: FolioTool; files: File[] } | null>(null);
+  const [activeTool, setActiveTool] = useState<{ tool: FolioTool; files: File[]; sourceBytesByFile: ReadonlyMap<File, Uint8Array> } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -175,16 +175,21 @@ export function UniversalDrop() {
     clearPreview();
     setActiveTool(null);
     setError(complaints.length > 0 ? complaints.join(" ") : null);
+    const acceptedItems = accepted.map((file) => ({ file, id: nextUniversalId(), inspection: null }));
     const nextItems = [
       ...items,
-      ...accepted.map((file) => ({ file, id: nextUniversalId(), inspection: null })),
+      ...acceptedItems,
     ];
     setItems(nextItems);
     setBusy(true);
     try {
-      const inspections = await inspectFiles(nextItems.map((item) => item.file));
+      const inspected = await inspectFilesWithBytes(accepted);
       if (!mountedRef.current || operationRef.current !== nextOperation) return;
-      setItems(nextItems.map((item, index) => ({ ...item, inspection: inspections[index] })));
+      const byFile = new Map(accepted.map((file, index) => [file, inspected[index]] as const));
+      setItems(nextItems.map((item) => {
+        const entry = byFile.get(item.file);
+        return entry ? { ...item, inspection: entry.inspection, sourceBytes: entry.bytes } : item;
+      }));
     } catch (cause) {
       if (mountedRef.current && operationRef.current === nextOperation) {
         setError(describeError(cause, "Folio couldn’t inspect these files. Check them and try again.").message);
@@ -234,7 +239,8 @@ export function UniversalDrop() {
       const nextOperation = ++operationRef.current;
       setBusy(true);
       try {
-        const bytes = await readEmbeddedPdfPreview(file);
+        const item = items[0];
+        const bytes = await readEmbeddedPdfPreview(file, {}, item?.sourceBytes);
         if (!mountedRef.current || operationRef.current !== nextOperation) return;
         const copy = new Uint8Array(bytes.length);
         copy.set(bytes);
@@ -251,7 +257,15 @@ export function UniversalDrop() {
       return;
     }
     const tool = toolForAction(action);
-    if (tool) setActiveTool({ tool, files: items.map((item) => item.file) });
+    if (tool) {
+      setActiveTool({
+        tool,
+        files: items.map((item) => item.file),
+        sourceBytesByFile: new Map(
+          items.filter((item) => item.sourceBytes).map((item) => [item.file, item.sourceBytes!] as const),
+        ),
+      });
+    }
   }, [items, valid]);
 
   if (activeTool) {
@@ -266,7 +280,7 @@ export function UniversalDrop() {
             ← Choose another action
           </button>
         </div>
-        <ToolRunner tool={activeTool.tool} initialFiles={activeTool.files} />
+        <ToolRunner tool={activeTool.tool} initialFiles={activeTool.files} initialSourceBytesByFile={activeTool.sourceBytesByFile} />
       </section>
     );
   }
