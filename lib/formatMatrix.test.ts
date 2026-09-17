@@ -19,11 +19,11 @@ describe("public format matrix", () => {
     expect(FORMAT_MATRIX.every((conversion) => conversion.status.startsWith("browser"))).toBe(true);
     expect(FORMAT_MATRIX.map((conversion) => conversion.toolSlug)).toEqual([
       "merge-pdf",
+      "sign-pdf",
       "split-pdf",
       "compress-pdf",
       "rotate-pdf",
       "pdf-to-jpg",
-      "sign-pdf",
       "images-to-pdf",
       "docx-to-pdf",
       "pages-to-word",

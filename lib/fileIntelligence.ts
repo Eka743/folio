@@ -516,8 +516,10 @@ async function inspectZipContainer(
   });
 }
 
-export async function inspectFile(
+/** Inspect an already-owned byte snapshot without reading the browser File again. */
+export async function inspectFileBytes(
   file: File,
+  bytes: Uint8Array,
   options: InspectFileOptions = {},
 ): Promise<FileInspection> {
   if (file.size === 0) {
@@ -540,7 +542,15 @@ export async function inspectFile(
     });
   }
 
-  const bytes = await readFileBytes(file);
+  if (bytes.length === 0) {
+    return finishInspection(file, "unknown", {
+      confidence: "none",
+      valid: false,
+      safety: "rejected",
+      warnings: ["malformed-content"],
+      warningMessages: ["This file is empty (0 bytes)."],
+    });
+  }
   if (hasBytes(bytes, PDF_SIGNATURE)) return inspectPdf(file, bytes);
   if (hasBytes(bytes, JPEG_SIGNATURE)) return inspectJpeg(file, bytes);
   if (hasBytes(bytes, PNG_SIGNATURE)) return inspectPng(file, bytes);
@@ -559,6 +569,16 @@ export async function inspectFile(
   });
 }
 
+export async function inspectFile(
+  file: File,
+  options: InspectFileOptions = {},
+): Promise<FileInspection> {
+  if (file.size === 0 || file.size > MAX_INSPECTION_BYTES) {
+    return inspectFileBytes(file, new Uint8Array(), options);
+  }
+  return inspectFileBytes(file, await readFileBytes(file), options);
+}
+
 export const MAX_UNIVERSAL_FILES = 20;
 export const MAX_UNIVERSAL_TOTAL_BYTES = 150 * 1024 * 1024;
 
@@ -574,18 +594,45 @@ export async function inspectFiles(
   files: File[],
   options: InspectFileOptions = {},
 ): Promise<FileInspection[]> {
+  const inspected = await inspectFilesWithBytes(files, options);
+  return inspected.map((entry) => entry.inspection);
+}
+
+/**
+ * Inspect a batch while retaining one independent byte snapshot per File.
+ * Duplicate references intentionally share that snapshot; each occurrence is
+ * still returned so callers can preserve the user's ordering and duplicates.
+ */
+export async function inspectFilesWithBytes(
+  files: File[],
+  options: InspectFileOptions = {},
+  onFile?: (index: number, total: number) => void,
+): Promise<Array<{ inspection: FileInspection; bytes: Uint8Array }>> {
   const inspections: FileInspection[] = Array.from({ length: files.length });
+  const snapshots = new WeakMap<File, Uint8Array>();
   let nextIndex = 0;
   const worker = async () => {
     while (nextIndex < files.length) {
       const index = nextIndex++;
-      inspections[index] = await inspectFile(files[index], options);
+      const file = files[index];
+      let bytes = snapshots.get(file);
+      if (!bytes) {
+        bytes = file.size === 0 || file.size > MAX_INSPECTION_BYTES
+          ? new Uint8Array()
+          : await readFileBytes(file);
+        snapshots.set(file, bytes);
+      }
+      inspections[index] = await inspectFileBytes(file, bytes, options);
+      onFile?.(index, files.length);
     }
   };
   await Promise.all(
     Array.from({ length: Math.min(1, Math.max(1, files.length)) }, worker),
   );
-  return inspections;
+  return inspections.map((inspection, index) => ({
+    inspection,
+    bytes: snapshots.get(files[index]) ?? new Uint8Array(),
+  }));
 }
 
 /** Read only the exact QuickLook PDF entry from an already inspected iWork file. */

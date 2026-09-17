@@ -356,7 +356,7 @@ test("Sign PDF keeps the workflow local and exports draw, type, and image signat
   await page.getByRole("button", { name: "Remove two-page.pdf" }).click();
   await expect(page.locator('[data-dropzone="true"]')).toBeVisible();
   await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.twoPage);
-  await page.getByRole("button", { name: "Continue / Sign PDF" }).click();
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
   await expect(page.locator('[data-sign-pdf-workspace="true"]')).toBeVisible();
   await expect(page.locator('[data-sign-pdf-viewer] canvas')).toBeVisible();
 
@@ -403,7 +403,7 @@ test("Sign PDF keeps the workflow local and exports draw, type, and image signat
 
   await page.getByRole("button", { name: "Start over" }).first().click();
   await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.twoPage);
-  await page.getByRole("button", { name: "Continue / Sign PDF" }).click();
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
   await page.getByRole("tab", { name: "Type" }).click();
   await page.getByLabel("Your name").fill("Ada Lovelace");
   await page.getByRole("button", { name: "Use signature" }).click();
@@ -412,7 +412,7 @@ test("Sign PDF keeps the workflow local and exports draw, type, and image signat
 
   await page.getByRole("button", { name: "Start over" }).first().click();
   await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.twoPage);
-  await page.getByRole("button", { name: "Continue / Sign PDF" }).click();
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
   await page.getByRole("tab", { name: "Upload" }).click();
   await page.locator('input[aria-label="Upload signature image"]').setInputFiles(fixtures.corruptImage);
   await expect(page.locator('[data-sign-pdf-workspace="true"] [role="alert"]').filter({ hasText: /valid PNG or JPG|couldn't use that image/i })).toBeVisible();
@@ -448,7 +448,7 @@ test("Sign PDF stays usable and exportable at mobile widths", async ({ page }) =
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/tools/sign-pdf");
     await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.onePage);
-    await page.getByRole("button", { name: "Continue / Sign PDF" }).click();
+    await page.getByRole("button", { name: "Open signing workspace" }).click();
     await expect(page.locator('[data-sign-pdf-workspace="true"]')).toBeVisible();
     await expectNoUserHorizontalOverflow(page);
     await page.getByRole("tab", { name: "Type" }).click();
@@ -463,7 +463,7 @@ test("Sign PDF stays usable and exportable at mobile widths", async ({ page }) =
 test("Sign PDF recovers from invalid PDF selection", async ({ page }) => {
   await page.goto("/tools/sign-pdf");
   await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.corruptPdf);
-  await page.getByRole("button", { name: "Continue / Sign PDF" }).click();
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
   await expect(page.locator('[data-sign-pdf-workspace="true"] [role="alert"]').filter({ hasText: /Could not read this PDF/i })).toBeVisible();
   await page.getByRole("button", { name: "Start over" }).click();
 
@@ -476,7 +476,7 @@ test("Sign PDF recovers from invalid PDF selection", async ({ page }) => {
   await page.getByRole("button", { name: "Start over" }).click();
 
   await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.onePage);
-  await page.getByRole("button", { name: "Continue / Sign PDF" }).click();
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
   await page.getByRole("tab", { name: "Type" }).click();
   await page.getByLabel("Your name").fill("Grace Hopper");
   await page.getByRole("button", { name: "Use signature" }).click();
@@ -530,6 +530,33 @@ test("Combine documents to PDF normalizes mixed local sources without skipping",
     return ["http:", "https:"].includes(url.protocol) && url.origin !== BASE_ORIGIN;
   });
   expect(externalRequests).toEqual([]);
+});
+
+test("Combine documents accepts the same PDF twice", async ({ page }) => {
+  await page.goto("/tools/combine-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles([fixtures.onePage, fixtures.onePage]);
+  const output = await downloadFromResult(page, "Combine 2 documents into PDF", /^Download /);
+  await expectPdf(output, 2);
+});
+
+test("Combine keeps ten mixed local sources bounded and ordered", async ({ page }) => {
+  await page.goto("/tools/combine-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles([
+    fixtures.onePage,
+    fixtures.docx,
+    fixtures.image,
+    fixtures.markdown,
+    fixtures.twoPage,
+    fixtures.docx,
+    fixtures.image,
+    fixtures.markdown,
+    fixtures.secondPage,
+    fixtures.docx,
+  ]);
+  await expect(page.getByRole("button", { name: "Combine 10 documents into PDF" })).toBeVisible();
+  const output = await downloadFromResult(page, "Combine 10 documents into PDF", /^Download /);
+  await expectPdf(output, 17);
+  await expect(page.locator("body")).not.toContainText(/I\/O read operation failed|TypeError|stack trace/i);
 });
 
 test("selected files use real PDF and image previews with honest format fallbacks", async ({ page }) => {
@@ -784,7 +811,7 @@ test("Universal Drop detects content and hands off to the existing tools", async
   await expect(drop.getByRole("button", { name: "Sign PDF", exact: true })).toBeVisible();
   await drop.getByRole("button", { name: "Sign PDF", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign PDF" })).toBeVisible();
-  await page.getByRole("button", { name: "Continue / Sign PDF" }).click();
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
   await expect(page.locator('[data-sign-pdf-workspace="true"]')).toBeVisible();
   await page.getByRole("button", { name: "Start over" }).first().click();
   await page.goto("/");

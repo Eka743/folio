@@ -57,6 +57,27 @@ describe("pdf engine", () => {
     expect(await getPdfPageCount(out)).toBe(4);
   });
 
+  it("combines the same PDF File object twice without rereading it", async () => {
+    const source = await makePdf(2);
+    const result = await combineFilesToPdf([source, source]);
+
+    expect(result.pageCount).toBe(4);
+    expect(await getPdfPageCount(result.bytes)).toBe(4);
+  });
+
+  it("reports bounded combine stages in order", async () => {
+    const stages: string[] = [];
+    const result = await combineFilesToPdf([await makePdf(1), await makePdf(1)], (stage) => {
+      stages.push(stage);
+    });
+
+    expect(result.pageCount).toBe(2);
+    expect(stages[0]).toBe("Checking selected documents locally…");
+    expect(stages.some((stage) => stage.startsWith("Preparing "))).toBe(true);
+    expect(stages).toContain("Merging 2 PDF segments…");
+    expect(stages.at(-1)).toBe("Validating the combined PDF…");
+  });
+
   it("fails closed for empty, truncated, and wrong-page-count PDF output", async () => {
     await expect(validatePdfOutput(new Uint8Array())).rejects.toThrow(/validate the generated PDF/);
     const source = await makePdf(1);

@@ -120,7 +120,7 @@ export const TOOLS: FolioTool[] = [
     slug: "docx-to-pdf",
     name: "Word to PDF",
     shortName: "DOCX",
-    description: "Convert one or more Word documents into one PDF. Beta.",
+    description: "Convert one or more Word documents into one PDF.",
     longDescription:
       "Convert one or more .docx files into one PDF in your browser. Reorder documents before processing; headings, lists, tables and images are supported, but complex Word layouts and pagination may differ.",
     accepts: ".docx",
@@ -137,7 +137,7 @@ export const TOOLS: FolioTool[] = [
     slug: "pages-to-word",
     name: "Pages to Word",
     shortName: "Pages → DOCX",
-    description: "Export supported Pages content to an editable Word document. Beta.",
+    description: "Export supported Pages content to an editable Word document.",
     longDescription:
       "Convert a .pages document into a real .docx package in your browser. Text, tables, images and basic shapes are supported; advanced Pages layout and unsupported objects fail closed.",
     accepts: ".pages",
@@ -171,7 +171,7 @@ export const TOOLS: FolioTool[] = [
     slug: "keynote-to-powerpoint",
     name: "Keynote to PowerPoint",
     shortName: "Keynote → PPTX",
-    description: "Export supported Keynote slides to a real PowerPoint file. Beta.",
+    description: "Export supported Keynote slides to a real PowerPoint file.",
     longDescription:
       "Convert supported .key presentations into a real .pptx package locally. Slide text, tables, images and basic shapes are exported; charts, video, animations and unsupported objects fail closed.",
     accepts: ".key,.keynote",
@@ -188,7 +188,7 @@ export const TOOLS: FolioTool[] = [
     slug: "excel-to-pdf",
     name: "Excel to PDF",
     shortName: "XLSX",
-    description: "Convert an Excel workbook into a readable PDF locally. Beta.",
+    description: "Convert an Excel workbook into a readable PDF locally.",
     longDescription:
       "Convert a .xlsx workbook into a validated PDF in your browser. Multiple sheets, saved values, formulas, merged cells and basic formatting are included; advanced Excel features are not recalculated.",
     accepts: ".xlsx",
@@ -302,7 +302,7 @@ export const TOOLS: FolioTool[] = [
     slug: "combine-to-pdf",
     name: "Combine documents to PDF",
     shortName: "Combine",
-    description: "Join PDFs, Word, Markdown and images into one PDF. Beta.",
+    description: "Join PDFs, Word, Markdown and images into one PDF.",
     longDescription:
       "Normalize PDFs, Word documents, Markdown and JPG/PNG images into one PDF in your chosen order. Each source is processed locally and must convert successfully.",
     accepts: ".pdf,.docx,.md,.markdown,.jpg,.jpeg,.png",
@@ -325,7 +325,7 @@ export const TOOLS: FolioTool[] = [
     slug: "pages-to-pdf",
     name: "Pages to PDF",
     shortName: "Pages",
-    description: "Export supported Pages content to PDF locally. Beta.",
+    description: "Export supported Pages content to PDF locally.",
     longDescription:
       "Convert a .pages document into a reviewable PDF in your browser. Text, tables, images and basic shapes are supported; unsupported content fails closed.",
     accepts: ".pages",
@@ -342,7 +342,7 @@ export const TOOLS: FolioTool[] = [
     slug: "keynote-to-pdf",
     name: "Keynote to PDF",
     shortName: "Keynote",
-    description: "Export supported Keynote slides to PDF locally. Beta.",
+    description: "Export supported Keynote slides to PDF locally.",
     longDescription:
       "Convert a .key presentation into a reviewable PDF in your browser. Text, tables, images, basic shapes and saved chart data are supported; unsupported content fails closed.",
     accepts: ".key,.keynote",
@@ -359,7 +359,7 @@ export const TOOLS: FolioTool[] = [
     slug: "numbers-to-xlsx",
     name: "Numbers to XLSX",
     shortName: "Numbers",
-    description: "Export saved Numbers tables to Excel locally. Beta.",
+    description: "Export saved Numbers tables to Excel locally.",
     longDescription:
       "Convert a .numbers spreadsheet into an .xlsx workbook in your browser. Saved cell values and table structure are preserved; formulas are not recalculated.",
     accepts: ".numbers",
@@ -376,7 +376,7 @@ export const TOOLS: FolioTool[] = [
     slug: "numbers-to-pdf",
     name: "Numbers to PDF",
     shortName: "Numbers PDF",
-    description: "Export supported Numbers tables to a readable PDF. Beta.",
+    description: "Export supported Numbers tables to a readable PDF.",
     longDescription:
       "Convert a .numbers spreadsheet into a readable PDF in your browser. Tables and saved chart data are rendered locally; native print styling and formula recalculation are not reproduced.",
     accepts: ".numbers",

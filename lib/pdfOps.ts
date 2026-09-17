@@ -7,7 +7,7 @@
  */
 
 import { readFileBytes } from "./files";
-import { inspectFiles, type FileInspection } from "./fileIntelligence";
+import { inspectFilesWithBytes, type FileInspection } from "./fileIntelligence";
 import { MAX_COMBINE_BYTES } from "./tools";
 import {
   decodeMarkdown,
@@ -93,7 +93,15 @@ export function sanitizeMammothHtml(html: string): string {
 
 export async function mergePdfs(files: File[]): Promise<Uint8Array> {
   const documents: Uint8Array[] = [];
-  for (const file of files) documents.push(await readFileBytes(file));
+  const snapshots = new WeakMap<File, Uint8Array>();
+  for (const file of files) {
+    let bytes = snapshots.get(file);
+    if (!bytes) {
+      bytes = await readFileBytes(file);
+      snapshots.set(file, bytes);
+    }
+    documents.push(bytes);
+  }
   return mergePdfBytes(documents);
 }
 
@@ -141,12 +149,15 @@ export async function combineFilesToPdf(
     throw new Error("The selected documents are larger than Folio’s 150 MB total local limit.");
   }
 
-  const inspections = await inspectFiles(files);
-  const segments: Uint8Array[] = [];
+  onProgress?.("Checking selected documents locally…");
+  const inspectedFiles = await inspectFilesWithBytes(files, {}, (index, total) => {
+    onProgress?.(`Checking ${files[index].name || `document ${index + 1}`} (${index + 1} of ${total})…`);
+  });
+  const segments: Array<import("pdf-lib").PDFDocument> = [];
   let expectedPages = 0;
   for (let index = 0; index < files.length; index++) {
     const file = files[index];
-    const inspection = inspections[index];
+    const { inspection, bytes: sourceBytes } = inspectedFiles[index];
     if (!inspection.valid || !["pdf", "jpeg", "png", "docx", "markdown"].includes(inspection.kind)) {
       throw inspectionFailure(file, inspection);
     }
@@ -155,21 +166,25 @@ export async function combineFilesToPdf(
       let segment: Uint8Array;
       switch (inspection.kind) {
         case "pdf":
-          segment = await readFileBytes(file);
+          segment = sourceBytes;
           break;
         case "docx":
-          segment = await docxToPdf(file, (stage) =>
-            onProgress?.(`${file.name || "Word document"}: ${stage}`),
+          segment = await docxToPdf(
+            file,
+            (stage) => onProgress?.(`${file.name || "Word document"}: ${stage}`),
+            sourceBytes,
           );
           break;
         case "markdown":
-          segment = await markdownToPdf(file, (stage) =>
-            onProgress?.(`${file.name || "Markdown document"}: ${stage}`),
+          segment = await markdownToPdf(
+            file,
+            (stage) => onProgress?.(`${file.name || "Markdown document"}: ${stage}`),
+            sourceBytes,
           );
           break;
         case "jpeg":
         case "png":
-          segment = await imagesToPdf([file]);
+          segment = await imagesToPdf([file], [sourceBytes]);
           break;
         default:
           throw new Error("This format is not supported by the combine workflow.");
@@ -178,27 +193,37 @@ export async function combineFilesToPdf(
       const pages = parsed.getPageCount();
       if (pages < 1) throw new Error("The conversion produced no PDF pages.");
       expectedPages += pages;
-      segments.push(segment);
+      segments.push(parsed);
     } catch (cause) {
       throw combineFailure(file, cause);
     }
   }
 
   onProgress?.(`Merging ${segments.length} PDF segments…`);
-  const bytes = await mergePdfBytes(segments);
-  const output = await loadPdfDocument(bytes);
+  const { PDFDocument } = await import("pdf-lib");
+  const output = await PDFDocument.create();
+  for (const document of segments) {
+    const pages = await output.copyPages(document, document.getPageIndices());
+    for (const page of pages) output.addPage(page);
+  }
   if (output.getPageCount() !== expectedPages) {
     throw new Error("Folio could not validate the combined PDF page count.");
   }
-  return { bytes, pageCount: output.getPageCount() };
+  onProgress?.("Validating the combined PDF…");
+  const bytes = await validatePdfOutput(
+    await output.save({ useObjectStreams: true }),
+    expectedPages,
+  );
+  return { bytes, pageCount: expectedPages };
 }
 
 export async function splitPdf(
   file: File,
   keepPages1Based: number[],
+  sourceBytes?: Uint8Array,
 ): Promise<Uint8Array> {
   const { PDFDocument } = await import("pdf-lib");
-  const bytes = await readFileBytes(file);
+  const bytes = sourceBytes ?? await readFileBytes(file);
   const src = await loadPdfDocument(bytes);
   const out = await PDFDocument.create();
   const indices = [...new Set(keepPages1Based.map((p) => p - 1))]
@@ -217,9 +242,10 @@ export async function rotatePdf(
   file: File,
   pages1Based: number[] | null,
   degrees: RotationDegrees,
+  sourceBytes?: Uint8Array,
 ): Promise<Uint8Array> {
   const { degrees: toDegrees } = await import("pdf-lib");
-  const bytes = await readFileBytes(file);
+  const bytes = sourceBytes ?? await readFileBytes(file);
   const doc = await loadPdfDocument(bytes);
   const count = doc.getPageCount();
   const targets =
@@ -292,18 +318,22 @@ async function imageDimensions(
 }
 
 /** One image per page, fitted onto A4 without distortion. */
-export async function imagesToPdf(files: File[]): Promise<Uint8Array> {
+export async function imagesToPdf(
+  files: File[],
+  sourceBytes?: readonly Uint8Array[],
+): Promise<Uint8Array> {
   const { PDFDocument } = await import("pdf-lib");
   const doc = await PDFDocument.create();
   const A4 = { w: 595.28, h: 841.89 }; // points
   const margin = 24;
 
-  for (const file of files) {
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index];
     const detectedDims = await imageDimensions(file).catch(() => null);
     if (detectedDims && detectedDims.width * detectedDims.height > MAX_IMAGE_PIXELS) {
       throw new Error(`The image ${file.name || "file"} is too large to process safely in this browser.`);
     }
-    const raw = await readFileBytes(file);
+    const raw = sourceBytes?.[index] ?? await readFileBytes(file);
     const isPng =
       file.type === "image/png" || /\.png$/i.test(file.name);
     let embedded;
@@ -313,16 +343,14 @@ export async function imagesToPdf(files: File[]): Promise<Uint8Array> {
         : await doc.embedJpg(raw);
     } catch {
       // Fall back: re-encode through canvas (also strips odd metadata).
-      const url = URL.createObjectURL(file);
+      const bmp = await createImageBitmap(file);
       try {
-        const bmp = await createImageBitmap(file);
         const canvas = document.createElement("canvas");
         canvas.width = bmp.width;
         canvas.height = bmp.height;
         const ctx = canvas.getContext("2d");
         if (!ctx) throw new Error("Canvas unavailable.");
         ctx.drawImage(bmp, 0, 0);
-        bmp.close();
         const blob = await new Promise<Blob | null>((res) =>
           canvas.toBlob(res, "image/jpeg", 0.92),
         );
@@ -330,7 +358,7 @@ export async function imagesToPdf(files: File[]): Promise<Uint8Array> {
         const buf = await readFileBytes(blob);
         embedded = await doc.embedJpg(buf);
       } finally {
-        URL.revokeObjectURL(url);
+        bmp.close();
       }
     }
 
@@ -753,15 +781,18 @@ async function renderMarkdownPagesToPdf(
 export async function markdownToPdf(
   file: File,
   onProgress?: (stage: string) => void,
+  sourceBytes?: Uint8Array,
 ): Promise<Uint8Array> {
   if (file.size > MAX_MARKDOWN_BYTES) {
     throw new Error("This Markdown file is larger than Folio’s 10 MB local limit.");
   }
-  const markdown = decodeMarkdown(await readFileBytes(file));
+  const markdown = decodeMarkdown(sourceBytes ?? await readFileBytes(file));
   onProgress?.("Preparing Markdown layout…");
   const html = markdownToHtml(markdown);
   return renderMarkdownPagesToPdf(html, onProgress);
 }
+
+const MAX_DOCX_PDF_PAGES = 200;
 
 /**
  * DOCX -> PDF via formatted HTML rendering.
@@ -776,17 +807,18 @@ export async function markdownToPdf(
 export async function docxToPdf(
   file: File,
   onProgress?: (stage: string) => void,
+  sourceBytes?: Uint8Array,
 ): Promise<Uint8Array> {
   onProgress?.("Reading document…");
   const { assertSafeDocx } = await import("./office");
-  await assertSafeDocx(file);
+  const buffer = sourceBytes ?? await readFileBytes(file);
+  await assertSafeDocx(file, buffer);
   const [{ convertToHtml }, { jsPDF }, html2canvas] = await Promise.all([
     import("mammoth"),
     import("jspdf"),
     import("html2canvas").then((m) => m.default),
   ]);
 
-  const buffer = await readFileBytes(file);
   const stableBuffer = new Uint8Array(buffer.length);
   stableBuffer.set(buffer);
   const arrayBuffer = stableBuffer.buffer;
@@ -855,41 +887,61 @@ export async function docxToPdf(
       ),
     );
 
-    onProgress?.("Rendering PDF…");
-    const canvas = await html2canvas(content, {
-      scale: 2,
-      backgroundColor: "#ffffff",
-      useCORS: false,
-    });
+    if (document.fonts) await document.fonts.ready;
 
-    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-    const pageWmm = 210;
-    const pageHmm = 297;
-    const renderedWmm = pageWmm;
-    const renderedHmm = (canvas.height / canvas.width) * renderedWmm;
-    const totalPages = Math.max(1, Math.ceil(renderedHmm / pageHmm));
+    // Render bounded A4-sized pages. Rasterizing the complete document first
+    // creates a very tall canvas for real Word files; in WebKit that can take
+    // minutes or exhaust the renderer before the first progress update.
+    const pages: HTMLDivElement[] = [];
+    const newPage = () => {
+      const next = document.createElement("div");
+      next.className = "folio-docx";
+      next.style.cssText =
+        "box-sizing:border-box;width:794px;height:1123px;padding:48px 56px;background:#fff;color:#111;" +
+        "font-family:Aptos,'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.5;" +
+        "word-wrap:break-word;overflow-wrap:anywhere;overflow:hidden;";
+      return next;
+    };
+    let page = newPage();
+    host.appendChild(page);
+    for (const block of [...content.children] as HTMLElement[]) {
+      const copy = block.cloneNode(true) as HTMLElement;
+      page.appendChild(copy);
+      if (page.scrollHeight > page.clientHeight + 2 && page.children.length > 1) {
+        page.removeChild(copy);
+        pages.push(page);
+        if (pages.length >= MAX_DOCX_PDF_PAGES) {
+          throw new Error(`This Word document would create more than ${MAX_DOCX_PDF_PAGES} PDF pages.`);
+        }
+        page = newPage();
+        host.appendChild(page);
+        page.appendChild(copy);
+      } else if (page.scrollHeight > page.clientHeight + 2) {
+        throw new Error("A Word document block is too large to fit safely on one PDF page.");
+      }
+    }
+    if (page.children.length > 0) pages.push(page);
+    if (pages.length === 0) throw new Error("No readable content found in this document.");
 
-    for (let i = 0; i < totalPages; i++) {
-      const srcY = Math.floor((i * canvas.height) / totalPages);
-      const srcH = Math.floor(canvas.height / totalPages);
-      const slice = document.createElement("canvas");
-      slice.width = canvas.width;
-      slice.height = srcH;
-      const ctx = slice.getContext("2d");
-      if (!ctx) throw new Error("Canvas unavailable in this browser.");
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, slice.width, slice.height);
-      ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
-      const url = slice.toDataURL("image/jpeg", 0.92);
-      if (i > 0) pdf.addPage();
-      // Last slice may be shorter; anchor slices to the page top.
-      const sliceHmm = (srcH / canvas.width) * renderedWmm;
-      pdf.addImage(url, "JPEG", 0, 0, renderedWmm, Math.min(sliceHmm, pageHmm));
-      onProgress?.(`Rendering page ${i + 1} of ${totalPages}…`);
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
+    for (let index = 0; index < pages.length; index++) {
+      onProgress?.(`Rendering page ${index + 1} of ${pages.length}…`);
+      const pageImages = [...pages[index].querySelectorAll("img")];
+      await Promise.all(pageImages.map((img) => img.decode?.().catch(() => undefined)));
+      const canvas = await html2canvas(pages[index], {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: false,
+        logging: false,
+      });
+      if (index > 0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297);
+      canvas.width = 0;
+      canvas.height = 0;
     }
 
     const buf = pdf.output("arraybuffer") as ArrayBuffer;
-    return validatePdfOutput(new Uint8Array(buf), totalPages);
+    return validatePdfOutput(new Uint8Array(buf), pages.length);
   } finally {
     host.remove();
   }

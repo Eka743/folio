@@ -254,13 +254,12 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Reading PDF…");
           const { getPdfPageCount, splitPdf } = await import("@/lib/pdfOps");
-          const count = await getPdfPageCount(
-            await readFileBytes(file),
-          );
+          const sourceBytes = await readFileBytes(file);
+          const count = await getPdfPageCount(sourceBytes);
           const parsed = parsePageRanges(rangeText, count);
           if (parsed.error) throw new Error(parsed.error);
           setProgress(`Extracting ${summarizePages(parsed.pages)}…`);
-          const bytes = await splitPdf(file, parsed.pages);
+          const bytes = await splitPdf(file, parsed.pages, sourceBytes);
           if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(file.name)}-pages-${parsed.pages[0]}-${parsed.pages[parsed.pages.length - 1]}`,
@@ -524,10 +523,10 @@ export function ToolRunner({
           setProgress("Reading PDF…");
           const { getPdfPageCount, rotatePdf } = await import("@/lib/pdfOps");
           let targets: number[] | null = null;
+          let sourceBytes: Uint8Array | undefined;
           if (rotateMode === "pages") {
-            const count = await getPdfPageCount(
-              await readFileBytes(file),
-            );
+            sourceBytes = await readFileBytes(file);
+            const count = await getPdfPageCount(sourceBytes);
             const parsed = parsePageRanges(rangeText, count);
             if (parsed.error) throw new Error(parsed.error);
             targets = parsed.pages;
@@ -537,7 +536,7 @@ export function ToolRunner({
           } else {
             setProgress(`Rotating all pages by ${degrees}°…`);
           }
-          const bytes = await rotatePdf(file, targets, degrees);
+          const bytes = await rotatePdf(file, targets, degrees, sourceBytes);
           if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(file.name)}-rotated-${degrees}`,
@@ -923,7 +922,7 @@ function actionLabel(slug: string, count: number): string {
     case "pdf-to-jpg":
       return "Convert to JPG";
     case "sign-pdf":
-      return "Continue / Sign PDF";
+      return "Open signing workspace";
     case "rotate-pdf":
       return "Rotate PDF";
     case "compress-pdf":

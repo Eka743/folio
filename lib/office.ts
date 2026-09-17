@@ -872,9 +872,9 @@ export async function parseXlsx(file: File): Promise<ParsedXlsx> {
   return (await parseOffice(file, "xlsx")) as ParsedXlsx;
 }
 
-export async function assertSafeDocx(file: File): Promise<void> {
+export async function assertSafeDocx(file: File, sourceBytes?: Uint8Array): Promise<void> {
   if (file.size > MAX_DOCX_OUTPUT_BYTES) throw new OfficeConversionError("Word files larger than 50 MB are not supported in this browser.");
-  const bytes = await readFileBytes(file);
+  const bytes = sourceBytes ?? await readFileBytes(file);
   let archive: SafeArchive;
   try {
     archive = inspectZip(bytes);

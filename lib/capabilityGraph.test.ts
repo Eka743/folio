@@ -19,11 +19,11 @@ describe("public capability graph", () => {
   it("selects actions from the entire batch shape", () => {
     expect(actionsForKinds(["pdf"])).toEqual([
       "merge-pdf",
+      "sign-pdf",
       "split-pdf",
       "rotate-pdf",
       "compress-pdf",
       "pdf-to-jpg",
-      "sign-pdf",
       "pdf-to-markdown",
     ]);
     expect(actionsForKinds(["pdf", "pdf"])).toEqual(["merge-pdf"]);

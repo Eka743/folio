@@ -140,11 +140,11 @@ export function actionsForKinds(
     if (kinds.length > 1) return ["merge-pdf"];
     return [
       "merge-pdf",
+      "sign-pdf",
       "split-pdf",
       "rotate-pdf",
       "compress-pdf",
       "pdf-to-jpg",
-      "sign-pdf",
       "pdf-to-markdown",
     ];
   }
