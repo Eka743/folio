@@ -90,7 +90,7 @@ Compared with `8edcebb` built in the same environment, the change is +3,210 stat
 - Production build/typecheck: passed.
 - Lint: passed.
 - WebKit stress profile: passed at 8.10 s.
-- Full browser matrix: 132 passed; 3 failed on the existing Apple worker URL substring assertion (`workerUrls.some(/iwork/i)`) in Chromium, Firefox, and WebKit. The Apple conversions themselves passed in the same run, and the failure is unrelated to `lib/pdfOps.ts`; the production bundler emits the worker URL through a generated asset wrapper.
+- Historical Phase 2N full browser matrix: 132 passed; 3 failed on the existing Apple worker URL substring assertion (`workerUrls.some(/iwork/i)`) in Chromium, Firefox, and WebKit. The Apple conversions themselves passed in that run, and the failure was unrelated to `lib/pdfOps.ts`; the production bundler emits the worker URL through a generated asset wrapper.
 
 DOCX Beta messaging remains because the renderer is still rasterized and advanced Word pagination/features can differ. No status labels were broadened by this phase.
 
@@ -98,4 +98,38 @@ DOCX Beta messaging remains because the renderer is still rasterized and advance
 
 - P1: Very large multi-DOCX batches can still use substantial memory because jsPDF retains all page images before final serialization. A streaming PDF writer or a different renderer would be required to remove that limit.
 - P2: The output remains rasterized JPEG pages; changing quality or scale would trade fidelity for speed and was intentionally not done.
-- P2: The Apple worker URL assertion should be made bundler-agnostic in the test suite; it is not a functional conversion failure.
+- P2: Resolved in Phase 2N.1; the Apple worker assertion now checks the runtime contract rather than a bundler-generated URL substring.
+
+## Phase 2N.1 closure
+
+The three Apple failures were reproduced independently in Chromium, Firefox and
+WebKit. They were a stale test assertion, not a runtime regression: Next.js
+16.3.4/Turbopack wraps the module Worker in a same-origin generated
+`/_next/static/chunks/turbopack-worker-…` asset. The iWork identity is preserved
+by the Worker constructor name (`folio-iwork`), while the production worker
+bundle is carried by the generated worker parameters. Development builds expose
+the renderer chunk names directly; production builds use the generic wrapper.
+
+The E2E test now installs a temporary Worker probe and verifies exactly one
+`folio-iwork` Worker was created, its resolved URL is same-origin and under
+`/_next/static/`, Playwright observed that same Worker, and `terminate()` was
+called. This preserves detection of a missing, remote, or wrong Worker without
+requiring a fragile hashed/path substring. The assertion was not weakened.
+
+The complete production browser matrix is now 135/135: Chromium 45/45,
+Firefox 45/45, and WebKit 45/45. The focused Apple test passed in all three
+browsers, and a 10× Chromium Apple soak passed 10/10 with no conversion or
+cleanup failures. Pages → PDF, Pages → DOCX, Keynote → PDF, Keynote → PPTX,
+Numbers → PDF and Numbers → XLSX output validation remained green through the
+existing fixture and privacy suites.
+
+The post-fix performance recheck remained within benchmark variance: the 64-page
+stress DOCX measured 6.28 s versus 5.94 s in the Phase 2N profile (+5.7%), and
+the 3× DOCX combine measured 15.44 s versus 16.10 s (-4.1%). The result remains
+36.5% faster than the previous `8edcebb` stress profile, with the Phase 2N
+batching behavior intact. Production bundle totals were unchanged at 16,268,334
+bytes in `.next/static` and 38,160,547 bytes in `.next/server`; the Apple parser
+and Worker remained lazy, and homepage/PDF/DOCX/Sign PDF workflows did not
+eagerly load the Apple asset. Existing privacy coverage continued to report no
+document uploads, filename/content transmission, analytics, tracking, or
+third-party Worker requests.

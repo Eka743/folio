@@ -938,6 +938,26 @@ test("Universal Drop identifies images, DOCX and Apple containers without overpr
 
 test("Universal Drop exports Apple documents locally and validates the outputs", async ({ page }) => {
   const workerUrls = [];
+  await page.addInitScript(() => {
+    const OriginalWorker = window.Worker;
+    window.__folioWorkerCreations = [];
+    window.Worker = class extends OriginalWorker {
+      constructor(scriptURL, options) {
+        const record = {
+          url: String(scriptURL),
+          name: options?.name ?? null,
+          terminated: false,
+        };
+        super(scriptURL, options);
+        const terminate = this.terminate.bind(this);
+        this.terminate = () => {
+          record.terminated = true;
+          return terminate();
+        };
+        window.__folioWorkerCreations.push(record);
+      }
+    };
+  });
   page.on("worker", (worker) => workerUrls.push(worker.url()));
   await page.goto("/");
   const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
@@ -946,7 +966,15 @@ test("Universal Drop exports Apple documents locally and validates the outputs",
   await section.getByRole("button", { name: "Convert Pages to PDF" }).click();
   const pagesOutput = await downloadFromResult(page, "Convert to PDF", /^Download /);
   await expectPdf(pagesOutput, 1);
-  expect(workerUrls.some((url) => /iwork/i.test(url))).toBe(true);
+  const workerCreations = await page.evaluate(() => window.__folioWorkerCreations ?? []);
+  const iworkWorkers = workerCreations.filter(({ name }) => name === "folio-iwork");
+  expect(iworkWorkers).toHaveLength(1);
+  const iworkWorker = iworkWorkers[0];
+  const iworkWorkerUrl = new URL(iworkWorker.url, BASE_ORIGIN);
+  expect(iworkWorkerUrl.origin).toBe(BASE_ORIGIN);
+  expect(iworkWorkerUrl.pathname).toMatch(/^\/_next\/static\//);
+  expect(workerUrls).toContain(iworkWorkerUrl.href);
+  expect(iworkWorker.terminated).toBe(true);
 
   await page.goto("/tools/keynote-to-pdf");
   await page.locator('input[type="file"]').setInputFiles(fixtures.keynote);
