@@ -847,6 +847,7 @@ export async function markdownToPdf(
 }
 
 const MAX_DOCX_PDF_PAGES = 200;
+const DOCX_RASTER_BATCH_PAGES = 3;
 
 /**
  * DOCX -> PDF via formatted HTML rendering.
@@ -976,21 +977,52 @@ export async function docxToPdf(
     if (pages.length === 0) throw new Error("No readable content found in this document.");
 
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
-    for (let index = 0; index < pages.length; index++) {
-      onProgress?.(`Rendering page ${index + 1} of ${pages.length}…`);
-      const pageImages = [...pages[index].querySelectorAll("img")];
+    for (let batchStart = 0; batchStart < pages.length; batchStart += DOCX_RASTER_BATCH_PAGES) {
+      const batchPages = pages.slice(batchStart, batchStart + DOCX_RASTER_BATCH_PAGES);
+      const batch = document.createElement("div");
+      batch.style.cssText =
+        `width:794px;height:${batchPages.length * 1123}px;overflow:hidden;background:#fff;` +
+        "position:fixed;left:-10000px;top:0;";
+      host.appendChild(batch);
+      for (const batchPage of batchPages) batch.appendChild(batchPage);
+
+      onProgress?.(`Rendering page ${batchStart + 1} of ${pages.length}…`);
+      const pageImages = batchPages.flatMap((batchPage) => [...batchPage.querySelectorAll("img")]);
       await Promise.all(pageImages.map((img) => img.decode?.().catch(() => undefined)));
-      const canvas = await html2canvas(pages[index], {
+      const canvas = await html2canvas(batch, {
         scale: 2,
         backgroundColor: "#ffffff",
         useCORS: false,
         logging: false,
       });
-      if (index > 0) pdf.addPage();
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297);
+      const pageCanvasHeight = Math.floor(canvas.height / batchPages.length);
+      for (let batchIndex = 0; batchIndex < batchPages.length; batchIndex++) {
+        const index = batchStart + batchIndex;
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = pageCanvasHeight;
+        const context = pageCanvas.getContext("2d");
+        if (!context) throw new Error("Could not prepare the Word PDF page.");
+        context.drawImage(
+          canvas,
+          0,
+          batchIndex * pageCanvasHeight,
+          canvas.width,
+          pageCanvasHeight,
+          0,
+          0,
+          pageCanvas.width,
+          pageCanvas.height,
+        );
+        if (index > 0) pdf.addPage();
+        pdf.addImage(pageCanvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297);
+        pageCanvas.width = 0;
+        pageCanvas.height = 0;
+        batchPages[batchIndex].remove();
+      }
       canvas.width = 0;
       canvas.height = 0;
-      pages[index].remove();
+      batch.remove();
     }
 
     content.remove();
