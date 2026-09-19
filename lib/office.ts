@@ -375,12 +375,16 @@ async function readXml(packageData: OfficePackage, path: string): Promise<SafeXm
   }
 }
 
-async function loadOfficePackage(file: File, kind: OfficeKind): Promise<OfficePackage> {
+async function loadOfficePackage(
+  file: File,
+  kind: OfficeKind,
+  sourceBytes?: Uint8Array,
+): Promise<OfficePackage> {
   const maxBytes = kind === "pptx" ? MAX_PPTX_BYTES : MAX_XLSX_BYTES;
   if (file.size > maxBytes) {
     throw new OfficeConversionError(`${fileNameFor(kind)} files larger than ${Math.round(maxBytes / 1024 / 1024)} MB are not supported in this browser.`);
   }
-  const bytes = await readFileBytes(file);
+  const bytes = sourceBytes ?? await readFileBytes(file);
   let archive: SafeArchive;
   try {
     archive = inspectZip(bytes);
@@ -616,8 +620,8 @@ async function parsePptxSlide(
   return { name: slideName, width, height, background, items };
 }
 
-export async function parsePptxDirect(file: File): Promise<ParsedPptx> {
-  const packageData = await loadOfficePackage(file, "pptx");
+export async function parsePptxDirect(file: File, sourceBytes?: Uint8Array): Promise<ParsedPptx> {
+  const packageData = await loadOfficePackage(file, "pptx", sourceBytes);
   const presentation = await readXml(packageData, PPT_MAIN);
   const relationships = await relationshipsFor(packageData, PPT_MAIN);
   const size = firstDescendant(presentation, "sldSz");
@@ -778,8 +782,8 @@ async function parseXlsxSheet(
   return { name: name || "Sheet", rows: normalizedRows, columnWidths, rowHeights, merges };
 }
 
-export async function parseXlsxDirect(file: File): Promise<ParsedXlsx> {
-  const packageData = await loadOfficePackage(file, "xlsx");
+export async function parseXlsxDirect(file: File, sourceBytes?: Uint8Array): Promise<ParsedXlsx> {
+  const packageData = await loadOfficePackage(file, "xlsx", sourceBytes);
   const workbook = await readXml(packageData, XLS_MAIN);
   const workbookRelationships = await relationshipsFor(packageData, XLS_MAIN);
   for (const relationship of workbookRelationships.values()) {
@@ -811,7 +815,11 @@ function copyArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
-async function parseOfficeInWorker(file: File, kind: OfficeKind): Promise<ParsedPptx | ParsedXlsx> {
+async function parseOfficeInWorker(
+  file: File,
+  kind: OfficeKind,
+  sourceBytes?: Uint8Array,
+): Promise<ParsedPptx | ParsedXlsx> {
   if (typeof Worker !== "function") throw new OfficeWorkerUnavailableError("Web Workers are unavailable.");
   let worker: Worker;
   try {
@@ -820,7 +828,7 @@ async function parseOfficeInWorker(file: File, kind: OfficeKind): Promise<Parsed
     throw new OfficeWorkerUnavailableError("The Office Worker could not start.", cause);
   }
   const id = ++officeWorkerRequestId;
-  const buffer = copyArrayBuffer(await readFileBytes(file));
+  const buffer = copyArrayBuffer(sourceBytes ?? await readFileBytes(file));
   return new Promise<ParsedPptx | ParsedXlsx>((resolve, reject) => {
     let settled = false;
     const timeout = setTimeout(() => finish(() => reject(new OfficeWorkerUnavailableError("The Office Worker timed out."))), OFFICE_WORKER_TIMEOUT_MS);
@@ -855,26 +863,30 @@ async function parseOfficeInWorker(file: File, kind: OfficeKind): Promise<Parsed
   });
 }
 
-async function parseOffice(file: File, kind: OfficeKind): Promise<ParsedPptx | ParsedXlsx> {
+async function parseOffice(
+  file: File,
+  kind: OfficeKind,
+  sourceBytes?: Uint8Array,
+): Promise<ParsedPptx | ParsedXlsx> {
   try {
-    return await parseOfficeInWorker(file, kind);
+    return await parseOfficeInWorker(file, kind, sourceBytes);
   } catch (cause) {
     if (!(cause instanceof OfficeWorkerUnavailableError)) throw cause;
-    return kind === "pptx" ? parsePptxDirect(file) : parseXlsxDirect(file);
+    return kind === "pptx" ? parsePptxDirect(file, sourceBytes) : parseXlsxDirect(file, sourceBytes);
   }
 }
 
-export async function parsePptx(file: File): Promise<ParsedPptx> {
-  return (await parseOffice(file, "pptx")) as ParsedPptx;
+export async function parsePptx(file: File, sourceBytes?: Uint8Array): Promise<ParsedPptx> {
+  return (await parseOffice(file, "pptx", sourceBytes)) as ParsedPptx;
 }
 
-export async function parseXlsx(file: File): Promise<ParsedXlsx> {
-  return (await parseOffice(file, "xlsx")) as ParsedXlsx;
+export async function parseXlsx(file: File, sourceBytes?: Uint8Array): Promise<ParsedXlsx> {
+  return (await parseOffice(file, "xlsx", sourceBytes)) as ParsedXlsx;
 }
 
-export async function assertSafeDocx(file: File): Promise<void> {
+export async function assertSafeDocx(file: File, sourceBytes?: Uint8Array): Promise<void> {
   if (file.size > MAX_DOCX_OUTPUT_BYTES) throw new OfficeConversionError("Word files larger than 50 MB are not supported in this browser.");
-  const bytes = await readFileBytes(file);
+  const bytes = sourceBytes ?? await readFileBytes(file);
   let archive: SafeArchive;
   try {
     archive = inspectZip(bytes);
@@ -1154,8 +1166,8 @@ async function renderPptxToPdf(document: ParsedPptx): Promise<Uint8Array> {
   return bytes;
 }
 
-export async function powerpointToPdf(file: File): Promise<Uint8Array> {
-  const document = await parsePptx(file);
+export async function powerpointToPdf(file: File, sourceBytes?: Uint8Array): Promise<Uint8Array> {
+  const document = await parsePptx(file, sourceBytes);
   return renderPptxToPdf(document);
 }
 
@@ -1243,14 +1255,18 @@ async function renderXlsxToPdf(document: ParsedXlsx): Promise<Uint8Array> {
   return bytes;
 }
 
-export async function excelToPdf(file: File): Promise<Uint8Array> {
-  const document = await parseXlsx(file);
+export async function excelToPdf(file: File, sourceBytes?: Uint8Array): Promise<Uint8Array> {
+  const document = await parseXlsx(file, sourceBytes);
   return renderXlsxToPdf(document);
 }
 
-async function parseAppleForOfficeExport(file: File, kind: "pages" | "keynote"): Promise<IworkDocument> {
+async function parseAppleForOfficeExport(
+  file: File,
+  kind: "pages" | "keynote",
+  sourceBytes?: Uint8Array,
+): Promise<IworkDocument> {
   const { parseAppleDocument } = await import("./iwork");
-  return parseAppleDocument(file, kind);
+  return parseAppleDocument(file, kind, sourceBytes);
 }
 
 function officeParagraphsFromBlock(block: IworkTextBlock): OfficeParagraph[] {
@@ -1499,8 +1515,8 @@ async function validateDocxOutput(bytes: Uint8Array, source: IworkDocument): Pro
   }
 }
 
-export async function pagesToDocx(file: File): Promise<Uint8Array> {
-  const document = await parseAppleForOfficeExport(file, "pages");
+export async function pagesToDocx(file: File, sourceBytes?: Uint8Array): Promise<Uint8Array> {
+  const document = await parseAppleForOfficeExport(file, "pages", sourceBytes);
   return renderPagesDocumentToDocx(document);
 }
 
@@ -1635,7 +1651,7 @@ async function validatePptxOutput(bytes: Uint8Array, source: IworkDocument): Pro
   if (expected.length > 0 && expected.some((value) => !text.includes(value))) throw new OfficeConversionError("Folio could not validate the Keynote text in the PPTX output.");
 }
 
-export async function keynoteToPptx(file: File): Promise<Uint8Array> {
-  const document = await parseAppleForOfficeExport(file, "keynote");
+export async function keynoteToPptx(file: File, sourceBytes?: Uint8Array): Promise<Uint8Array> {
+  const document = await parseAppleForOfficeExport(file, "keynote", sourceBytes);
   return renderKeynoteDocumentToPptx(document);
 }

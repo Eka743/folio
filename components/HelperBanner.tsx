@@ -66,9 +66,9 @@ export function HelperBanner({
         {!compact && (
           <p className="mt-1">
             Native Pages, Numbers and Office conversion runs locally on a Mac
-            with Folio for Mac installed. Keynote routes are currently Beta /
-            unvalidated because of a known macOS Automation limitation. There
-            is no cloud conversion — your files stay private.
+            with Folio for Mac installed. Keynote routes are not available
+            through this connection. There is no cloud conversion — your files
+            stay private.
           </p>
         )}
       </div>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
-import { inspectFile, readEmbeddedPdfPreview } from "./fileIntelligence";
+import { inspectFile, inspectFilesWithBytes, readEmbeddedPdfPreview } from "./fileIntelligence";
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.length);
@@ -60,6 +60,16 @@ describe("content-based file intelligence", () => {
       type: "image/jpeg",
     });
     expect((await inspectFile(jpeg)).kind).toBe("jpeg");
+  });
+
+  it("retains one owned snapshot for duplicate File references", async () => {
+    const source = await pdfFile("same.pdf", 2);
+    const inspected = await inspectFilesWithBytes([source, source]);
+
+    expect(inspected).toHaveLength(2);
+    expect(inspected[0].inspection.valid).toBe(true);
+    expect(inspected[1].inspection.valid).toBe(true);
+    expect(inspected[0].bytes).toBe(inspected[1].bytes);
   });
 
   it("keeps content detection working with missing names and MIME types", async () => {
