@@ -61,7 +61,7 @@ function actionTitle(action: CapabilityActionId, count: number): string {
   if (action === "keynote-to-powerpoint") return "Convert Keynote to PPTX";
   if (action === "excel-to-pdf") return "Convert Excel to PDF";
   if (action === "combine-to-pdf") return `Combine ${count} document${count === 1 ? "" : "s"} into PDF`;
-  if (action === "embedded-pdf") return "Export embedded PDF preview";
+  if (action === "embedded-pdf") return "Open included PDF preview";
   if (action === "pages-to-pdf") return "Convert Pages to PDF";
   if (action === "keynote-to-pdf") return "Convert Keynote to PDF";
   if (action === "numbers-to-xlsx") return "Convert Numbers to XLSX";
@@ -78,14 +78,14 @@ function actionDescription(action: CapabilityActionId, count: number): string {
   if (action === "merge-pdf") return "Add, reorder and merge the selected PDFs locally.";
   if (action === "image-to-pdf") return "Place one image on each PDF page in your chosen order.";
   if (action === "docx-to-pdf") return count > 1
-    ? "Convert each Word document locally, then join the PDF pages in order. Beta."
-    : "Convert this Word document locally. Beta.";
-  if (action === "pages-to-word") return "Write a real DOCX package from supported Pages content locally. Beta.";
-  if (action === "powerpoint-to-pdf") return "Render supported PowerPoint slides to a validated PDF locally. Beta.";
-  if (action === "keynote-to-powerpoint") return "Write a real PPTX package from supported Keynote slides locally. Beta.";
-  if (action === "excel-to-pdf") return "Render all supported Excel worksheets to a validated PDF locally. Beta.";
+    ? "Convert each Word document locally, then join the PDF pages in order. Review complex layouts before sharing."
+    : "Convert this Word document locally. Review complex layouts before sharing.";
+  if (action === "pages-to-word") return "Write a real DOCX package from supported Pages content locally. Advanced layout may differ.";
+  if (action === "powerpoint-to-pdf") return "Render supported PowerPoint slides to a validated PDF locally. Animations and unsupported objects are not exported.";
+  if (action === "keynote-to-powerpoint") return "Write a real PPTX package from supported Keynote slides locally. Advanced Apple features are not exported.";
+  if (action === "excel-to-pdf") return "Render all supported Excel worksheets to a validated PDF locally. Advanced Excel features are not recalculated.";
   if (action === "combine-to-pdf") return "Normalize each supported source locally. Nothing is silently skipped.";
-  if (action === "pages-to-pdf") return "Export the supported Pages subset locally. Unsupported content fails closed.";
+  if (action === "pages-to-pdf") return "Export supported Pages content locally. Unsupported content fails closed.";
   if (action === "keynote-to-pdf") return "Export supported Keynote slides locally. Unsupported content fails closed.";
   if (action === "numbers-to-xlsx") return "Export saved Numbers tables and values to an XLSX workbook locally.";
   if (action === "numbers-to-pdf") return "Render saved Numbers tables to a readable PDF locally.";
@@ -363,7 +363,7 @@ export function UniversalDrop() {
               <div className="mt-5" data-universal-actions="true">
                 {items.length === 1 && ["pages", "keynote", "numbers"].includes(items[0].inspection!.kind) && (
                   <div className="mb-4 rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm leading-relaxed text-ink-700">
-                    <p className="font-medium text-ink-950">Apple export is Beta.</p>
+                    <p className="font-medium text-ink-950">Apple document note</p>
                     <p className="mt-1">Folio reads this container locally. Saved text, tables, images and basic shapes are supported where available; animations, transitions, formula recalculation and unsupported content are not exported.</p>
                   </div>
                 )}

@@ -148,7 +148,6 @@ export default function HomePage() {
                               </span>
                               <span className="mt-5 flex items-center gap-2">
                                 <span className="text-[17px] font-semibold tracking-tight text-ink-950">{tool.name}</span>
-                                {tool.badge && <span className="rounded-full bg-accent-50 px-2 py-0.5 text-xs font-semibold text-accent-700">{tool.badge}</span>}
                               </span>
                               <span className="mt-1 flex-1 text-[15px] leading-relaxed text-ink-500">{tool.description}</span>
                               <span className="mt-4 text-sm font-semibold text-accent-700 group-hover:underline">Open tool <span aria-hidden="true">→</span></span>
@@ -177,9 +176,9 @@ export default function HomePage() {
           <p className="mt-2 text-[15px] leading-relaxed text-ink-500">No sign-in, ad scripts, tracking pixels or analytics SDKs. Just the tool you came for.</p>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-accent-700">Honest Beta</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-accent-700">Honest limits</p>
           <h2 className="mt-2 font-semibold text-ink-950">Limits are labelled.</h2>
-          <p className="mt-2 text-[15px] leading-relaxed text-ink-500">Browser DOCX conversion is marked Beta so you can review complex layouts before sharing.</p>
+          <p className="mt-2 text-[15px] leading-relaxed text-ink-500">Tool notes explain where layout, formatting or source features may differ, so you can review important results before sharing.</p>
         </div>
       </section>
     </div>

@@ -46,7 +46,7 @@ export type CapabilityActionId =
   | "excel-to-pdf";
 
 export type CapabilityKind = "conversion" | "preview";
-export type CapabilityBrowserStatus = "ready" | "beta";
+export type CapabilityBrowserStatus = "ready" | "scoped";
 
 export interface CapabilityDefinition {
   id: string;
@@ -85,7 +85,7 @@ const conversionCapabilities: CapabilityDefinition[] =
     category: conversion.category,
     title: conversion.title,
     description: conversion.description,
-    browser: conversion.browser === "full" ? "ready" : "beta",
+    browser: conversion.browser === "full" ? "ready" : "scoped",
     limitation: conversion.limitation,
   }));
 
@@ -98,9 +98,9 @@ export const CAPABILITY_GRAPH: readonly CapabilityDefinition[] = [
     inputs: ["pages", "keynote", "numbers"],
     output: "pdf-preview",
     category: "Documents",
-    title: "Export embedded PDF preview",
-    description: "Export an Apple document’s own QuickLook PDF preview.",
-    browser: "beta",
+    title: "Open included PDF preview",
+    description: "Open the PDF preview saved inside this Apple document.",
+    browser: "scoped",
     limitation: "An embedded preview is not native conversion or an editable output.",
   },
 ] as const;

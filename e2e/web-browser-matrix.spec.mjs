@@ -204,7 +204,8 @@ test("all current browser-local tools produce valid results", async ({ page }) =
   await expectJpeg(page, await zip.file(zipNames[0]).async("nodebuffer"));
 
   await page.goto("/tools/docx-to-pdf");
-  await expect(page.locator("body")).toContainText("Beta");
+  await expect(page.locator("body")).toContainText("Complex Word layouts");
+  await expect(page.locator("body")).not.toContainText("Beta");
   await page.locator('input[type="file"]').setInputFiles(fixtures.docx);
   const docxPdf = await downloadFromResult(page, "Convert to PDF", /^Download /);
   await expectPdf(docxPdf, 1);
@@ -733,7 +734,7 @@ test("Markdown conversion fails closed for scanned PDFs and renders hostile Mark
   await expect(page.locator('div[role="alert"]').filter({ hasText: /too large to fit|more than/i })).toBeVisible();
 });
 
-test("realistic DOCX content produces a parseable multi-page Beta PDF", async ({ page }) => {
+test("realistic DOCX content produces a parseable multi-page PDF", async ({ page }) => {
   await page.goto("/tools/docx-to-pdf");
   await page.locator('input[type="file"]').setInputFiles(fixtures.richDocx);
   const output = await downloadFromResult(page, "Convert to PDF", /^Download /);
@@ -829,10 +830,10 @@ test("Universal Drop detects content and hands off to the existing tools", async
   const universalInput = page.locator('section[aria-labelledby="universal-drop-heading"] input[type="file"]');
   await universalInput.setInputFiles(fixtures.pages);
   await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Apple Pages document");
-  await expect(page.getByText("Apple export is Beta.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export embedded PDF preview", exact: true })).toBeVisible();
+  await expect(page.getByText("Apple document note")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open included PDF preview", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Convert Pages to PDF", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Export embedded PDF preview", exact: true }).click();
+  await page.getByRole("button", { name: "Open included PDF preview", exact: true }).click();
   const previewHref = await page.getByRole("link", { name: "Open preview in a new tab", exact: true }).getAttribute("href");
   expect(previewHref).toMatch(/^blob:/);
   await expect(page.getByRole("button", { name: "Start over", exact: true })).toBeVisible();
@@ -931,7 +932,7 @@ test("Universal Drop identifies images, DOCX and Apple containers without overpr
     const universal = page.locator('section[aria-labelledby="universal-drop-heading"]');
     await universal.locator('input[type="file"]').setInputFiles(fixture);
     await expect(universal).toContainText(`Detected as ${label}`);
-    await expect(universal).toContainText("Apple export is Beta.");
+    await expect(universal).toContainText("Apple document note");
     await expect(universal.getByRole("button", { name: label.includes("Keynote") ? "Convert Keynote to PDF" : "Convert Numbers to XLSX" })).toBeVisible();
   }
 });

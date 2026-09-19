@@ -511,7 +511,7 @@ async function inspectZipContainer(
     hasEmbeddedPdf,
     warnings: ["renderer-evaluation-pending"],
     warningMessages: [
-      "Apple export is Beta: saved text, tables and supported visuals are processed locally; unsupported content fails closed.",
+      "Apple exports cover saved text, tables and supported visuals locally; animations, transitions, formula recalculation and unsupported content are not exported.",
     ],
   });
 }

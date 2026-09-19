@@ -418,7 +418,7 @@ export function ToolRunner({
             sizeBytes: bytes.length,
             note: isXlsx
               ? "Saved Numbers cell values and table structure were exported locally. Formulas are not recalculated."
-              : "Exported locally from the supported Apple content subset. Review the PDF before sharing.",
+              : "Exported locally from supported Apple content. Review the PDF before sharing.",
           });
           break;
         }
@@ -481,7 +481,7 @@ export function ToolRunner({
         }
         case "pdf-to-jpg": {
           const file = needSingle(fileObjs);
-          setProgress("Loading renderer…");
+          setProgress("Preparing page images…");
           const { renderPdfPages } = await import("@/lib/pdfOps");
           const pages = await renderPdfPages(file, {
             scale: 2,
@@ -742,10 +742,10 @@ export function ToolRunner({
 
         {tool.slug === "docx-to-pdf" && (
           <StatusBox kind="info">
-            Beta: headings, bold/italic, lists, tables and images are
-            preserved, but pagination and advanced Word features, including headers,
-            footers, footnotes and text boxes may differ. Always review the
-            PDF before sharing.
+            Headings, bold and italic text, lists, tables and images are
+            supported. Complex Word layouts, fonts, pagination, headers,
+            footers, footnotes and text boxes may render differently. Review
+            the PDF before sharing.
           </StatusBox>
         )}
 
@@ -758,9 +758,9 @@ export function ToolRunner({
 
         {tool.slug === "pdf-to-markdown" && (
           <StatusBox kind="info">
-            Beta: Folio extracts text and only reconstructs headings and lists
-            when the PDF layout makes them reasonably clear. Scanned PDFs and
-            complex columns need OCR or manual cleanup.
+            Folio extracts text and reconstructs headings and lists when the
+            PDF layout makes them reasonably clear. Scanned PDFs and complex
+            columns need OCR or manual cleanup.
           </StatusBox>
         )}
 
@@ -773,12 +773,12 @@ export function ToolRunner({
         {(tool.slug === "pages-to-pdf" || tool.slug === "keynote-to-pdf" || tool.slug === "numbers-to-pdf" || tool.slug === "numbers-to-xlsx" || tool.slug === "pages-to-word" || tool.slug === "keynote-to-powerpoint" || tool.slug === "powerpoint-to-pdf" || tool.slug === "excel-to-pdf") && (
           <StatusBox kind="info">
             {tool.slug === "powerpoint-to-pdf" || tool.slug === "excel-to-pdf"
-              ? "Beta: Folio reads the Office package locally. Saved text, tables, images and basic formatting are represented; macros, external content and unsupported objects are rejected or omitted safely."
+              ? "Folio reads the Office package locally. Saved text, tables, images and basic formatting are represented; macros, external content and unsupported objects are rejected or omitted safely."
               : tool.slug === "pages-to-word"
-                ? "Beta: Folio writes a real DOCX package locally. Text, tables, images and basic shapes are supported; advanced Pages layout may differ."
+                ? "Folio writes a real DOCX package locally. Text, tables, images and basic shapes are supported; advanced Pages layout may differ."
                 : tool.slug === "keynote-to-powerpoint"
-                  ? "Beta: Folio writes a real PPTX package locally. Review it in PowerPoint or Keynote before sharing; charts, media and animations are not exported."
-                  : "Beta: Folio processes the Apple container locally. Saved text, tables, images and basic shapes are supported where the document exposes them; animations, transitions, formula recalculation and unsupported content are not exported."}
+                  ? "Folio writes a real PPTX package locally. Review it in PowerPoint or Keynote before sharing; charts, media and animations are not exported."
+                  : "Folio processes the Apple document locally. Saved text, tables, images and basic shapes are supported where the document exposes them; animations, transitions, formula recalculation and unsupported content are not exported."}
           </StatusBox>
         )}
 

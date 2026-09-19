@@ -45,7 +45,6 @@ export interface FolioTool {
   maxTotalBytes: number;
   processing: "local";
   category: ToolCategory;
-  badge?: string;
 }
 
 export const MAX_PDF_BYTES = 100 * 1024 * 1024;
@@ -131,7 +130,6 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_BATCH_DOCX_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Beta",
   },
   {
     slug: "pages-to-word",
@@ -148,7 +146,6 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_APPLE_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Beta",
   },
   {
     slug: "powerpoint-to-pdf",
@@ -165,7 +162,6 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_PPTX_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Beta",
   },
   {
     slug: "keynote-to-powerpoint",
@@ -182,7 +178,6 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_APPLE_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Beta",
   },
   {
     slug: "excel-to-pdf",
@@ -199,7 +194,6 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_XLSX_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Beta",
   },
   {
     slug: "pdf-to-jpg",
@@ -296,7 +290,6 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_PDF_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Beta",
   },
   {
     slug: "combine-to-pdf",
@@ -319,7 +312,6 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_COMBINE_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Beta",
   },
   {
     slug: "pages-to-pdf",
@@ -336,7 +328,6 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_APPLE_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Beta",
   },
   {
     slug: "keynote-to-pdf",
@@ -353,7 +344,6 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_APPLE_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Beta",
   },
   {
     slug: "numbers-to-xlsx",
@@ -370,7 +360,6 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_APPLE_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Beta",
   },
   {
     slug: "numbers-to-pdf",
@@ -387,7 +376,6 @@ export const TOOLS: FolioTool[] = [
     maxTotalBytes: MAX_APPLE_BYTES,
     processing: "local",
     category: "Documents",
-    badge: "Beta",
   },
 ];
 

@@ -41,7 +41,7 @@ export default function TermsPage() {
         <section className="rounded-2xl border border-slate-200 p-5">
           <h2 className="font-semibold text-ink-950">4. Conversion limitations</h2>
           <p className="mt-2">
-            Conversion fidelity depends on the input. Complex layouts, fonts, comments, embedded objects and proprietary features may change or be lost. Browser DOCX conversion is Beta, so review the downloaded result before relying on it, especially for legal, financial, medical or safety-critical work.
+            Conversion fidelity depends on the input. Complex layouts, fonts, comments, embedded objects and proprietary features may change or be lost. Review downloaded results before relying on them, especially for legal, financial, medical or safety-critical work.
           </p>
         </section>
 
