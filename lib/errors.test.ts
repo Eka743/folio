@@ -31,6 +31,12 @@ describe("user-facing error boundary", () => {
     expect(describeError(new Error("Could not read this Markdown file. Choose a valid UTF-8 .md file and try again.")).code).toBe("invalid-markdown");
   });
 
+  it("explains oversized signature images without exposing decoder details", () => {
+    const result = describeError(new Error("The signature image is too large to use safely."));
+    expect(result.code).toBe("input");
+    expect(result.message).toMatch(/too large.*4096/);
+  });
+
   it("does not expose arbitrary runtime exception text", () => {
     const result = describeError(new Error("TypeError: detached ArrayBuffer at native code"));
     expect(result.code).toBe("unknown");

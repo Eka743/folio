@@ -6,8 +6,8 @@
  * only consume this browser-local allowlist.
  */
 
-export type BrowserSupport = "full" | "beta";
-export type ConversionStatus = "browser" | "browser-beta";
+export type BrowserSupport = "full" | "scoped";
+export type ConversionStatus = "browser" | "browser-scoped";
 export type PublicToolCategory = "PDF" | "Documents" | "Images";
 
 export interface FormatConversion {
@@ -35,6 +35,18 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     browser: "full",
     status: "browser",
     limitation: "PDF merge is exact because page streams are copied, not re-rendered.",
+  },
+  {
+    id: "sign-pdf",
+    inputs: ["pdf"],
+    output: "pdf",
+    toolSlug: "sign-pdf",
+    category: "PDF",
+    title: "Sign PDF",
+    description: "Add your signature visually to a PDF in your browser.",
+    browser: "full",
+    status: "browser",
+    limitation: "This places a visual signature into a new PDF; it does not create a certificate-based digital signature.",
   },
   {
     id: "split-pdf",
@@ -104,9 +116,9 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "docx-to-pdf",
     category: "Documents",
     title: "Word to PDF",
-    description: "Convert a .docx file to PDF in the browser. Beta.",
-    browser: "beta",
-    status: "browser-beta",
+    description: "Convert a .docx file to PDF in the browser.",
+    browser: "scoped",
+    status: "browser-scoped",
     limitation:
       "Headings, lists, tables and images are supported, but complex layouts, pagination, headers, footers and tracked changes may differ.",
   },
@@ -117,9 +129,9 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "pages-to-word",
     category: "Documents",
     title: "Pages to Word",
-    description: "Export supported Pages content to an editable Word document locally. Beta.",
-    browser: "beta",
-    status: "browser-beta",
+    description: "Export supported Pages content to an editable Word document locally.",
+    browser: "scoped",
+    status: "browser-scoped",
     limitation: "Text, tables, images and basic shapes are exported to a real DOCX package; advanced Pages layout and unsupported objects may differ or fail closed.",
   },
   {
@@ -129,9 +141,9 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "powerpoint-to-pdf",
     category: "Documents",
     title: "PowerPoint to PDF",
-    description: "Convert PowerPoint slides into a validated PDF locally. Beta.",
-    browser: "beta",
-    status: "browser-beta",
+    description: "Convert PowerPoint slides into a validated PDF locally.",
+    browser: "scoped",
+    status: "browser-scoped",
     limitation: "Text, tables, embedded PNG/JPEG images and basic shapes are supported; animations, video, OLE and unsupported graphics are not exported.",
   },
   {
@@ -141,9 +153,9 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "keynote-to-powerpoint",
     category: "Documents",
     title: "Keynote to PowerPoint",
-    description: "Export supported Keynote slides to a real PowerPoint package locally. Beta.",
-    browser: "beta",
-    status: "browser-beta",
+    description: "Export supported Keynote slides to a real PowerPoint package locally.",
+    browser: "scoped",
+    status: "browser-scoped",
     limitation: "This emits a real OOXML PPTX package, and representative Keynote 15.3.1 open/save/reopen validation is complete; advanced Apple features are not exported.",
   },
   {
@@ -153,9 +165,9 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "excel-to-pdf",
     category: "Documents",
     title: "Excel to PDF",
-    description: "Convert Excel worksheets into a readable PDF locally. Beta.",
-    browser: "beta",
-    status: "browser-beta",
+    description: "Convert Excel worksheets into a readable PDF locally.",
+    browser: "scoped",
+    status: "browser-scoped",
     limitation: "Multiple sheets, saved values, formulas, merged cells and basic formatting are represented; Excel recalculation and advanced print styling are not reproduced.",
   },
   {
@@ -179,8 +191,8 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     category: "Documents",
     title: "PDF to Markdown",
     description: "Extract useful Markdown from text-based PDFs.",
-    browser: "beta",
-    status: "browser-beta",
+    browser: "scoped",
+    status: "browser-scoped",
     limitation:
       "This reconstructs text and defensible structure; scanned pages, complex columns and exact original Markdown are not recovered.",
   },
@@ -192,8 +204,8 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     category: "Documents",
     title: "Combine documents to PDF",
     description: "Normalize PDFs, Word, Markdown and images into one PDF in your order.",
-    browser: "beta",
-    status: "browser-beta",
+    browser: "scoped",
+    status: "browser-scoped",
     limitation:
       "Each source is normalized locally; DOCX and Markdown layout remains renderer-dependent.",
   },
@@ -204,9 +216,9 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "pages-to-pdf",
     category: "Documents",
     title: "Pages to PDF",
-    description: "Export supported Apple Pages content to PDF locally. Beta.",
-    browser: "beta",
-    status: "browser-beta",
+    description: "Export supported Apple Pages content to PDF locally.",
+    browser: "scoped",
+    status: "browser-scoped",
     limitation:
       "Text, tables, images and basic shapes are supported. Animations, advanced layout features and unsupported objects fail closed instead of being silently omitted.",
   },
@@ -217,9 +229,9 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "keynote-to-pdf",
     category: "Documents",
     title: "Keynote to PDF",
-    description: "Export supported Keynote slides to PDF locally. Beta.",
-    browser: "beta",
-    status: "browser-beta",
+    description: "Export supported Keynote slides to PDF locally.",
+    browser: "scoped",
+    status: "browser-scoped",
     limitation:
       "Slide text, tables, images, basic shapes and saved chart data are supported. Animations, transitions, video and unsupported objects are not exported.",
   },
@@ -230,9 +242,9 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "numbers-to-xlsx",
     category: "Documents",
     title: "Numbers to XLSX",
-    description: "Export saved Numbers tables to an Excel workbook locally. Beta.",
-    browser: "beta",
-    status: "browser-beta",
+    description: "Export saved Numbers tables to an Excel workbook locally.",
+    browser: "scoped",
+    status: "browser-scoped",
     limitation:
       "Saved cell values and table structure are exported. Formulas are not recalculated, and charts, formatting and unsupported Numbers features are not represented in XLSX.",
   },
@@ -243,9 +255,9 @@ export const PUBLIC_WEB_FORMAT_MATRIX: FormatConversion[] = [
     toolSlug: "numbers-to-pdf",
     category: "Documents",
     title: "Numbers to PDF",
-    description: "Export supported Numbers tables to a readable PDF locally. Beta.",
-    browser: "beta",
-    status: "browser-beta",
+    description: "Export supported Numbers tables to a readable PDF locally.",
+    browser: "scoped",
+    status: "browser-scoped",
     limitation:
       "Tables and saved chart data are rendered in a clean layout; formulas are not recalculated and native print styling is not reproduced.",
   },

@@ -21,6 +21,7 @@ const PUBLIC_TOOLS = [
   "/tools/keynote-to-powerpoint",
   "/tools/excel-to-pdf",
   "/tools/pdf-to-jpg",
+  "/tools/sign-pdf",
   "/tools/rotate-pdf",
   "/tools/compress-pdf",
   "/tools/markdown-to-pdf",
@@ -36,6 +37,10 @@ const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
+const HUGE_SIGNATURE_PNG = Buffer.alloc(24);
+Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(HUGE_SIGNATURE_PNG);
+HUGE_SIGNATURE_PNG.writeUInt32BE(5000, 16);
+HUGE_SIGNATURE_PNG.writeUInt32BE(5000, 20);
 
 async function expectNoUserHorizontalOverflow(page) {
   const overflow = await page.evaluate(() => {
@@ -80,6 +85,8 @@ test.beforeAll(async () => {
     textPdf: writeFixture("text.pdf", textPdf),
     secondPage: writeFixture("second-page.pdf", onePage),
     image: writeFixture("pixel.png", ONE_PIXEL_PNG),
+    hugeImage: writeFixture("huge-signature.png", HUGE_SIGNATURE_PNG),
+    svgImage: writeFixture("signature.svg", Buffer.from("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"></svg>", "utf8")),
     docx: writeFixture("simple.docx", docx),
     richDocx: writeFixture("realistic.docx", richDocx),
     pages: writeFixture("proposal.pages", pages),
@@ -197,7 +204,8 @@ test("all current browser-local tools produce valid results", async ({ page }) =
   await expectJpeg(page, await zip.file(zipNames[0]).async("nodebuffer"));
 
   await page.goto("/tools/docx-to-pdf");
-  await expect(page.locator("body")).toContainText("Beta");
+  await expect(page.locator("body")).toContainText("Complex Word layouts");
+  await expect(page.locator("body")).not.toContainText("Beta");
   await page.locator('input[type="file"]').setInputFiles(fixtures.docx);
   const docxPdf = await downloadFromResult(page, "Convert to PDF", /^Download /);
   await expectPdf(docxPdf, 1);
@@ -250,6 +258,232 @@ test("repeated local reads remain valid for images, DOCX and Apple documents", a
   }
 });
 
+test("single-file tools make selection state explicit and restore the empty state", async ({ page }) => {
+  const cases = [
+    ["split-pdf", fixtures.twoPage, "two-page.pdf", "PDF document"],
+    ["pages-to-word", fixtures.pages, "proposal.pages", "Pages document"],
+    ["powerpoint-to-pdf", fixtures.pptx, "presentation.pptx", "PowerPoint presentation"],
+    ["keynote-to-powerpoint", fixtures.keynote, "presentation.key", "Keynote presentation"],
+    ["excel-to-pdf", fixtures.xlsx, "budget.xlsx", "Excel workbook"],
+    ["pdf-to-jpg", fixtures.twoPage, "two-page.pdf", "PDF document"],
+    ["sign-pdf", fixtures.twoPage, "two-page.pdf", "PDF document"],
+    ["rotate-pdf", fixtures.twoPage, "two-page.pdf", "PDF document"],
+    ["compress-pdf", fixtures.twoPage, "two-page.pdf", "PDF document"],
+    ["markdown-to-pdf", fixtures.markdown, "guide.md", "Markdown document"],
+    ["pdf-to-markdown", fixtures.twoPage, "two-page.pdf", "PDF document"],
+    ["pages-to-pdf", fixtures.pages, "proposal.pages", "Pages document"],
+    ["keynote-to-pdf", fixtures.keynote, "presentation.key", "Keynote presentation"],
+    ["numbers-to-xlsx", fixtures.numbers, "budget.numbers", "Numbers spreadsheet"],
+    ["numbers-to-pdf", fixtures.numbers, "budget.numbers", "Numbers spreadsheet"],
+  ];
+
+  for (const [route, fixture, fileName, typeLabel] of cases) {
+    await page.goto(`/tools/${route}`);
+    const dropzone = page.locator('[data-dropzone="true"]');
+    await expect(dropzone).toBeVisible();
+    await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixture);
+
+    await expect(dropzone).toHaveCount(0);
+    const selected = page.locator('[data-selected-file-preview-list="true"]');
+    await expect(selected).toBeVisible();
+    await expect(selected).toContainText(fileName);
+    await expect(selected).toContainText(typeLabel);
+    await expect(page.getByRole("button", { name: `Replace ${fileName}` })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Remove ${fileName}` })).toBeVisible();
+
+    await page.getByRole("button", { name: `Remove ${fileName}` }).click();
+    await expect(dropzone).toBeVisible();
+    await expect(selected).toHaveCount(0);
+    await expect(dropzone).toBeFocused();
+  }
+});
+
+test("Pages to PDF supports explicit replace, same-file reselect, and a clear primary action", async ({ page }) => {
+  await page.goto("/tools/pages-to-pdf");
+  const dropzone = page.locator('[data-dropzone="true"]');
+  await expect(dropzone).toBeVisible();
+
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.pages);
+  await expect(dropzone).toHaveCount(0);
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toContainText("proposal.pages");
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toContainText("Pages document");
+
+  const actionButtons = page.locator('[data-tool-actions="true"] button');
+  await expect(actionButtons).toHaveText(["Start over", "Convert to PDF"]);
+
+  const replaceButton = page.getByRole("button", { name: "Replace proposal.pages" });
+  const replaceWith = async (files) => {
+    const chooserPromise = page.waitForEvent("filechooser");
+    await replaceButton.click();
+    const chooser = await chooserPromise;
+    await chooser.setFiles(files);
+  };
+
+  await replaceWith(fixtures.pages);
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toContainText("proposal.pages");
+
+  const replacementBytes = readFileSync(fixtures.pages);
+  await replaceWith({
+    name: "replacement.pages",
+    mimeType: "application/vnd.apple.pages",
+    buffer: replacementBytes,
+  });
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toContainText("replacement.pages");
+  await expect(page.getByRole("button", { name: "Replace replacement.pages" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Remove replacement.pages" }).click();
+  await expect(dropzone).toBeVisible();
+  await expect(dropzone).toBeFocused();
+
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.pages);
+  const output = await downloadFromResult(page, "Convert to PDF", /^Download /);
+  await expectPdf(output, 1);
+
+  await page.getByRole("button", { name: "Start over" }).click();
+  await expect(dropzone).toBeVisible();
+  await expect(page.locator('[data-selected-file-preview-list="true"]')).toHaveCount(0);
+});
+
+test("Sign PDF keeps the workflow local and exports draw, type, and image signatures", async ({ page }) => {
+  const requests = [];
+  page.on("request", (request) => requests.push(request));
+
+  await page.goto("/tools/sign-pdf");
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.twoPage);
+  const replaceChooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Replace two-page.pdf" }).click();
+  await (await replaceChooser).setFiles(fixtures.twoPage);
+  await expect(page.getByRole("button", { name: "Replace two-page.pdf" })).toBeVisible();
+  await page.getByRole("button", { name: "Remove two-page.pdf" }).click();
+  await expect(page.locator('[data-dropzone="true"]')).toBeVisible();
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.twoPage);
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
+  await expect(page.locator('[data-sign-pdf-workspace="true"]')).toBeVisible();
+  await expect(page.locator('[data-sign-pdf-viewer] canvas')).toBeVisible();
+
+  const drawCanvas = page.locator('canvas[aria-label="Draw your signature"]');
+  const canvasBox = await drawCanvas.boundingBox();
+  if (!canvasBox) throw new Error("Draw canvas did not render.");
+  const points = [
+    [canvasBox.x + canvasBox.width * 0.12, canvasBox.y + canvasBox.height * 0.64],
+    [canvasBox.x + canvasBox.width * 0.25, canvasBox.y + canvasBox.height * 0.36],
+    [canvasBox.x + canvasBox.width * 0.38, canvasBox.y + canvasBox.height * 0.66],
+    [canvasBox.x + canvasBox.width * 0.55, canvasBox.y + canvasBox.height * 0.33],
+    [canvasBox.x + canvasBox.width * 0.75, canvasBox.y + canvasBox.height * 0.62],
+  ];
+  await page.mouse.move(...points[0]);
+  await page.mouse.down();
+  for (const point of points.slice(1)) await page.mouse.move(...point, { steps: 4 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "Use signature" }).click();
+  await expect(page.locator('[data-signature-placement="true"]')).toHaveCount(1);
+
+  const placement = page.locator('[data-signature-placement="true"]').first();
+  const placementBox = await placement.boundingBox();
+  if (!placementBox) throw new Error("Drawn signature was not placed.");
+  await page.mouse.move(placementBox.x + placementBox.width / 2, placementBox.y + placementBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(placementBox.x + placementBox.width / 2 + 24, placementBox.y + placementBox.height / 2 + 12, { steps: 4 });
+  await page.mouse.up();
+  const resize = page.getByRole("button", { name: "Resize signature on page 1" });
+  const resizeBox = await resize.boundingBox();
+  if (!resizeBox) throw new Error("Resize handle was not rendered.");
+  await page.mouse.move(resizeBox.x + resizeBox.width / 2, resizeBox.y + resizeBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(resizeBox.x + 22, resizeBox.y + 12, { steps: 4 });
+  await page.mouse.up();
+
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(page.getByLabel("Page number")).toHaveValue("2");
+  await expect(page.getByText("Rendering page…", { exact: true })).toBeHidden();
+  await page.getByRole("button", { name: /Place Drawn signature again/ }).click();
+  await expect(page.locator('[data-signature-placement="true"]')).toHaveCount(1);
+  const drawn = await downloadFromResult(page, "Finish & download", /^Download /);
+  await expectPdf(drawn, 2);
+  expect(drawn.toString("latin1")).toContain("/Subtype /Image");
+
+  await page.getByRole("button", { name: "Start over" }).first().click();
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.twoPage);
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
+  await page.getByRole("tab", { name: "Type" }).click();
+  await page.getByLabel("Your name").fill("Ada Lovelace");
+  await page.getByRole("button", { name: "Use signature" }).click();
+  const typed = await downloadFromResult(page, "Finish & download", /^Download /);
+  await expectPdf(typed, 2);
+
+  await page.getByRole("button", { name: "Start over" }).first().click();
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.twoPage);
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
+  await page.getByRole("tab", { name: "Upload" }).click();
+  await page.locator('input[aria-label="Upload signature image"]').setInputFiles(fixtures.corruptImage);
+  await expect(page.locator('[data-sign-pdf-workspace="true"] [role="alert"]').filter({ hasText: /valid PNG or JPG|couldn't use that image/i })).toBeVisible();
+  await page.locator('input[aria-label="Upload signature image"]').setInputFiles(fixtures.hugeImage);
+  await expect(page.locator('[data-sign-pdf-workspace="true"] [role="alert"]').filter({ hasText: /too large/i })).toBeVisible();
+  await page.locator('input[aria-label="Upload signature image"]').setInputFiles(fixtures.svgImage);
+  await expect(page.locator('[data-sign-pdf-workspace="true"] [role="alert"]').filter({ hasText: /valid PNG or JPG/i })).toBeVisible();
+  await page.locator('input[aria-label="Upload signature image"]').setInputFiles({
+    name: "signature.png",
+    mimeType: "image/png",
+    buffer: ONE_PIXEL_PNG,
+  });
+  const uploaded = await downloadFromResult(page, "Finish & download", /^Download /);
+  await expectPdf(uploaded, 2);
+
+  const externalRequests = requests.filter((request) => {
+    const url = new URL(request.url());
+    return ["http:", "https:"].includes(url.protocol) && url.origin !== BASE_ORIGIN;
+  });
+  expect(externalRequests).toEqual([]);
+  const unexpectedRequests = requests.filter((request) => {
+    const url = new URL(request.url());
+    // Next development sends a stack-frame lookup after the intentionally
+    // rejected corrupt-image fixture; it does not carry document content.
+    if (url.pathname === "/__nextjs_original-stack-frames") return false;
+    return request.method() !== "GET" || /\/api\/|upload|multipart/i.test(request.url());
+  });
+  expect(unexpectedRequests.map((request) => `${request.method()} ${request.url()}`)).toEqual([]);
+});
+
+test("Sign PDF stays usable and exportable at mobile widths", async ({ page }) => {
+  for (const width of [375, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/tools/sign-pdf");
+    await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.onePage);
+    await page.getByRole("button", { name: "Open signing workspace" }).click();
+    await expect(page.locator('[data-sign-pdf-workspace="true"]')).toBeVisible();
+    await expectNoUserHorizontalOverflow(page);
+    await page.getByRole("tab", { name: "Type" }).click();
+    await page.getByLabel("Your name").fill("Ada Lovelace");
+    await page.getByRole("button", { name: "Use signature" }).click();
+    const output = await downloadFromResult(page, "Finish & download", /^Download /);
+    await expectPdf(output, 1);
+    await expectNoUserHorizontalOverflow(page);
+  }
+});
+
+test("Sign PDF recovers from invalid PDF selection", async ({ page }) => {
+  await page.goto("/tools/sign-pdf");
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.corruptPdf);
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
+  await expect(page.locator('[data-sign-pdf-workspace="true"] [role="alert"]').filter({ hasText: /Could not read this PDF/i })).toBeVisible();
+  await page.getByRole("button", { name: "Start over" }).click();
+
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles({ name: "empty.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(0) });
+  await expect(page.locator('div[role="alert"]').filter({ hasText: "0 bytes" })).toBeVisible();
+  await page.getByRole("button", { name: "Start over" }).click();
+
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles({ name: "wrong.png", mimeType: "image/png", buffer: readFileSync(fixtures.onePage) });
+  await expect(page.locator('div[role="alert"]').filter({ hasText: "accepts .pdf" })).toBeVisible();
+  await page.getByRole("button", { name: "Start over" }).click();
+
+  await page.locator('input[data-dropzone-input="true"]').setInputFiles(fixtures.onePage);
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
+  await page.getByRole("tab", { name: "Type" }).click();
+  await page.getByLabel("Your name").fill("Grace Hopper");
+  await page.getByRole("button", { name: "Use signature" }).click();
+  await expectPdf(await downloadFromResult(page, "Finish & download", /^Download /), 1);
+});
+
 test("PDF to JPG stops safely before rendering an excessive page count", async ({ page }) => {
   await page.goto("/tools/pdf-to-jpg");
   await page.locator('input[type="file"]').setInputFiles(fixtures.manyPage);
@@ -297,6 +531,33 @@ test("Combine documents to PDF normalizes mixed local sources without skipping",
     return ["http:", "https:"].includes(url.protocol) && url.origin !== BASE_ORIGIN;
   });
   expect(externalRequests).toEqual([]);
+});
+
+test("Combine documents accepts the same PDF twice", async ({ page }) => {
+  await page.goto("/tools/combine-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles([fixtures.onePage, fixtures.onePage]);
+  const output = await downloadFromResult(page, "Combine 2 documents into PDF", /^Download /);
+  await expectPdf(output, 2);
+});
+
+test("Combine keeps ten mixed local sources bounded and ordered", async ({ page }) => {
+  await page.goto("/tools/combine-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles([
+    fixtures.onePage,
+    fixtures.docx,
+    fixtures.image,
+    fixtures.markdown,
+    fixtures.twoPage,
+    fixtures.docx,
+    fixtures.image,
+    fixtures.markdown,
+    fixtures.secondPage,
+    fixtures.docx,
+  ]);
+  await expect(page.getByRole("button", { name: "Combine 10 documents into PDF" })).toBeVisible();
+  const output = await downloadFromResult(page, "Combine 10 documents into PDF", /^Download /);
+  await expectPdf(output, 17);
+  await expect(page.locator("body")).not.toContainText(/I\/O read operation failed|TypeError|stack trace/i);
 });
 
 test("selected files use real PDF and image previews with honest format fallbacks", async ({ page }) => {
@@ -473,7 +734,7 @@ test("Markdown conversion fails closed for scanned PDFs and renders hostile Mark
   await expect(page.locator('div[role="alert"]').filter({ hasText: /too large to fit|more than/i })).toBeVisible();
 });
 
-test("realistic DOCX content produces a parseable multi-page Beta PDF", async ({ page }) => {
+test("realistic DOCX content produces a parseable multi-page PDF", async ({ page }) => {
   await page.goto("/tools/docx-to-pdf");
   await page.locator('input[type="file"]').setInputFiles(fixtures.richDocx);
   const output = await downloadFromResult(page, "Convert to PDF", /^Download /);
@@ -548,8 +809,17 @@ test("Universal Drop detects content and hands off to the existing tools", async
   const drop = page.locator('section[aria-labelledby="universal-drop-heading"]');
   await drop.locator('input[type="file"]').setInputFiles(fixtures.onePage);
   await expect(drop).toContainText("Detected as PDF");
-  await expect(drop.getByRole("button", { name: "Merge PDFs" })).toBeVisible();
-  await drop.getByRole("button", { name: "Merge PDFs" }).click();
+  await expect(drop.getByRole("button", { name: "Sign PDF", exact: true })).toBeVisible();
+  await drop.getByRole("button", { name: "Sign PDF", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Sign PDF" })).toBeVisible();
+  await page.getByRole("button", { name: "Open signing workspace" }).click();
+  await expect(page.locator('[data-sign-pdf-workspace="true"]')).toBeVisible();
+  await page.getByRole("button", { name: "Start over" }).first().click();
+  await page.goto("/");
+  const refreshedDrop = page.locator('section[aria-labelledby="universal-drop-heading"]');
+  await refreshedDrop.locator('input[type="file"]').setInputFiles(fixtures.onePage);
+  await expect(refreshedDrop.getByRole("button", { name: "Merge PDFs" })).toBeVisible();
+  await refreshedDrop.getByRole("button", { name: "Merge PDFs" }).click();
   await expect(page.getByRole("heading", { name: "Merge PDF" })).toBeVisible();
   const toolInput = page.getByLabel("Select .pdf files");
   await toolInput.setInputFiles(fixtures.onePage);
@@ -560,10 +830,10 @@ test("Universal Drop detects content and hands off to the existing tools", async
   const universalInput = page.locator('section[aria-labelledby="universal-drop-heading"] input[type="file"]');
   await universalInput.setInputFiles(fixtures.pages);
   await expect(page.locator('section[aria-labelledby="universal-drop-heading"]')).toContainText("Apple Pages document");
-  await expect(page.getByText("Apple export is Beta.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export embedded PDF preview", exact: true })).toBeVisible();
+  await expect(page.getByText("Apple document note")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open included PDF preview", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Convert Pages to PDF", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Export embedded PDF preview", exact: true }).click();
+  await page.getByRole("button", { name: "Open included PDF preview", exact: true }).click();
   const previewHref = await page.getByRole("link", { name: "Open preview in a new tab", exact: true }).getAttribute("href");
   expect(previewHref).toMatch(/^blob:/);
   await expect(page.getByRole("button", { name: "Start over", exact: true })).toBeVisible();
@@ -597,6 +867,7 @@ test("Universal Drop accepts multi-file batches and keeps order controls usable"
   const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
   await section.locator('input[type="file"]').setInputFiles([fixtures.onePage, fixtures.secondPage]);
   await expect(section.locator('[data-universal-file-count="2"]')).toBeVisible();
+  await expect(section.locator('[data-dropzone-state="compact"]')).toBeVisible();
   await expect(section.getByRole("button", { name: "Merge 2 PDFs" })).toBeVisible();
   await section.getByRole("button", { name: "Move second-page.pdf up" }).click();
   await expect(section.getByRole("list", { name: "Selected files" }).locator("li").first()).toContainText("second-page.pdf");
@@ -661,13 +932,33 @@ test("Universal Drop identifies images, DOCX and Apple containers without overpr
     const universal = page.locator('section[aria-labelledby="universal-drop-heading"]');
     await universal.locator('input[type="file"]').setInputFiles(fixture);
     await expect(universal).toContainText(`Detected as ${label}`);
-    await expect(universal).toContainText("Apple export is Beta.");
+    await expect(universal).toContainText("Apple document note");
     await expect(universal.getByRole("button", { name: label.includes("Keynote") ? "Convert Keynote to PDF" : "Convert Numbers to XLSX" })).toBeVisible();
   }
 });
 
 test("Universal Drop exports Apple documents locally and validates the outputs", async ({ page }) => {
   const workerUrls = [];
+  await page.addInitScript(() => {
+    const OriginalWorker = window.Worker;
+    window.__folioWorkerCreations = [];
+    window.Worker = class extends OriginalWorker {
+      constructor(scriptURL, options) {
+        const record = {
+          url: String(scriptURL),
+          name: options?.name ?? null,
+          terminated: false,
+        };
+        super(scriptURL, options);
+        const terminate = this.terminate.bind(this);
+        this.terminate = () => {
+          record.terminated = true;
+          return terminate();
+        };
+        window.__folioWorkerCreations.push(record);
+      }
+    };
+  });
   page.on("worker", (worker) => workerUrls.push(worker.url()));
   await page.goto("/");
   const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
@@ -676,7 +967,15 @@ test("Universal Drop exports Apple documents locally and validates the outputs",
   await section.getByRole("button", { name: "Convert Pages to PDF" }).click();
   const pagesOutput = await downloadFromResult(page, "Convert to PDF", /^Download /);
   await expectPdf(pagesOutput, 1);
-  expect(workerUrls.some((url) => /iwork/i.test(url))).toBe(true);
+  const workerCreations = await page.evaluate(() => window.__folioWorkerCreations ?? []);
+  const iworkWorkers = workerCreations.filter(({ name }) => name === "folio-iwork");
+  expect(iworkWorkers).toHaveLength(1);
+  const iworkWorker = iworkWorkers[0];
+  const iworkWorkerUrl = new URL(iworkWorker.url, BASE_ORIGIN);
+  expect(iworkWorkerUrl.origin).toBe(BASE_ORIGIN);
+  expect(iworkWorkerUrl.pathname).toMatch(/^\/_next\/static\//);
+  expect(workerUrls).toContain(iworkWorkerUrl.href);
+  expect(iworkWorker.terminated).toBe(true);
 
   await page.goto("/tools/keynote-to-pdf");
   await page.locator('input[type="file"]').setInputFiles(fixtures.keynote);

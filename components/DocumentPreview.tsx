@@ -9,6 +9,7 @@ export type ListedFile = {
   file: File;
   id: string;
   hasEmbeddedPreview?: boolean;
+  sourceBytes?: Uint8Array;
 };
 
 type PreviewKind = "pdf" | "image" | "docx" | "markdown" | "pptx" | "xlsx" | "pages" | "keynote" | "numbers" | "file";
@@ -129,7 +130,7 @@ function PreviewSkeleton({ label }: { label: string }) {
   );
 }
 
-function PdfPreview({ file, compact }: { file: File; compact: boolean }) {
+function PdfPreview({ file, compact, sourceBytes }: { file: File; compact: boolean; sourceBytes?: Uint8Array }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [state, setState] = useState<PreviewState>("loading");
 
@@ -139,7 +140,7 @@ function PdfPreview({ file, compact }: { file: File; compact: boolean }) {
     if (!canvas) return () => { cancelled = true; };
     canvas.width = 0;
     canvas.height = 0;
-    const scheduled = schedulePdfThumbnail(file, canvas);
+    const scheduled = schedulePdfThumbnail(file, canvas, sourceBytes);
     scheduled.promise.then(
       () => {
         if (!cancelled) setState("ready");
@@ -154,7 +155,7 @@ function PdfPreview({ file, compact }: { file: File; compact: boolean }) {
       canvas.width = 0;
       canvas.height = 0;
     };
-  }, [file]);
+  }, [file, sourceBytes]);
 
   return (
     <PreviewFrame kind="pdf" state={state} compact={compact}>
@@ -204,7 +205,7 @@ function ImagePreview({ file, compact }: { file: File; compact: boolean }) {
   );
 }
 
-function ApplePreview({ file, compact, hasEmbeddedPreview }: { file: File; compact: boolean; hasEmbeddedPreview: boolean }) {
+function ApplePreview({ file, compact, hasEmbeddedPreview, sourceBytes }: { file: File; compact: boolean; hasEmbeddedPreview: boolean; sourceBytes?: Uint8Array }) {
   const [url, setUrl] = useState<string | null>(null);
   const [state, setState] = useState<PreviewState>(hasEmbeddedPreview ? "loading" : "ready");
 
@@ -214,7 +215,7 @@ function ApplePreview({ file, compact, hasEmbeddedPreview }: { file: File; compa
     }
     let active = true;
     let createdUrl: string | null = null;
-    readEmbeddedPdfPreview(file).then((bytes) => {
+    readEmbeddedPdfPreview(file, {}, sourceBytes).then((bytes) => {
       if (!active) return;
       const copy = new Uint8Array(bytes.length);
       copy.set(bytes);
@@ -229,7 +230,7 @@ function ApplePreview({ file, compact, hasEmbeddedPreview }: { file: File; compa
       active = false;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [file, hasEmbeddedPreview]);
+  }, [file, hasEmbeddedPreview, sourceBytes]);
 
   if (!hasEmbeddedPreview) return <FormatPreview kind={previewKind(file)} compact={compact} />;
   return (
@@ -260,13 +261,13 @@ function FormatPreview({ kind, compact }: { kind: PreviewKind; compact: boolean 
  * A visual enhancement only. The semantic filename stays outside this
  * decorative region so a failed preview never blocks the underlying tool.
  */
-export function DocumentPreview({ file, compact = false, hasEmbeddedPreview = false }: { file: File; compact?: boolean; hasEmbeddedPreview?: boolean }) {
+export function DocumentPreview({ file, compact = false, hasEmbeddedPreview = false, sourceBytes }: { file: File; compact?: boolean; hasEmbeddedPreview?: boolean; sourceBytes?: Uint8Array }) {
   const kind = previewKind(file);
   const key = `${kind}:${file.name}:${file.size}:${file.lastModified}:${hasEmbeddedPreview}`;
-  if (kind === "pdf") return <PdfPreview key={key} file={file} compact={compact} />;
+  if (kind === "pdf") return <PdfPreview key={key} file={file} compact={compact} sourceBytes={sourceBytes} />;
   if (kind === "image") return <ImagePreview key={key} file={file} compact={compact} />;
   if (kind === "pages" || kind === "keynote" || kind === "numbers") {
-    return <ApplePreview key={key} file={file} compact={compact} hasEmbeddedPreview={hasEmbeddedPreview} />;
+    return <ApplePreview key={key} file={file} compact={compact} hasEmbeddedPreview={hasEmbeddedPreview} sourceBytes={sourceBytes} />;
   }
   return <FormatPreview key={key} kind={kind} compact={compact} />;
 }
@@ -279,6 +280,8 @@ export function FileList({
   onRemove,
   onMove,
   onAddFiles,
+  onReplace,
+  replaceAccepts,
   listRef,
 }: {
   items: ListedFile[];
@@ -288,9 +291,12 @@ export function FileList({
   onRemove: (id: string) => void;
   onMove: (id: string, dir: -1 | 1) => void;
   onAddFiles?: (files: File[]) => void;
+  onReplace?: (files: File[]) => void;
+  replaceAccepts?: string;
   listRef?: React.RefObject<HTMLOListElement | null>;
 }) {
   const addInputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
   if (items.length === 0) return null;
   return (
     <div data-selected-file-preview-list="true">
@@ -303,12 +309,13 @@ export function FileList({
         {items.map((item, index) => (
           <li
             key={item.id}
+            data-selected-file-card="true"
             className="min-w-0 rounded-2xl border border-slate-200 bg-white p-2.5 shadow-[0_1px_2px_rgba(16,20,24,0.04)]"
             aria-posinset={index + 1}
             aria-setsize={items.length}
           >
             <div className="relative">
-              <DocumentPreview file={item.file} hasEmbeddedPreview={item.hasEmbeddedPreview} />
+              <DocumentPreview file={item.file} hasEmbeddedPreview={item.hasEmbeddedPreview} sourceBytes={item.sourceBytes} />
               {reorderable && (
                 <span className="absolute left-2 top-2 flex h-7 min-w-7 items-center justify-center rounded-full bg-ink-950 px-2 text-xs font-semibold tabular-nums text-white shadow-sm" aria-label={`Position ${index + 1} of ${items.length}`}>
                   {index + 1}
@@ -319,7 +326,9 @@ export function FileList({
               <p className="truncate text-center text-sm font-medium text-ink-900" title={item.file.name}>
                 {item.file.name}
               </p>
-              <p className="mt-0.5 text-center text-xs text-ink-500">{formatBytes(item.file.size)}</p>
+              <p className="mt-0.5 text-center text-xs text-ink-500">
+                {documentLabel(previewKind(item.file))} · {formatBytes(item.file.size)}
+              </p>
             </div>
             <div className="mt-2 flex flex-wrap justify-center gap-1" role="group" aria-label={`Actions for ${item.file.name}`}>
               {reorderable && (
@@ -343,6 +352,23 @@ export function FileList({
                     ↓
                   </button>
                 </>
+              )}
+              {onReplace && replaceAccepts && items.length === 1 && (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    if (!replaceInputRef.current) return;
+                    // Clear before opening so selecting the same file again
+                    // still dispatches a change event in every browser.
+                    replaceInputRef.current.value = "";
+                    replaceInputRef.current.click();
+                  }}
+                  aria-label={`Replace ${item.file.name}`}
+                  className="min-h-10 rounded-lg border border-slate-200 px-3 py-1 text-sm font-medium text-ink-900 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 disabled:opacity-40"
+                >
+                  Replace
+                </button>
               )}
               <button
                 type="button"
@@ -383,6 +409,21 @@ export function FileList({
             }}
           />
         </div>
+      )}
+      {onReplace && replaceAccepts && items.length === 1 && (
+        <input
+          ref={replaceInputRef}
+          type="file"
+          accept={replaceAccepts}
+          data-replace-input="true"
+          disabled={disabled}
+          className="sr-only"
+          aria-label="Replace selected file"
+          onChange={(event) => {
+            const files = [...(event.target.files ?? [])];
+            if (files.length > 0) onReplace(files);
+          }}
+        />
       )}
     </div>
   );

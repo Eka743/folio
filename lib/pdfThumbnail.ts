@@ -48,6 +48,7 @@ function throwIfAborted(signal: AbortSignal): void {
 export function schedulePdfThumbnail(
   file: File,
   canvas: HTMLCanvasElement,
+  sourceBytes?: Uint8Array,
 ): { promise: Promise<void>; cancel: () => void } {
   const controller = new AbortController();
   let queued = true;
@@ -61,7 +62,7 @@ export function schedulePdfThumbnail(
     signal: controller.signal,
     run: async () => {
       queued = false;
-      await renderPdfThumbnail(file, canvas, controller.signal);
+      await renderPdfThumbnail(file, canvas, controller.signal, sourceBytes);
     },
     resolve: resolvePromise,
     reject: rejectPromise,
@@ -86,6 +87,7 @@ async function renderPdfThumbnail(
   file: File,
   canvas: HTMLCanvasElement,
   signal: AbortSignal,
+  sourceBytes?: Uint8Array,
 ): Promise<void> {
   throwIfAborted(signal);
   const pdfjs = await import("pdfjs-dist");
@@ -93,7 +95,9 @@ async function renderPdfThumbnail(
     pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
   }
 
-  const data = await readFileBytes(file);
+  // PDF.js may transfer its input to the worker. Keep the inspection snapshot
+  // reusable for the actual operation by giving the preview its own copy.
+  const data = sourceBytes ? new Uint8Array(sourceBytes) : await readFileBytes(file);
   throwIfAborted(signal);
 
   const loading = pdfjs.getDocument({ data });

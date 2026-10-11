@@ -7,34 +7,33 @@ No account, no uploads, no trackers.
 Universal Drop is the multi-file entry point: it inspects file content locally,
 keeps the selected order, and offers only browser-local actions supported by
 the whole batch. Mixed PDF, DOCX, Markdown and JPG/PNG batches can be
-normalized into one PDF; multiple DOCX files are also supported by Word → PDF
-Beta.
+normalized into one PDF; multiple DOCX files are also supported by Word → PDF.
 
 ## Public web tools
 
 Every public tool below processes files locally in the browser. Results are
 generated in the current tab and downloaded by your browser.
 
-| Tool | Route | What it does | Status |
+| Tool | Route | What it does | Availability |
 | ---- | ----- | ------------ | ------ |
-| Merge PDF | `/tools/merge-pdf` | Combine 2–20 PDFs in your order | Browser |
-| Split PDF | `/tools/split-pdf` | Extract pages with `1-3,5,8-10` syntax | Browser |
-| JPG/PNG → PDF | `/tools/images-to-pdf` | Convert up to 30 images, one per A4 page | Browser |
-| Word → PDF | `/tools/docx-to-pdf` | Convert one or more `.docx` files into one PDF | Browser Beta |
-| PDF → JPG | `/tools/pdf-to-jpg` | Render pages as JPGs, one download or ZIP | Browser |
-| Rotate PDF | `/tools/rotate-pdf` | Rotate all or selected pages | Browser |
-| Compress PDF | `/tools/compress-pdf` | Rewrite PDFs and show honest size changes | Browser |
-| Markdown → PDF | `/tools/markdown-to-pdf` | Render Markdown as a polished A4 PDF | Browser |
-| PDF → Markdown | `/tools/pdf-to-markdown` | Extract readable structure from text PDFs | Browser Beta |
-| Combine documents → PDF | `/tools/combine-to-pdf` | Join PDFs, DOCX, Markdown and JPG/PNG in order | Browser Beta |
-| Pages → Word | `/tools/pages-to-word` | Export supported Pages content to DOCX | Browser Beta |
-| PowerPoint → PDF | `/tools/powerpoint-to-pdf` | Render supported PowerPoint slides locally | Browser Beta |
-| Keynote → PowerPoint | `/tools/keynote-to-powerpoint` | Export supported Keynote slides to PPTX | Browser Beta |
-| Excel → PDF | `/tools/excel-to-pdf` | Render supported Excel worksheets locally | Browser Beta |
-| Pages → PDF | `/tools/pages-to-pdf` | Export supported Pages content to PDF | Browser Beta |
-| Keynote → PDF | `/tools/keynote-to-pdf` | Export supported Keynote slides to PDF | Browser Beta |
-| Numbers → XLSX | `/tools/numbers-to-xlsx` | Export saved Numbers tables to XLSX | Browser Beta |
-| Numbers → PDF | `/tools/numbers-to-pdf` | Render saved Numbers tables locally | Browser Beta |
+| Merge PDF | `/tools/merge-pdf` | Combine 2–20 PDFs in your order | Browser-local |
+| Split PDF | `/tools/split-pdf` | Extract pages with `1-3,5,8-10` syntax | Browser-local |
+| JPG/PNG → PDF | `/tools/images-to-pdf` | Convert up to 30 images, one per A4 page | Browser-local |
+| Word → PDF | `/tools/docx-to-pdf` | Convert one or more `.docx` files into one PDF | Browser-local |
+| PDF → JPG | `/tools/pdf-to-jpg` | Render pages as JPGs, one download or ZIP | Browser-local |
+| Rotate PDF | `/tools/rotate-pdf` | Rotate all or selected pages | Browser-local |
+| Compress PDF | `/tools/compress-pdf` | Rewrite PDFs and show honest size changes | Browser-local |
+| Markdown → PDF | `/tools/markdown-to-pdf` | Render Markdown as a polished A4 PDF | Browser-local |
+| PDF → Markdown | `/tools/pdf-to-markdown` | Extract readable structure from text PDFs | Browser-local |
+| Combine documents → PDF | `/tools/combine-to-pdf` | Join PDFs, DOCX, Markdown and JPG/PNG in order | Browser-local |
+| Pages → Word | `/tools/pages-to-word` | Export supported Pages content to DOCX | Browser-local |
+| PowerPoint → PDF | `/tools/powerpoint-to-pdf` | Render supported PowerPoint slides locally | Browser-local |
+| Keynote → PowerPoint | `/tools/keynote-to-powerpoint` | Export supported Keynote slides to PPTX | Browser-local |
+| Excel → PDF | `/tools/excel-to-pdf` | Render supported Excel worksheets locally | Browser-local |
+| Pages → PDF | `/tools/pages-to-pdf` | Export supported Pages content to PDF | Browser-local |
+| Keynote → PDF | `/tools/keynote-to-pdf` | Export supported Keynote slides to PDF | Browser-local |
+| Numbers → XLSX | `/tools/numbers-to-xlsx` | Export saved Numbers tables to XLSX | Browser-local |
+| Numbers → PDF | `/tools/numbers-to-pdf` | Render saved Numbers tables locally | Browser-local |
 
 ## Local selection previews
 
@@ -91,6 +90,9 @@ npm audit
 npm run release:check
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development principles, testing
+guidance and pull-request expectations.
+
 Node 20.19+ is required by the current Next.js/tooling release.
 
 ## Deployment
@@ -102,13 +104,13 @@ Node 20.19+ is required by the current Next.js/tooling release.
 
 ## Known limitations
 
-- **DOCX → PDF (Beta):** headings, bold/italic, lists, tables and images are
+- **DOCX → PDF:** headings, bold/italic, lists, tables and images are
   supported, but pagination, fonts, headers/footers, footnotes, text boxes and
   tracked changes may differ. Multiple DOCX files are converted sequentially
   and joined in the selected order. Review before sharing.
 - **Markdown → PDF:** raw HTML is disabled and remote images are omitted rather
   than fetched. The output is laid out for readable A4 pages.
-- **PDF → Markdown (Beta):** this is text extraction and reconstruction, not a
+- **PDF → Markdown:** this is text extraction and reconstruction, not a
   perfect inverse of the source. Scanned pages, complex columns, tables and
   exact original formatting may need manual cleanup.
 - **Compress PDF:** client-side optimization only. Already-optimized PDFs may
@@ -117,12 +119,11 @@ Node 20.19+ is required by the current Next.js/tooling release.
 - **PDF → JPG:** very large PDFs may be slow or memory-heavy on low-end devices.
 - **Apple, PowerPoint and Excel:** Pages, Keynote and Numbers are detected
   locally. Pages → PDF, Pages → DOCX, Keynote → PDF, Keynote → PPTX,
-  Numbers → XLSX, Numbers → PDF, PowerPoint → PDF and Excel → PDF are scoped
-  Beta exports for supported structured content; unsupported
-  content fails closed. An embedded Apple QuickLook PDF is preview-only.
-  Representative reverse outputs were opened, saved and reopened in Pages,
-  Keynote and Numbers 15.3.1; advanced native features remain outside the
-  bounded browser writers.
+  Numbers → XLSX, Numbers → PDF, PowerPoint → PDF and Excel → PDF support
+  structured content in the browser; unsupported content fails closed. An
+  embedded Apple QuickLook PDF is preview-only. Representative reverse outputs
+  were opened, saved and reopened in Pages, Keynote and Numbers 15.3.1;
+  advanced native features remain outside the browser writers.
 - **File caps:** individual PDFs/Apple containers ≤ 100 MB, images ≤ 25 MB,
   DOCX/PPTX/XLSX ≤ 50 MB;
   batch workflows also enforce file-count and aggregate-size limits.

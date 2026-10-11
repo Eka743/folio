@@ -1,32 +1,44 @@
 # Contributing to Folio
 
-Thanks for helping make document conversion useful without sending documents
-to a cloud service. Folio is an AGPL-3.0-or-later project with a Next.js web
-app, a Swift localhost helper, and a small Folio for Mac menu-bar companion.
+Thanks for helping improve Folio, an open-source document and PDF toolkit that
+keeps browser processing on the user's device. Contributions are welcome, but
+each change should preserve the product's privacy boundary, honest format
+support and approachable workflows.
 
-## Before you start
+## Ways to contribute
 
-Please read [SECURITY.md](SECURITY.md). Do not include real document contents,
-personal data, credentials, certificates, or private signing material in an
-issue, pull request, test fixture, log, or screenshot. Use synthetic documents
-for tests and redact filenames and metadata.
+- Report reproducible bugs or conversion-fidelity problems.
+- Improve document-format support, performance, browser compatibility or
+  accessibility.
+- Add documentation, translations or safer error handling.
+- Review security-sensitive parsing and archive-handling changes.
 
-Folio's privacy boundary is part of the product: browser tools run in the tab;
-Mac-native conversions use the user's loopback helper and installed desktop
-apps. Do not add document uploads, cloud conversion, analytics, trackers, or
-unnecessary third-party runtime requests.
+Please read [SECURITY.md](SECURITY.md) before reporting a vulnerability. Do
+not include real document contents, private data, credentials, certificates or
+signing material in issues, pull requests, fixtures, logs or screenshots.
+Use a small synthetic or sanitized document when a reproduction file is
+necessary.
 
-## Local setup
+## Development setup
+
+The web project requires Node.js 20.19 or newer and uses npm:
 
 ```bash
+git clone https://github.com/Eka743/folio.git
+cd folio
 npm ci
-npm run typecheck
-npm run lint
-npm test
-npm run build
+npm run dev
 ```
 
-For the native components on macOS:
+Open `http://localhost:3000` for the development app. The repository's
+production build is:
+
+```bash
+npm run build
+npm start
+```
+
+The native packages require macOS and Swift:
 
 ```bash
 cd apps/macos-helper
@@ -35,42 +47,122 @@ swift test
 swift build --package-path ../folio-mac
 ```
 
-The helper's real Pages, Numbers, Office, and LibreOffice behavior requires a
-Mac with the corresponding app installed. Follow
-[`docs/MAC_MANUAL_TEST_PLAN.md`](docs/MAC_MANUAL_TEST_PLAN.md). Keynote routes
-are a deferred known limitation in v0.2 and must not be described as validated.
+Real native-app fidelity checks require the relevant applications installed;
+follow [`docs/MAC_MANUAL_TEST_PLAN.md`](docs/MAC_MANUAL_TEST_PLAN.md).
 
-## Making changes
+## Project principles
 
-- Keep deterministic document and routing logic in `lib/` and keep
-  `lib/formatMatrix.ts` as the conversion support source of truth.
-- Use two-space TypeScript, four-space Swift, strict types, and existing
-  formatting conventions.
-- Prefer the smallest change that fixes the behavior and add a regression test
-  for parsing, validation, routing, security, or deterministic transforms.
-- Preserve the loopback-only, Origin/Host validation, pairing, rate-limit,
-  size-limit, filename-sanitization, and temp-cleanup boundaries.
-- Do not rename an extension in place of a real conversion.
+### Privacy first
 
-When adding a conversion adapter, document its engine, Mac requirement,
-fallback behavior, fidelity limits, and manual test evidence. Update the
-format matrix, UI copy, README, and manual test plan together.
+Browser tools read and process selected files locally. Contributions must not
+silently introduce document uploads, conversion APIs, document-content
+telemetry, filename tracking or third-party document processing. Proposals
+that require server-side document processing should be discussed before
+implementation.
 
-## Pull requests
+### Security
 
-Explain the user-visible behavior, privacy/security impact, and validation
-commands in the pull request. Include screenshots for visible UI changes. For
-native conversions, report the macOS version, app version, Folio commit, input
-fixture description, output MIME/type, and whether the result was opened or
-inspected. Never attach a confidential document.
+Document files are untrusted input. Preserve validation and limits around
+malformed files, archives, ZIP bombs, path traversal, XML entities and
+external relationships, macros/OLE content, SVG and image handling, resource
+usage, and temporary data cleanup.
 
-Run the relevant web and Swift checks before requesting review. Packaging and
-signing changes should include `./scripts/package-mac.sh` output and should
-not include generated `dist/`, `.app`, DMG, or signing artifacts in source
+### Browser compatibility
+
+Folio supports Chromium, Firefox and WebKit/Safari. A document feature is not
+complete because it works in only one browser. Check keyboard access, touch
+use and the supported mobile path for user-facing changes.
+
+### Local-first performance
+
+Avoid unnecessary file reads, `ArrayBuffer` copies, image decodes, base64
+transforms, eager heavy imports and main-thread blocking. Preserve lazy
+loading for conversion engines and workers.
+
+### Output quality
+
+Conversion changes should use representative real-world or sanitized
+documents. Do not improve a benchmark by silently reducing advertised output
+quality. Document meaningful fidelity limits close to the affected workflow.
+
+## Adding or changing a converter
+
+Consider this checklist before submitting a converter change:
+
+- Validate file type from content as well as extension where applicable.
+- Handle malformed files, unsupported features and output validation.
+- Preserve local processing, memory cleanup and worker cleanup.
+- Check Chromium, Firefox, WebKit, mobile behavior and retry/reset flows.
+- Provide understandable errors, loading states and success/download states.
+- Preserve labels, focus, keyboard navigation and screen-reader semantics.
+- Add regression coverage for parsing, routing, security and deterministic
+  transforms.
+
+For Office or iWork conversions, include the supported subset and fidelity
+limitations. Update `lib/formatMatrix.ts`, affected UI copy, tests and
+documentation when the advertised capability changes.
+
+## Testing
+
+Run the checks relevant to your change:
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npm audit --omit=dev
+npm run release:check
+npm run e2e
+```
+
+The E2E suite runs the configured Chromium, Firefox and WebKit projects. All
+applicable tests should pass; do not weaken behavioral assertions to make a
+change green. For native changes, also run the Swift commands above. Keep
+generated build output, app bundles, DMGs and signing artifacts out of source
 control.
 
-## Questions and security reports
+## Before submitting a pull request
 
-Use a normal issue for reproducible non-sensitive bugs and feature ideas. Use
-the private security-reporting path described in [SECURITY.md](SECURITY.md) for
-vulnerabilities; do not publish an exploit before a fix is available.
+- Keep the change focused and explain the user-visible behavior.
+- Add or update regression tests where behavior changed.
+- Confirm that no document uploads or unnecessary dependencies were added.
+- Consider all supported browsers and accessible error/loading/success states.
+- Update documentation when capabilities, limitations or setup changes.
+- Include screenshots for meaningful UI changes and measurements for
+  performance-sensitive changes.
+
+## Pull requests, issues and feature proposals
+
+Prefer small, focused pull requests with a short problem statement,
+implementation summary, privacy/security impact and validation commands.
+
+Useful conversion bug reports include the source format, browser, operating
+system, expected behavior, actual behavior and reproduction steps. Do not
+publish confidential source files; create a minimal sanitized example instead.
+
+Feature proposals should describe the user problem, desired behavior,
+affected formats and privacy/security implications. A proposal is not a
+promise that the feature will be accepted.
+
+## Dependencies and code quality
+
+Folio aims to stay lightweight. Before adding a dependency, consider bundle
+size, license, maintenance, security, browser compatibility and whether the
+existing dependencies already solve the problem.
+
+Keep deterministic business logic in `lib/`, use `lib/formatMatrix.ts` as the
+public conversion-support source of truth, follow the existing two-space
+TypeScript and four-space Swift formatting, and rely on the repository's
+TypeScript, ESLint and test checks rather than inventing a separate style
+guide.
+
+## Security, conduct and license
+
+Use the private reporting path described in [SECURITY.md](SECURITY.md) for
+unpatched vulnerabilities. Do not publish an exploit in a normal issue when a
+private report is appropriate. Please also follow
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+Folio is licensed under [AGPL-3.0-or-later](LICENSE). Contributions are
+submitted under the project's existing license.

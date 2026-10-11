@@ -143,9 +143,13 @@ async function parseIworkDocumentLocally(
  * The import remains behind this function so the large parser never enters
  * the initial route or the ordinary PDF/image conversion chunks.
  */
-export async function parseAppleDocument(file: File, expectedKind?: AppleKind): Promise<IworkDocument> {
+export async function parseAppleDocument(
+  file: File,
+  expectedKind?: AppleKind,
+  sourceBytes?: Uint8Array,
+): Promise<IworkDocument> {
   const kind = expectedKind ?? kindFromFile(file);
-  const bytes = await readFileBytes(file);
+  const bytes = sourceBytes ?? await readFileBytes(file);
   try {
     const document = await parseIworkDocumentLocally(bytes, kind);
     if (document.kind !== kind) {
@@ -572,8 +576,12 @@ export async function renderAppleDocumentToPdf(document: IworkDocument): Promise
   return bytes;
 }
 
-export async function appleToPdf(file: File, kind?: AppleKind): Promise<Uint8Array> {
-  const document = await parseAppleDocument(file, kind);
+export async function appleToPdf(
+  file: File,
+  kind?: AppleKind,
+  sourceBytes?: Uint8Array,
+): Promise<Uint8Array> {
+  const document = await parseAppleDocument(file, kind, sourceBytes);
   return renderAppleDocumentToPdf(document);
 }
 
@@ -631,8 +639,8 @@ function applyNumbersCellTypes(worksheet: Record<string, unknown>, table: IworkT
   }
 }
 
-export async function numbersToXlsx(file: File): Promise<Uint8Array> {
-  const document = await parseAppleDocument(file, "numbers");
+export async function numbersToXlsx(file: File, sourceBytes?: Uint8Array): Promise<Uint8Array> {
+  const document = await parseAppleDocument(file, "numbers", sourceBytes);
   const { read, utils, write } = await import("styled-exceljs");
   const workbook = utils.book_new();
   const usedNames = new Set<string>();

@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-The current public web beta is the supported release surface.
+The current public Folio web application is the supported release surface.
 
 ## Architecture in brief
 

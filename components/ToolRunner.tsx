@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { Dropzone, FileList, type ListedFile } from "@/components/Dropzone";
 import {
   EngineBadge,
@@ -30,6 +31,11 @@ function nextId(): string {
   return `f-${Date.now().toString(36)}-${idCounter}`;
 }
 
+const SignPdfWorkspace = dynamic(
+  () => import("@/components/SignPdfWorkspace").then((module) => module.SignPdfWorkspace),
+  { ssr: false },
+);
+
 type Result =
   | { kind: "file"; fileName: string; sizeBytes: number; note?: string }
   | { kind: "compress"; fileName: string; before: number; after: number }
@@ -39,12 +45,14 @@ type Result =
 export function ToolRunner({
   tool,
   initialFiles = [],
+  initialSourceBytesByFile,
 }: {
   tool: FolioTool;
   initialFiles?: File[];
+  initialSourceBytesByFile?: ReadonlyMap<File, Uint8Array>;
 }) {
   const [files, setFiles] = useState<ListedFile[]>(() =>
-    initialFiles.map((file) => ({ file, id: nextId() })),
+    initialFiles.map((file) => ({ file, id: nextId(), sourceBytes: initialSourceBytesByFile?.get(file) })),
   );
   const [complaints, setComplaints] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -53,6 +61,7 @@ export function ToolRunner({
   const [result, setResult] = useState<Result>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [engineUsed, setEngineUsed] = useState<string | null>(null);
+  const [signEditorOpen, setSignEditorOpen] = useState(false);
 
   // Per-tool options
   const [rangeText, setRangeText] = useState("1-3,5");
@@ -61,12 +70,18 @@ export function ToolRunner({
   const [zipMeta, setZipMeta] = useState<{ name: string; size: number } | null>(null);
   const runGuardRef = useRef(false);
   const fileListRef = useRef<HTMLOListElement>(null);
-  const selectionFocusPendingRef = useRef(false);
+  const dropzoneRef = useRef<HTMLDivElement>(null);
+  const selectionFocusPendingRef = useRef(initialFiles.length > 0);
+  const previousFileCountRef = useRef(initialFiles.length);
   const complaintRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(true);
   const fileObjs = useMemo(() => files.map((f) => f.file), [files]);
+  const sourceBytesByFile = useMemo(
+    () => new Map(files.flatMap((listed) => listed.sourceBytes ? [[listed.file, listed.sourceBytes] as const] : [])),
+    [files],
+  );
   const selectedBytes = useMemo(
     () => fileObjs.reduce((total, file) => total + file.size, 0),
     [fileObjs],
@@ -77,6 +92,13 @@ export function ToolRunner({
       selectionFocusPendingRef.current = false;
       fileListRef.current?.focus();
     }
+  }, [files.length]);
+
+  useEffect(() => {
+    if (previousFileCountRef.current > 0 && files.length === 0) {
+      dropzoneRef.current?.focus();
+    }
+    previousFileCountRef.current = files.length;
   }, [files.length]);
 
   useEffect(() => {
@@ -159,6 +181,24 @@ export function ToolRunner({
     [tool, files.length, resetResults, selectedBytes],
   );
 
+  const replaceFile = useCallback(
+    (incoming: File[]) => {
+      resetResults();
+      const { accepted, complaints: found } = validateFiles(
+        tool,
+        incoming.slice(0, 1),
+        0,
+        0,
+      );
+      if (accepted.length > 0) {
+        selectionFocusPendingRef.current = true;
+        setFiles(accepted.map((file) => ({ file, id: nextId() })));
+      }
+      setComplaints(found.map((c) => `${c.fileName}: ${c.reason}`));
+    },
+    [tool, resetResults],
+  );
+
   const removeFile = useCallback(
     (id: string) => {
       setFiles((prev) => prev.filter((f) => f.id !== id));
@@ -189,6 +229,14 @@ export function ToolRunner({
   }, [resetResults]);
 
   async function run(): Promise<void> {
+    if (tool.slug === "sign-pdf") {
+      if (fileObjs.length !== 1) {
+        setError("Add one PDF before opening the signing workspace.");
+        return;
+      }
+      setSignEditorOpen(true);
+      return;
+    }
     if (runGuardRef.current) return;
     runGuardRef.current = true;
     setError(null);
@@ -201,7 +249,7 @@ export function ToolRunner({
             throw new Error("Add at least two PDFs to merge.");
           setProgress("Merging PDFs…");
           const { mergePdfs } = await import("@/lib/pdfOps");
-          const bytes = await mergePdfs(fileObjs);
+          const bytes = await mergePdfs(fileObjs, sourceBytesByFile);
           if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(fileObjs[0].name)}-merged`,
@@ -217,13 +265,12 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Reading PDF…");
           const { getPdfPageCount, splitPdf } = await import("@/lib/pdfOps");
-          const count = await getPdfPageCount(
-            await readFileBytes(file),
-          );
+          const sourceBytes = await readFileBytes(file);
+          const count = await getPdfPageCount(sourceBytes);
           const parsed = parsePageRanges(rangeText, count);
           if (parsed.error) throw new Error(parsed.error);
           setProgress(`Extracting ${summarizePages(parsed.pages)}…`);
-          const bytes = await splitPdf(file, parsed.pages);
+          const bytes = await splitPdf(file, parsed.pages, sourceBytes);
           if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(file.name)}-pages-${parsed.pages[0]}-${parsed.pages[parsed.pages.length - 1]}`,
@@ -244,7 +291,10 @@ export function ToolRunner({
           if (fileObjs.length === 0) throw new Error("Add at least one image.");
           setProgress(`Building PDF from ${fileObjs.length} image${fileObjs.length === 1 ? "" : "s"}…`);
           const { imagesToPdf } = await import("@/lib/pdfOps");
-          const bytes = await imagesToPdf(fileObjs);
+          const bytes = await imagesToPdf(
+            fileObjs,
+            fileObjs.map((file) => sourceBytesByFile.get(file)),
+          );
           if (!mountedRef.current) return;
           const name = withExtension(
             fileObjs.length === 1
@@ -266,13 +316,13 @@ export function ToolRunner({
           if (fileObjs.length > 1) {
             const combined = await combineFilesToPdf(fileObjs, (stage) => {
               if (mountedRef.current) setProgress(stage);
-            });
+            }, sourceBytesByFile);
             bytes = combined.bytes;
             note = `Combined ${fileObjs.length} Word documents in your selected order. Review pagination and complex layouts before sharing.`;
           } else {
             bytes = await docxToPdf(fileObjs[0], (stage) => {
               if (mountedRef.current) setProgress(stage);
-            });
+            }, sourceBytesByFile.get(fileObjs[0]));
             note = "Converted in your browser. Review pagination and complex layouts before sharing.";
           }
           if (!mountedRef.current) return;
@@ -295,7 +345,7 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Reading Pages content…");
           const { pagesToDocx } = await import("@/lib/office");
-          const bytes = await pagesToDocx(file);
+          const bytes = await pagesToDocx(file, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "docx");
           const url = blobUrl(bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
@@ -308,7 +358,7 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Reading PowerPoint slides…");
           const { powerpointToPdf } = await import("@/lib/office");
-          const bytes = await powerpointToPdf(file);
+          const bytes = await powerpointToPdf(file, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "pdf");
           const url = blobUrl(bytes, "application/pdf");
@@ -321,7 +371,7 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Reading Keynote slides…");
           const { keynoteToPptx } = await import("@/lib/office");
-          const bytes = await keynoteToPptx(file);
+          const bytes = await keynoteToPptx(file, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "pptx");
           const url = blobUrl(bytes, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
@@ -334,7 +384,7 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Reading Excel worksheets…");
           const { excelToPdf } = await import("@/lib/office");
-          const bytes = await excelToPdf(file);
+          const bytes = await excelToPdf(file, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "pdf");
           const url = blobUrl(bytes, "application/pdf");
@@ -352,8 +402,8 @@ export function ToolRunner({
           setProgress(isXlsx ? "Reading Numbers tables…" : "Rendering Apple document…");
           const { appleToPdf, numbersToXlsx } = await import("@/lib/iwork");
           const bytes = isXlsx
-            ? await numbersToXlsx(file)
-            : await appleToPdf(file, tool.slug === "pages-to-pdf" ? "pages" : tool.slug === "keynote-to-pdf" ? "keynote" : "numbers");
+            ? await numbersToXlsx(file, sourceBytesByFile.get(file))
+            : await appleToPdf(file, tool.slug === "pages-to-pdf" ? "pages" : tool.slug === "keynote-to-pdf" ? "keynote" : "numbers", sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const extension = isXlsx ? "xlsx" : "pdf";
           const name = withExtension(safeFileName(file.name), extension);
@@ -368,7 +418,7 @@ export function ToolRunner({
             sizeBytes: bytes.length,
             note: isXlsx
               ? "Saved Numbers cell values and table structure were exported locally. Formulas are not recalculated."
-              : "Exported locally from the supported Apple content subset. Review the PDF before sharing.",
+              : "Exported locally from supported Apple content. Review the PDF before sharing.",
           });
           break;
         }
@@ -376,7 +426,7 @@ export function ToolRunner({
           const { combineFilesToPdf } = await import("@/lib/pdfOps");
           const combined = await combineFilesToPdf(fileObjs, (stage) => {
             if (mountedRef.current) setProgress(stage);
-          });
+          }, sourceBytesByFile);
           if (!mountedRef.current) return;
           const name = withExtension("folio-combined-documents", "pdf");
           const url = blobUrl(combined.bytes, "application/pdf");
@@ -395,7 +445,7 @@ export function ToolRunner({
           const { markdownToPdf } = await import("@/lib/pdfOps");
           const bytes = await markdownToPdf(file, (stage) => {
             if (mountedRef.current) setProgress(stage);
-          });
+          }, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(safeFileName(file.name), "pdf");
           const url = blobUrl(bytes, "application/pdf");
@@ -414,7 +464,7 @@ export function ToolRunner({
           const { pdfToMarkdown } = await import("@/lib/pdfOps");
           const markdown = await pdfToMarkdown(file, (stage) => {
             if (mountedRef.current) setProgress(stage);
-          });
+          }, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const bytes = new TextEncoder().encode(markdown);
           const name = withExtension(safeFileName(file.name), "md");
@@ -431,13 +481,13 @@ export function ToolRunner({
         }
         case "pdf-to-jpg": {
           const file = needSingle(fileObjs);
-          setProgress("Loading renderer…");
+          setProgress("Preparing page images…");
           const { renderPdfPages } = await import("@/lib/pdfOps");
           const pages = await renderPdfPages(file, {
             scale: 2,
             onProgress: (done, total) =>
               mountedRef.current && setProgress(`Rendering page ${done} of ${total}…`),
-          });
+          }, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const withUrls = pages.map((p) => ({
             page: p.pageNumber,
@@ -487,10 +537,10 @@ export function ToolRunner({
           setProgress("Reading PDF…");
           const { getPdfPageCount, rotatePdf } = await import("@/lib/pdfOps");
           let targets: number[] | null = null;
+          let sourceBytes: Uint8Array | undefined = sourceBytesByFile.get(file);
           if (rotateMode === "pages") {
-            const count = await getPdfPageCount(
-              await readFileBytes(file),
-            );
+            sourceBytes ??= await readFileBytes(file);
+            const count = await getPdfPageCount(sourceBytes);
             const parsed = parsePageRanges(rangeText, count);
             if (parsed.error) throw new Error(parsed.error);
             targets = parsed.pages;
@@ -500,7 +550,7 @@ export function ToolRunner({
           } else {
             setProgress(`Rotating all pages by ${degrees}°…`);
           }
-          const bytes = await rotatePdf(file, targets, degrees);
+          const bytes = await rotatePdf(file, targets, degrees, sourceBytes);
           if (!mountedRef.current) return;
           const name = withExtension(
             `${safeFileName(file.name)}-rotated-${degrees}`,
@@ -516,7 +566,7 @@ export function ToolRunner({
           const file = needSingle(fileObjs);
           setProgress("Optimizing PDF…");
           const { optimizePdf } = await import("@/lib/pdfOps");
-          const { bytes, beforeBytes, afterBytes } = await optimizePdf(file);
+          const { bytes, beforeBytes, afterBytes } = await optimizePdf(file, sourceBytesByFile.get(file));
           if (!mountedRef.current) return;
           const name = withExtension(`${safeFileName(file.name)}-optimized`, "pdf");
           const url = blobUrl(bytes, "application/pdf");
@@ -547,6 +597,25 @@ export function ToolRunner({
           ? fileObjs.length >= 1
         : fileObjs.length === 1);
 
+  if (signEditorOpen && tool.slug === "sign-pdf" && fileObjs.length === 1) {
+    return (
+      <div className="mx-auto max-w-5xl px-5 py-10" aria-busy="false">
+        <ToolHeader
+          name={tool.name}
+          description={tool.longDescription}
+          accepts={tool.accepts}
+        />
+        <SignPdfWorkspace
+          file={fileObjs[0]}
+          onStartOver={() => {
+            setSignEditorOpen(false);
+            startOver();
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-5 py-10" aria-busy={busy}>
       <ToolHeader
@@ -556,13 +625,17 @@ export function ToolRunner({
       />
 
       <div className="mt-8 space-y-4">
-        <Dropzone
-          accepts={tool.accepts}
-          multiple={tool.multiple}
-          disabled={busy}
-          onFiles={addFiles}
-          onDropIssue={handleDropIssue}
-        />
+        {(tool.multiple || files.length === 0) && (
+          <Dropzone
+            ref={dropzoneRef}
+            accepts={tool.accepts}
+            multiple={tool.multiple}
+            compact={tool.multiple && files.length > 0}
+            disabled={busy}
+            onFiles={addFiles}
+            onDropIssue={handleDropIssue}
+          />
+        )}
 
         {complaints.length > 0 && (
           <StatusBox ref={complaintRef} tabIndex={-1} kind="error">
@@ -582,6 +655,8 @@ export function ToolRunner({
           onRemove={removeFile}
           onMove={moveFile}
           onAddFiles={tool.multiple ? addFiles : undefined}
+          onReplace={!tool.multiple ? replaceFile : undefined}
+          replaceAccepts={!tool.multiple ? tool.accepts : undefined}
           listRef={fileListRef}
         />
 
@@ -667,10 +742,10 @@ export function ToolRunner({
 
         {tool.slug === "docx-to-pdf" && (
           <StatusBox kind="info">
-            Beta: headings, bold/italic, lists, tables and images are
-            preserved, but pagination and advanced Word features, including headers,
-            footers, footnotes and text boxes may differ. Always review the
-            PDF before sharing.
+            Headings, bold and italic text, lists, tables and images are
+            supported. Complex Word layouts, fonts, pagination, headers,
+            footers, footnotes and text boxes may render differently. Review
+            the PDF before sharing.
           </StatusBox>
         )}
 
@@ -683,21 +758,27 @@ export function ToolRunner({
 
         {tool.slug === "pdf-to-markdown" && (
           <StatusBox kind="info">
-            Beta: Folio extracts text and only reconstructs headings and lists
-            when the PDF layout makes them reasonably clear. Scanned PDFs and
-            complex columns need OCR or manual cleanup.
+            Folio extracts text and reconstructs headings and lists when the
+            PDF layout makes them reasonably clear. Scanned PDFs and complex
+            columns need OCR or manual cleanup.
+          </StatusBox>
+        )}
+
+        {tool.slug === "sign-pdf" && (
+          <StatusBox kind="info">
+            Add your signature visually to the PDF. Folio does not create a certificate-based digital signature.
           </StatusBox>
         )}
 
         {(tool.slug === "pages-to-pdf" || tool.slug === "keynote-to-pdf" || tool.slug === "numbers-to-pdf" || tool.slug === "numbers-to-xlsx" || tool.slug === "pages-to-word" || tool.slug === "keynote-to-powerpoint" || tool.slug === "powerpoint-to-pdf" || tool.slug === "excel-to-pdf") && (
           <StatusBox kind="info">
             {tool.slug === "powerpoint-to-pdf" || tool.slug === "excel-to-pdf"
-              ? "Beta: Folio reads the Office package locally. Saved text, tables, images and basic formatting are represented; macros, external content and unsupported objects are rejected or omitted safely."
+              ? "Folio reads the Office package locally. Saved text, tables, images and basic formatting are represented; macros, external content and unsupported objects are rejected or omitted safely."
               : tool.slug === "pages-to-word"
-                ? "Beta: Folio writes a real DOCX package locally. Text, tables, images and basic shapes are supported; advanced Pages layout may differ."
+                ? "Folio writes a real DOCX package locally. Text, tables, images and basic shapes are supported; advanced Pages layout may differ."
                 : tool.slug === "keynote-to-powerpoint"
-                  ? "Beta: Folio writes a real PPTX package locally. Review it in PowerPoint or Keynote before sharing; charts, media and animations are not exported."
-                  : "Beta: Folio processes the Apple container locally. Saved text, tables, images and basic shapes are supported where the document exposes them; animations, transitions, formula recalculation and unsupported content are not exported."}
+                  ? "Folio writes a real PPTX package locally. Review it in PowerPoint or Keynote before sharing; charts, media and animations are not exported."
+                  : "Folio processes the Apple document locally. Saved text, tables, images and basic shapes are supported where the document exposes them; animations, transitions, formula recalculation and unsupported content are not exported."}
           </StatusBox>
         )}
 
@@ -705,15 +786,23 @@ export function ToolRunner({
 
         {error && <StatusBox ref={errorRef} tabIndex={-1} kind="error">{error}</StatusBox>}
 
-        <div className="flex flex-wrap items-center gap-3">
-          <PrimaryButton onClick={run} disabled={!canRun}>
-            {busy ? "Working…" : actionLabel(tool.slug, fileObjs.length)}
-          </PrimaryButton>
+        <div className="flex flex-wrap items-center gap-3" data-tool-actions="true">
           {(files.length > 0 || result || complaints.length > 0 || error) && (
             <SecondaryButton onClick={startOver} disabled={busy}>
               Start over
             </SecondaryButton>
           )}
+          <PrimaryButton
+            onClick={run}
+            disabled={!canRun}
+            aria-label={
+              files.length === 1
+                ? `${busy ? "Working" : actionLabel(tool.slug, fileObjs.length)} for ${fileObjs[0].name}`
+                : undefined
+            }
+          >
+            {busy ? "Working…" : actionLabel(tool.slug, fileObjs.length)}
+          </PrimaryButton>
         </div>
 
         {/* Results */}
@@ -846,6 +935,8 @@ function actionLabel(slug: string, count: number): string {
       return "Convert to Markdown";
     case "pdf-to-jpg":
       return "Convert to JPG";
+    case "sign-pdf":
+      return "Open signing workspace";
     case "rotate-pdf":
       return "Rotate PDF";
     case "compress-pdf":

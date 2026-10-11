@@ -33,6 +33,9 @@ const ICONS: Record<ToolSlug, React.ReactNode> = {
   "pdf-to-jpg": (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="13" height="13" rx="2"/><path d="M16 8h4a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-4"/></svg>
   ),
+  "sign-pdf": (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h4M9 15c1.5-2 2.5 2 4 0s2.5-2 3.5-0"/><path d="M9 19h7"/></svg>
+  ),
   "rotate-pdf": (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
   ),
@@ -145,7 +148,6 @@ export default function HomePage() {
                               </span>
                               <span className="mt-5 flex items-center gap-2">
                                 <span className="text-[17px] font-semibold tracking-tight text-ink-950">{tool.name}</span>
-                                {tool.badge && <span className="rounded-full bg-accent-50 px-2 py-0.5 text-xs font-semibold text-accent-700">{tool.badge}</span>}
                               </span>
                               <span className="mt-1 flex-1 text-[15px] leading-relaxed text-ink-500">{tool.description}</span>
                               <span className="mt-4 text-sm font-semibold text-accent-700 group-hover:underline">Open tool <span aria-hidden="true">→</span></span>
@@ -174,9 +176,9 @@ export default function HomePage() {
           <p className="mt-2 text-[15px] leading-relaxed text-ink-500">No sign-in, ad scripts, tracking pixels or analytics SDKs. Just the tool you came for.</p>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-accent-700">Honest Beta</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-accent-700">Honest limits</p>
           <h2 className="mt-2 font-semibold text-ink-950">Limits are labelled.</h2>
-          <p className="mt-2 text-[15px] leading-relaxed text-ink-500">Browser DOCX conversion is marked Beta so you can review complex layouts before sharing.</p>
+          <p className="mt-2 text-[15px] leading-relaxed text-ink-500">Tool notes explain where layout, formatting or source features may differ, so you can review important results before sharing.</p>
         </div>
       </section>
     </div>

@@ -1,23 +1,30 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { forwardRef, useCallback, useRef, useState } from "react";
 
 export { FileList } from "@/components/DocumentPreview";
 export type { ListedFile } from "@/components/DocumentPreview";
 
-export function Dropzone({
-  accepts,
-  multiple,
-  disabled,
-  onFiles,
-  onDropIssue,
-}: {
+type DropzoneProps = {
   accepts: string;
   multiple: boolean;
   disabled?: boolean;
+  compact?: boolean;
   onFiles: (files: File[]) => void | Promise<void>;
   onDropIssue?: (message: string) => void;
-}) {
+};
+
+export const Dropzone = forwardRef<HTMLDivElement, DropzoneProps>(function Dropzone(
+  {
+    accepts,
+    multiple,
+    disabled,
+    compact = false,
+    onFiles,
+    onDropIssue,
+  },
+  ref,
+) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
@@ -60,10 +67,13 @@ export function Dropzone({
 
   return (
     <div
+      ref={ref}
       role="button"
       tabIndex={disabled ? -1 : 0}
       aria-disabled={disabled}
       aria-label={`Drop files here or press Enter to browse. Accepted: ${accepts}`}
+      data-dropzone="true"
+      data-dropzone-state={compact ? "compact" : "empty"}
       onClick={openPicker}
       onKeyDown={(e) => {
         if ((e.key === "Enter" || e.key === " ") && !disabled) {
@@ -84,25 +94,32 @@ export function Dropzone({
         if (dragDepth.current === 0) setDragging(false);
       }}
       onDrop={handleDrop}
-      className={`flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 ${
+      className={`flex cursor-pointer items-center rounded-2xl border-2 border-dashed transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 ${
+        compact
+          ? "min-h-20 gap-3 px-4 py-4 text-left"
+          : "min-h-44 flex-col justify-center px-6 py-10 text-center"
+      } ${
         dragging
           ? "border-accent-600 bg-accent-50"
           : "border-slate-300 bg-paper hover:border-slate-400 hover:bg-slate-50"
       } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
     >
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#5b6b7c" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg width={compact ? "24" : "32"} height={compact ? "24" : "32"} viewBox="0 0 24 24" fill="none" stroke="#5b6b7c" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
       </svg>
-      <p className="mt-3 font-medium text-ink-900">
-        Drop files here or <span className="text-accent-600 underline">browse</span>
-      </p>
-      <p className="mt-1 max-w-full break-words text-sm text-ink-500">
-        {accepts} {multiple ? "· multiple files" : "· single file"}
-      </p>
+      <div className={compact ? "min-w-0" : "w-full min-w-0"}>
+        <p className={`${compact ? "" : "mt-3"} font-medium text-ink-900`}>
+          Drop files here or <span className="text-accent-600 underline">browse</span>
+        </p>
+        <p className={`${compact ? "hidden sm:block" : "mt-1"} max-w-full break-words text-sm text-ink-500`}>
+          {accepts} {multiple ? "· multiple files" : "· single file"}
+        </p>
+      </div>
       <input
         ref={inputRef}
         type="file"
         accept={accepts}
+        data-dropzone-input="true"
         multiple={multiple}
         disabled={disabled}
         aria-label={`Select ${accepts} files`}
@@ -114,4 +131,4 @@ export function Dropzone({
       />
     </div>
   );
-}
+});

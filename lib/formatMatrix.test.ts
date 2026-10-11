@@ -19,6 +19,7 @@ describe("public format matrix", () => {
     expect(FORMAT_MATRIX.every((conversion) => conversion.status.startsWith("browser"))).toBe(true);
     expect(FORMAT_MATRIX.map((conversion) => conversion.toolSlug)).toEqual([
       "merge-pdf",
+      "sign-pdf",
       "split-pdf",
       "compress-pdf",
       "rotate-pdf",
@@ -41,8 +42,8 @@ describe("public format matrix", () => {
 
   it("keeps the browser DOCX route honest about fidelity", () => {
     const docx = getConversion("docx-to-pdf")!;
-    expect(docx.browser).toBe("beta");
-    expect(docx.status).toBe("browser-beta");
+    expect(docx.browser).toBe("scoped");
+    expect(docx.status).toBe("browser-scoped");
     expect(docx.limitation).toMatch(/pagination/i);
     expect(docx.limitation).toMatch(/complex/i);
   });
@@ -54,8 +55,8 @@ describe("public format matrix", () => {
     expect(toPdf.limitation).toMatch(/HTML|remote images/i);
 
     const toMarkdown = getConversion("pdf-to-markdown")!;
-    expect(toMarkdown.browser).toBe("beta");
-    expect(toMarkdown.status).toBe("browser-beta");
+    expect(toMarkdown.browser).toBe("scoped");
+    expect(toMarkdown.status).toBe("browser-scoped");
     expect(toMarkdown.limitation).toMatch(/scanned|complex columns|original Markdown/i);
   });
 

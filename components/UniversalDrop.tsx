@@ -11,7 +11,7 @@ import {
 } from "@/lib/capabilityGraph";
 import {
   capabilityLabel,
-  inspectFiles,
+  inspectFilesWithBytes,
   MAX_UNIVERSAL_FILES,
   MAX_UNIVERSAL_TOTAL_BYTES,
   readEmbeddedPdfPreview,
@@ -61,13 +61,14 @@ function actionTitle(action: CapabilityActionId, count: number): string {
   if (action === "keynote-to-powerpoint") return "Convert Keynote to PPTX";
   if (action === "excel-to-pdf") return "Convert Excel to PDF";
   if (action === "combine-to-pdf") return `Combine ${count} document${count === 1 ? "" : "s"} into PDF`;
-  if (action === "embedded-pdf") return "Export embedded PDF preview";
+  if (action === "embedded-pdf") return "Open included PDF preview";
   if (action === "pages-to-pdf") return "Convert Pages to PDF";
   if (action === "keynote-to-pdf") return "Convert Keynote to PDF";
   if (action === "numbers-to-xlsx") return "Convert Numbers to XLSX";
   if (action === "numbers-to-pdf") return "Convert Numbers to PDF";
   if (action === "split-pdf") return "Extract PDF pages";
   if (action === "pdf-to-jpg") return "Convert PDF to JPG";
+  if (action === "sign-pdf") return "Sign PDF";
   if (action === "pdf-to-markdown") return "Convert PDF to Markdown";
   if (action === "markdown-to-pdf") return "Convert Markdown to PDF";
   return capabilityLabel(action);
@@ -77,17 +78,18 @@ function actionDescription(action: CapabilityActionId, count: number): string {
   if (action === "merge-pdf") return "Add, reorder and merge the selected PDFs locally.";
   if (action === "image-to-pdf") return "Place one image on each PDF page in your chosen order.";
   if (action === "docx-to-pdf") return count > 1
-    ? "Convert each Word document locally, then join the PDF pages in order. Beta."
-    : "Convert this Word document locally. Beta.";
-  if (action === "pages-to-word") return "Write a real DOCX package from supported Pages content locally. Beta.";
-  if (action === "powerpoint-to-pdf") return "Render supported PowerPoint slides to a validated PDF locally. Beta.";
-  if (action === "keynote-to-powerpoint") return "Write a real PPTX package from supported Keynote slides locally. Beta.";
-  if (action === "excel-to-pdf") return "Render all supported Excel worksheets to a validated PDF locally. Beta.";
+    ? "Convert each Word document locally, then join the PDF pages in order. Review complex layouts before sharing."
+    : "Convert this Word document locally. Review complex layouts before sharing.";
+  if (action === "pages-to-word") return "Write a real DOCX package from supported Pages content locally. Advanced layout may differ.";
+  if (action === "powerpoint-to-pdf") return "Render supported PowerPoint slides to a validated PDF locally. Animations and unsupported objects are not exported.";
+  if (action === "keynote-to-powerpoint") return "Write a real PPTX package from supported Keynote slides locally. Advanced Apple features are not exported.";
+  if (action === "excel-to-pdf") return "Render all supported Excel worksheets to a validated PDF locally. Advanced Excel features are not recalculated.";
   if (action === "combine-to-pdf") return "Normalize each supported source locally. Nothing is silently skipped.";
-  if (action === "pages-to-pdf") return "Export the supported Pages subset locally. Unsupported content fails closed.";
+  if (action === "pages-to-pdf") return "Export supported Pages content locally. Unsupported content fails closed.";
   if (action === "keynote-to-pdf") return "Export supported Keynote slides locally. Unsupported content fails closed.";
   if (action === "numbers-to-xlsx") return "Export saved Numbers tables and values to an XLSX workbook locally.";
   if (action === "numbers-to-pdf") return "Render saved Numbers tables to a readable PDF locally.";
+  if (action === "sign-pdf") return "Place a visual signature on one or more PDF pages locally.";
   return getCapability(action)?.description ?? "Available locally in this browser.";
 }
 
@@ -102,7 +104,7 @@ function inspectionKindLabel(inspection: FileInspection): string {
 
 export function UniversalDrop() {
   const [items, setItems] = useState<UniversalItem[]>([]);
-  const [activeTool, setActiveTool] = useState<{ tool: FolioTool; files: File[] } | null>(null);
+  const [activeTool, setActiveTool] = useState<{ tool: FolioTool; files: File[]; sourceBytesByFile: ReadonlyMap<File, Uint8Array> } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -173,16 +175,21 @@ export function UniversalDrop() {
     clearPreview();
     setActiveTool(null);
     setError(complaints.length > 0 ? complaints.join(" ") : null);
+    const acceptedItems = accepted.map((file) => ({ file, id: nextUniversalId(), inspection: null }));
     const nextItems = [
       ...items,
-      ...accepted.map((file) => ({ file, id: nextUniversalId(), inspection: null })),
+      ...acceptedItems,
     ];
     setItems(nextItems);
     setBusy(true);
     try {
-      const inspections = await inspectFiles(nextItems.map((item) => item.file));
+      const inspected = await inspectFilesWithBytes(accepted);
       if (!mountedRef.current || operationRef.current !== nextOperation) return;
-      setItems(nextItems.map((item, index) => ({ ...item, inspection: inspections[index] })));
+      const byFile = new Map(accepted.map((file, index) => [file, inspected[index]] as const));
+      setItems(nextItems.map((item) => {
+        const entry = byFile.get(item.file);
+        return entry ? { ...item, inspection: entry.inspection, sourceBytes: entry.bytes } : item;
+      }));
     } catch (cause) {
       if (mountedRef.current && operationRef.current === nextOperation) {
         setError(describeError(cause, "Folio couldn’t inspect these files. Check them and try again.").message);
@@ -232,7 +239,8 @@ export function UniversalDrop() {
       const nextOperation = ++operationRef.current;
       setBusy(true);
       try {
-        const bytes = await readEmbeddedPdfPreview(file);
+        const item = items[0];
+        const bytes = await readEmbeddedPdfPreview(file, {}, item?.sourceBytes);
         if (!mountedRef.current || operationRef.current !== nextOperation) return;
         const copy = new Uint8Array(bytes.length);
         copy.set(bytes);
@@ -249,7 +257,15 @@ export function UniversalDrop() {
       return;
     }
     const tool = toolForAction(action);
-    if (tool) setActiveTool({ tool, files: items.map((item) => item.file) });
+    if (tool) {
+      setActiveTool({
+        tool,
+        files: items.map((item) => item.file),
+        sourceBytesByFile: new Map(
+          items.filter((item) => item.sourceBytes).map((item) => [item.file, item.sourceBytes!] as const),
+        ),
+      });
+    }
   }, [items, valid]);
 
   if (activeTool) {
@@ -264,7 +280,7 @@ export function UniversalDrop() {
             ← Choose another action
           </button>
         </div>
-        <ToolRunner tool={activeTool.tool} initialFiles={activeTool.files} />
+        <ToolRunner tool={activeTool.tool} initialFiles={activeTool.files} initialSourceBytesByFile={activeTool.sourceBytesByFile} />
       </section>
     );
   }
@@ -286,6 +302,7 @@ export function UniversalDrop() {
           <Dropzone
             accepts={ACCEPTS}
             multiple
+            compact={items.length > 0}
             disabled={busy}
             onFiles={inspectSelection}
             onDropIssue={(message) => {
@@ -346,7 +363,7 @@ export function UniversalDrop() {
               <div className="mt-5" data-universal-actions="true">
                 {items.length === 1 && ["pages", "keynote", "numbers"].includes(items[0].inspection!.kind) && (
                   <div className="mb-4 rounded-xl border border-slate-200 bg-paper px-4 py-3 text-sm leading-relaxed text-ink-700">
-                    <p className="font-medium text-ink-950">Apple export is Beta.</p>
+                    <p className="font-medium text-ink-950">Apple document note</p>
                     <p className="mt-1">Folio reads this container locally. Saved text, tables, images and basic shapes are supported where available; animations, transitions, formula recalculation and unsupported content are not exported.</p>
                   </div>
                 )}

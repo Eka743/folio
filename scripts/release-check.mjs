@@ -65,13 +65,13 @@ for (const route of [
   if (!existsSync(resolve(root, route))) webFailures.push(route);
 }
 
-console.log(`WEB BETA READY: ${webFailures.length === 0 ? "PASS" : "BLOCKED"}`);
+console.log(`WEB RELEASE READY: ${webFailures.length === 0 ? "PASS" : "BLOCKED"}`);
 if (webFailures.length > 0) {
   for (const failure of webFailures) console.log(`- ${failure}`);
 }
 if (webFailures.length > 0) {
-  console.error("Web beta release check is blocked. No secret values were printed.");
+  console.error("Web release check is blocked. No secret values were printed.");
   process.exitCode = 1;
 } else {
-  console.log("Web-only beta release configuration is complete. Native experiments remain dormant and unpublished.");
+  console.log("Web release configuration is complete. Historical native experiments remain dormant and unpublished.");
 }
