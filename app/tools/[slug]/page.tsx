@@ -16,10 +16,24 @@ export async function generateMetadata({
   if (isRetiredToolSlug(slug)) redirect("/");
   const tool = getTool(slug);
   if (!tool) return { title: "Tool not found" };
+  const description = `${tool.description} Free, no account, processed in your browser.`;
+  const shareTitle = `${tool.name} · Folio`;
   return {
     title: tool.name,
-    description: `${tool.description} Free, no account, processed in your browser.`,
+    description,
     alternates: { canonical: `/tools/${tool.slug}` },
+    openGraph: {
+      title: shareTitle,
+      description,
+      url: `/tools/${tool.slug}`,
+      siteName: "Folio",
+      type: "website",
+    },
+    twitter: {
+      card: "summary",
+      title: shareTitle,
+      description,
+    },
   };
 }
 

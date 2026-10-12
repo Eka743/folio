@@ -25,7 +25,7 @@ const config: Config = {
           900: "#1a2027",
           700: "#33404d",
           500: "#5b6b7c",
-          400: "#8595a6",
+          400: "#5f7082",
         },
         paper: "#fafafa",
         accent: {
