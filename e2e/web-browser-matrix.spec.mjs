@@ -154,8 +154,18 @@ test("public routes render successfully", async ({ page }) => {
     expect(canonicalHref, route).toBeTruthy();
     if (route.startsWith("/tools/")) {
       expect(new URL(canonicalHref).pathname, route).toBe(route);
+      const openGraphUrl = await page.locator('meta[property="og:url"]').getAttribute("content");
+      expect(new URL(openGraphUrl).pathname, `Open Graph URL for ${route}`).toBe(route);
+      await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", / · Folio$/);
+      await expect(page.locator('meta[name="twitter:title"]')).toHaveAttribute("content", / · Folio$/);
     }
   }
+});
+
+test("dropzone accessible name includes its visible prompt and accepted formats", async ({ page }) => {
+  await page.goto("/");
+  const dropzone = page.locator('[data-dropzone="true"]').first();
+  await expect(dropzone).toHaveAccessibleName(/Drop files here or browse.*Accepted:.*\.pdf.*Multiple files/i);
 });
 
 test("all current browser-local tools produce valid results", async ({ page }) => {
@@ -768,7 +778,7 @@ test("same PDF selected twice survives a WebKit-style read failure", async ({ pa
 test("same File object can be dropped twice into Merge PDF", async ({ page }) => {
   await page.goto("/tools/merge-pdf");
   const bytes = readFileSync(fixtures.onePage).toString("base64");
-  const dropzone = page.getByRole("button", { name: /Drop files here or press Enter/i });
+  const dropzone = page.getByRole("button", { name: /Drop files here or browse/i });
   await dropzone.evaluate((element, base64) => {
     const binary = atob(base64);
     const file = new File(
@@ -1011,7 +1021,7 @@ test("Universal Drop remains usable at release mobile and tablet viewports", asy
   for (const [width, height] of [[375, 667], [390, 844], [430, 932], [768, 1024]]) {
     await page.setViewportSize({ width, height });
     await page.goto("/");
-    const drop = page.getByRole("button", { name: /Drop files here or press Enter/i });
+    const drop = page.getByRole("button", { name: /Drop files here or browse/i });
     await expect(page.getByRole("heading", { name: /drop documents/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Small tools for everyday documents." })).toBeVisible();
     await expect(page.locator("footer")).toBeVisible();
@@ -1022,7 +1032,7 @@ test("Universal Drop remains usable at release mobile and tablet viewports", asy
 
     await page.goto("/tools/merge-pdf");
     await expect(page.getByRole("heading", { name: "Merge PDF" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Drop files here or press Enter/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Drop files here or browse/i })).toBeVisible();
 
     for (const [route, heading] of [
       ["markdown-to-pdf", "Markdown to PDF"],
@@ -1030,7 +1040,7 @@ test("Universal Drop remains usable at release mobile and tablet viewports", asy
     ]) {
       await page.goto(`/tools/${route}`);
       await expect(page.getByRole("heading", { name: heading })).toBeVisible();
-      await expect(page.getByRole("button", { name: /Drop files here or press Enter/i })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Drop files here or browse/i })).toBeVisible();
       await expectNoUserHorizontalOverflow(page);
     }
   }
@@ -1055,7 +1065,7 @@ test("Universal Drop accepts drag-and-drop batches and keeps the viewport stable
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto("/");
   const section = page.locator('section[aria-labelledby="universal-drop-heading"]');
-  const dropzone = section.getByRole("button", { name: /Drop files here or press Enter/i });
+  const dropzone = section.getByRole("button", { name: /Drop files here or browse/i });
   const first = readFileSync(fixtures.onePage).toString("base64");
   await dropzone.evaluate((element, payload) => {
     const dataTransfer = new DataTransfer();
@@ -1168,7 +1178,7 @@ test("merge keeps drag-and-drop order and survives a retry", async ({ page }) =>
   const first = readFileSync(fixtures.onePage).toString("base64");
   const second = readFileSync(fixtures.secondPage).toString("base64");
   await page.goto("/tools/merge-pdf");
-  const dropzone = page.getByRole("button", { name: /Drop files here or press Enter/i });
+  const dropzone = page.getByRole("button", { name: /Drop files here or browse/i });
   await dropzone.evaluate((element, payload) => {
     const dataTransfer = new DataTransfer();
     for (const file of payload) {
@@ -1403,7 +1413,7 @@ async function downloadFromResult(page, buttonName, linkName) {
 
 async function selectViaPicker(page, files) {
   const chooserPromise = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: /Drop files here or press Enter/i }).click();
+  await page.getByRole("button", { name: /Drop files here or browse/i }).click();
   const chooser = await chooserPromise;
   await chooser.setFiles(files);
 }
