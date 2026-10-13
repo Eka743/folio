@@ -25,6 +25,211 @@ async function appleFile(name: string, xml: string): Promise<File> {
 }
 
 describe("local Apple document exports", () => {
+  it("maps the modern Pages flow frame from CSS pixels to PDF points without clipping", async () => {
+    const document: IworkDocument = {
+      kind: "pages",
+      generation: "iwork-2013-plus",
+      title: "Modern Pages flow",
+      scenes: [{
+        id: "page-1",
+        name: "Page 1",
+        width: 595.28,
+        height: 841.89,
+        blocks: [{
+          id: "text-1",
+          text: "Modern Pages unit mapping regression preserves the text frame and readable font size.",
+          x: 64,
+          y: 64,
+          width: 666,
+          height: 28,
+          fontSize: 16,
+        }],
+        tables: [],
+        objects: [],
+        notes: [],
+      }],
+      diagnostics: [],
+      limits: [],
+      objectCount: 1,
+      limitedPreview: false,
+    };
+
+    const bytes = await renderAppleDocumentToPdf(document);
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const checked = await pdfjs.getDocument({ data: bytes, disableFontFace: true }).promise;
+    try {
+      const page = await checked.getPage(1);
+      const content = await page.getTextContent();
+      const items = content.items.filter((item): item is typeof item & { str: string; transform: number[]; width: number } => "str" in item && item.str.length > 0);
+      expect(page.view).toEqual([0, 0, 595.28, 841.89]);
+      expect(items[0]?.transform[4]).toBeCloseTo(48, 1);
+      expect(items[0]?.transform[3]).toBeCloseTo(12, 1);
+      expect(items.map((item) => item.str).join(" ")).toContain("regression");
+      expect(Math.max(...items.map((item) => item.transform[4] + item.width))).toBeLessThan(595.28);
+    } finally {
+      await checked.destroy();
+    }
+  });
+
+  it("rejects text that would be drawn beyond the PDF page instead of silently clipping it", async () => {
+    const document: IworkDocument = {
+      kind: "pages",
+      generation: "iwork-09",
+      title: "Out of bounds text",
+      scenes: [{
+        id: "page-1",
+        name: "Page 1",
+        width: 595.28,
+        height: 841.89,
+        blocks: [{ id: "text-1", text: "edge", x: 580, y: 64, width: 50, height: 32, fontSize: 16 }],
+        tables: [],
+        objects: [],
+        notes: [],
+      }],
+      diagnostics: [],
+      limits: [],
+      objectCount: 1,
+      limitedPreview: false,
+    };
+
+    await expect(renderAppleDocumentToPdf(document)).rejects.toThrow(/outside its page or text frame/i);
+  });
+
+  it("preserves all supported table lines beyond the old four-line truncation", async () => {
+    const document: IworkDocument = {
+      kind: "numbers",
+      generation: "iwork-09",
+      title: "Long cell text",
+      scenes: [{
+        id: "sheet-1",
+        name: "Sheet 1",
+        width: 595.28,
+        height: 841.89,
+        blocks: [],
+        tables: [{
+          id: "table-1",
+          x: 24,
+          y: 40,
+          width: 40,
+          height: 80,
+          rows: [["one two three four five"]],
+          columnWidths: [40],
+          rowHeights: [80],
+          fontSize: 7,
+        }],
+        objects: [],
+        notes: [],
+      }],
+      diagnostics: [],
+      limits: [],
+      objectCount: 1,
+      limitedPreview: false,
+    };
+
+    const bytes = await renderAppleDocumentToPdf(document);
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const checked = await pdfjs.getDocument({ data: bytes, disableFontFace: true }).promise;
+    try {
+      const page = await checked.getPage(1);
+      const content = await page.getTextContent();
+      expect(content.items.filter((item): item is typeof item & { str: string } => "str" in item).map((item) => item.str).join(" ")).toContain("five");
+    } finally {
+      await checked.destroy();
+    }
+  });
+
+  it("rejects a table above the supported row cap instead of exporting only its first rows", async () => {
+    const document: IworkDocument = {
+      kind: "numbers",
+      generation: "iwork-09",
+      title: "Oversized table",
+      scenes: [{
+        id: "sheet-1",
+        name: "Sheet 1",
+        width: 595.28,
+        height: 841.89,
+        blocks: [],
+        tables: [{
+          id: "table-1",
+          x: 24,
+          y: 40,
+          width: 100,
+          height: 120,
+          rows: Array.from({ length: 10_001 }, (_, index) => [`row ${index + 1}`]),
+          columnWidths: [100],
+          rowHeights: Array.from({ length: 10_001 }, () => 12),
+        }],
+        objects: [],
+        notes: [],
+      }],
+      diagnostics: [],
+      limits: [],
+      objectCount: 10_001,
+      limitedPreview: false,
+    };
+
+    await expect(renderAppleDocumentToPdf(document)).rejects.toThrow(/safe PDF row limit/i);
+  });
+
+  it("preserves a wide Numbers table’s landscape page geometry", async () => {
+    const document: IworkDocument = {
+      kind: "numbers",
+      generation: "iwork-09",
+      title: "Wide sheet",
+      scenes: [{
+        id: "sheet-1",
+        name: "Wide sheet",
+        width: 1400,
+        height: 900,
+        blocks: [],
+        tables: [{
+          id: "table-1",
+          x: 0,
+          y: 0,
+          width: 950,
+          height: 24,
+          rows: [["Left", "Right"]],
+          columnWidths: [700, 250],
+          rowHeights: [24],
+        }],
+        objects: [],
+        notes: [],
+      }],
+      diagnostics: [],
+      limits: [],
+      objectCount: 2,
+      limitedPreview: false,
+    };
+
+    const bytes = await renderAppleDocumentToPdf(document);
+    const pages = await PDFDocument.load(bytes);
+    expect(pages.getPage(0).getSize()).toEqual({ width: 841.89, height: 595.28 });
+  });
+
+  it("rejects invalid page dimensions instead of silently changing the page size", async () => {
+    const document: IworkDocument = {
+      kind: "pages",
+      generation: "iwork-09",
+      title: "Invalid page size",
+      scenes: [{
+        id: "page-1",
+        name: "Page 1",
+        width: Number.POSITIVE_INFINITY,
+        height: 841.89,
+        blocks: [{ id: "text-1", text: "Invalid page dimensions", x: 10, y: 10, width: 100, height: 24 }],
+        tables: [],
+        objects: [],
+        notes: [],
+      }],
+      diagnostics: [],
+      limits: [],
+      objectCount: 1,
+      limitedPreview: false,
+    };
+
+    await expect(renderAppleDocumentToPdf(document)).rejects.toThrow(/invalid page dimensions/i);
+  });
+
   it("exports a supported Pages document as a loadable PDF", async () => {
     const file = await appleFile(
       "sample.pages",
