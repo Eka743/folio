@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import JSZip from "jszip";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { PDFDocument } from "pdf-lib";
 import {
   mkdtempSync,
@@ -352,6 +353,44 @@ test("Pages to PDF supports explicit replace, same-file reselect, and a clear pr
   await page.getByRole("button", { name: "Start over" }).click();
   await expect(dropzone).toBeVisible();
   await expect(page.locator('[data-selected-file-preview-list="true"]')).toHaveCount(0);
+});
+
+test("Pages PDF page geometry is independent of browser viewport width", async ({ page }) => {
+  const layouts = [];
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/tools/pages-to-pdf");
+    await page.locator('input[type="file"]').setInputFiles(fixtures.pages);
+    const output = await downloadFromResult(page, "Convert to PDF", /^Download /);
+    const pdf = await getDocument({
+      data: new Uint8Array(output),
+      disableWorker: true,
+      standardFontDataUrl: join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/"),
+      verbosity: 0,
+    }).promise;
+    try {
+      const firstPage = await pdf.getPage(1);
+      const viewport = firstPage.getViewport({ scale: 1 });
+      const content = await firstPage.getTextContent();
+      const textItems = content.items.filter((item) => "str" in item && item.str.length > 0);
+      const text = textItems.map((item) => item.str).join(" ").replace(/\s+/g, " ");
+      expect(text).toContain("Pages browser fixture");
+      const left = Math.min(...textItems.map((item) => item.transform[4]));
+      const right = Math.max(...textItems.map((item) => item.transform[4] + item.width));
+      const fontSize = textItems[0]?.transform[3];
+      expect(left).toBeCloseTo(48, 1);
+      expect(fontSize).toBeCloseTo(12, 1);
+      expect(right).toBeLessThan(viewport.width);
+      layouts.push({ width: viewport.width, height: viewport.height, left, right, fontSize });
+    } finally {
+      await pdf.destroy();
+    }
+  }
+  expect(layouts[0].width).toBeCloseTo(layouts[1].width, 2);
+  expect(layouts[0].height).toBeCloseTo(layouts[1].height, 2);
+  expect(layouts[0].left).toBeCloseTo(layouts[1].left, 2);
+  expect(layouts[0].right).toBeCloseTo(layouts[1].right, 2);
+  expect(layouts[0].fontSize).toBeCloseTo(layouts[1].fontSize, 2);
 });
 
 test("Sign PDF keeps the workflow local and exports draw, type, and image signatures", async ({ page }) => {

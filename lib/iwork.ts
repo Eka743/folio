@@ -23,6 +23,7 @@ const MAX_SCENES = 200;
 const MAX_ROWS_PER_TABLE = 10_000;
 const MAX_COLUMNS_PER_TABLE = 500;
 const MAX_OUTPUT_DIMENSION = 4_000;
+const PDF_POINTS_PER_CSS_PIXEL = 72 / 96;
 const MAX_XLSX_OUTPUT_BYTES = 50 * 1024 * 1024;
 const PDF_SIGNATURE = "%PDF-";
 export const IWORK_WORKER_TIMEOUT_MS = 60_000;
@@ -182,10 +183,14 @@ export async function parseAppleDocument(
   }
 }
 
-function clampDimension(value: number, fallback: number): number {
-  return Number.isFinite(value) && value > 0
-    ? Math.min(MAX_OUTPUT_DIMENSION, Math.max(72, value))
-    : fallback;
+function outputDimension(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new AppleConversionError("This Apple document has invalid page dimensions. No PDF was created.");
+  }
+  if (value < 72 || value > MAX_OUTPUT_DIMENSION) {
+    throw new AppleConversionError("This Apple document has page dimensions outside Folio’s safe export range.");
+  }
+  return value;
 }
 
 function clamp(value: number, min: number, max: number, fallback: number): number {
@@ -194,6 +199,76 @@ function clamp(value: number, min: number, max: number, fallback: number): numbe
 
 function number(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * renderer-iwork 3.0.3 emits parser-generated Pages text-flow blocks in CSS
+ * px while assigning the scene physical A4 dimensions in PDF points. Its
+ * generated flow block has a stable signature (64px inset, 666px width,
+ * 16px type). Convert that generated flow geometry at the PDF boundary;
+ * native object geometry remains in its original page coordinate system.
+ */
+function pdfTextBlock(document: IworkDocument, scene: IworkScene, block: IworkTextBlock): IworkTextBlock {
+  const isParserGeneratedPagesFlow = document.kind === "pages" &&
+    Math.abs(scene.width - 595.28) < 0.5 &&
+    Math.abs(scene.height - 841.89) < 0.5 &&
+    /^text-\d+$/.test(block.id) &&
+    block.x === 64 && block.width === 666 && block.fontSize === 16;
+  if (!isParserGeneratedPagesFlow) return block;
+
+  const scale = PDF_POINTS_PER_CSS_PIXEL;
+  const y = block.y * scale;
+  return {
+    ...block,
+    x: block.x * scale,
+    y,
+    width: block.width * scale,
+    // The parser estimates generated-flow height from character count only;
+    // it does not account for paragraph breaks. Give flow text the remaining
+    // page body so a short multi-paragraph page does not fail or get clipped.
+    height: Math.max(block.height * scale, scene.height - y - 64 * scale),
+    fontSize: (block.fontSize ?? 12) * scale,
+    lineHeight: block.lineHeight === undefined ? undefined : block.lineHeight * scale,
+    letterSpacing: block.letterSpacing === undefined ? undefined : block.letterSpacing * scale,
+    padding: block.padding
+      ? {
+          top: block.padding.top * scale,
+          right: block.padding.right * scale,
+          bottom: block.padding.bottom * scale,
+          left: block.padding.left * scale,
+        }
+      : undefined,
+    paragraphs: block.paragraphs?.map((paragraph) => ({
+      ...paragraph,
+      spaceBefore: paragraph.spaceBefore === undefined ? undefined : paragraph.spaceBefore * scale,
+      spaceAfter: paragraph.spaceAfter === undefined ? undefined : paragraph.spaceAfter * scale,
+    })),
+  };
+}
+
+function assertInsidePage(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  pageWidth: number,
+  pageHeight: number,
+  label: string,
+  angle = 0,
+): void {
+  const radians = (angle * Math.PI) / 180;
+  const boundsWidth = Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians));
+  const boundsHeight = Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians));
+  const left = x + (width - boundsWidth) / 2;
+  const top = y + (height - boundsHeight) / 2;
+  const epsilon = 0.5;
+  if (
+    ![left, top, boundsWidth, boundsHeight].every(Number.isFinite) ||
+    left < -epsilon || top < -epsilon ||
+    left + boundsWidth > pageWidth + epsilon || top + boundsHeight > pageHeight + epsilon
+  ) {
+    throw new AppleConversionError(`This Apple document has ${label} outside the page. No partial PDF was created.`);
+  }
 }
 
 function color(value: string | undefined, fallback: [number, number, number] = [0.1, 0.12, 0.15]): [number, number, number] {
@@ -282,6 +357,7 @@ async function drawTextBlock(
   page: import("pdf-lib").PDFPage,
   sceneHeight: number,
   block: IworkTextBlock,
+  validateTextFrame = true,
 ): Promise<void> {
   const size = Math.min(96, Math.max(6, number(block.fontSize, 12)));
   const padding = block.padding ?? { top: 0, right: 0, bottom: 0, left: 0 };
@@ -324,6 +400,9 @@ async function drawTextBlock(
     if (line.length > 0 || lines.length === 0) pushLine();
     for (const [lineIndex, parts] of lines.entries()) {
       const renderedWidth = parts.reduce((sum, part) => sum + part.width, 0);
+      if (renderedWidth > width + 0.5) {
+        throw new AppleConversionError("This Apple document contains a word wider than its text frame. No partial PDF was created.");
+      }
       const bullet = paragraph.bullet && lineIndex === 0 ? "• " : "";
       const bulletFont = bullet ? await fontFor(pdf, block) : undefined;
       const bulletWidth = bulletFont?.widthOfTextAtSize(bullet, size) ?? 0;
@@ -331,13 +410,23 @@ async function drawTextBlock(
       if (block.align === "center") lineX = x + (width - renderedWidth) / 2;
       if (block.align === "right") lineX = x + width - renderedWidth;
       const y = top - size - cursor;
-      if (y >= -lineHeight && y <= sceneHeight + size) {
-        if (bulletFont) page.drawText(bullet, { x, y, size, font: bulletFont, color: (await import("pdf-lib")).rgb(...color(block.color)) });
-        for (const part of parts) {
-          const [r, g, b] = color(part.run.color ?? paragraph.color ?? block.color);
-          page.drawText(part.text, { x: lineX, y, size, font: part.font, color: (await import("pdf-lib")).rgb(r, g, b) });
-          lineX += part.width;
-        }
+      const pageWidth = page.getWidth();
+      const renderedLeft = bulletFont ? Math.min(x, lineX) : lineX;
+      const renderedRight = Math.max(bulletFont ? x + bulletWidth : lineX, lineX + renderedWidth);
+      const textFrameOverflow = validateTextFrame &&
+        cursor + size > Math.max(size, number(block.height, sceneHeight) - number(padding.bottom)) + 0.5;
+      if (
+        y < -0.5 || y + size > sceneHeight + 0.5 ||
+        renderedLeft < -0.5 || renderedRight > pageWidth + 0.5 ||
+        textFrameOverflow
+      ) {
+        throw new AppleConversionError("This Apple document has text outside its page or text frame. No partial PDF was created.");
+      }
+      if (bulletFont) page.drawText(bullet, { x, y, size, font: bulletFont, color: (await import("pdf-lib")).rgb(...color(block.color)) });
+      for (const part of parts) {
+        const [r, g, b] = color(part.run.color ?? paragraph.color ?? block.color);
+        page.drawText(part.text, { x: lineX, y, size, font: part.font, color: (await import("pdf-lib")).rgb(r, g, b) });
+        lineX += part.width;
       }
       cursor += lineHeight;
     }
@@ -358,8 +447,14 @@ async function drawTable(
   sceneHeight: number,
   table: IworkTable,
 ): Promise<void> {
-  const rows = table.rows.slice(0, MAX_ROWS_PER_TABLE);
-  const columns = Math.max(0, Math.min(MAX_COLUMNS_PER_TABLE, ...rows.map((row) => row.length)));
+  const rows = table.rows;
+  if (rows.length > MAX_ROWS_PER_TABLE) {
+    throw new AppleConversionError("This Apple table exceeds Folio’s safe PDF row limit. No partial PDF was created.");
+  }
+  const columns = Math.max(0, ...rows.map((row) => row.length));
+  if (columns > MAX_COLUMNS_PER_TABLE) {
+    throw new AppleConversionError("This Apple table exceeds Folio’s safe PDF column limit. No partial PDF was created.");
+  }
   if (!rows.length || !columns) return;
   const totalWidth = number(table.width, columns * 96);
   const widths = table.columnWidths?.length === columns
@@ -368,6 +463,11 @@ async function drawTable(
   const heights = table.rowHeights?.length === rows.length
     ? table.rowHeights
     : Array.from({ length: rows.length }, () => Math.max(20, number(table.fontSize, 11) * 1.8));
+  const safeWidths = widths.map((width) => Math.max(12, number(width, 96)));
+  const safeHeights = heights.map((height) => Math.max(12, number(height, 20)));
+  const tableWidth = safeWidths.reduce((sum, width) => sum + width, 0);
+  const tableHeight = safeHeights.reduce((sum, height) => sum + height, 0);
+  assertInsidePage(number(table.x), number(table.y), tableWidth, tableHeight, page.getWidth(), sceneHeight, "table");
   const font = await fontFor(pdf, { fontFamily: table.fontFamily }, { bold: false, italic: false });
   const headerFont = await fontFor(pdf, { fontFamily: table.fontFamily }, { bold: true, italic: false });
   const size = Math.min(24, Math.max(7, number(table.fontSize, 11)));
@@ -382,9 +482,9 @@ async function drawTable(
   ) ?? false;
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
     let x = number(table.x);
-    const rowHeight = Math.max(12, heights[rowIndex] ?? 20);
+    const rowHeight = safeHeights[rowIndex] ?? 20;
     for (let columnIndex = 0; columnIndex < columns; columnIndex++) {
-      const cellWidth = Math.max(12, widths[columnIndex] ?? 96);
+      const cellWidth = safeWidths[columnIndex] ?? 96;
       if (coveredByMerge(rowIndex, columnIndex)) {
         x += cellWidth;
         continue;
@@ -392,17 +492,22 @@ async function drawTable(
       const merge = mergeAt(rowIndex, columnIndex);
       const colspan = Math.max(1, Math.min(columns - columnIndex, merge?.colspan ?? 1));
       const rowspan = Math.max(1, Math.min(rows.length - rowIndex, merge?.rowspan ?? 1));
-      const mergedWidth = widths.slice(columnIndex, columnIndex + colspan).reduce((sum, width) => sum + Math.max(12, width ?? 96), 0);
-      const mergedHeight = heights.slice(rowIndex, rowIndex + rowspan).reduce((sum, height) => sum + Math.max(12, height ?? 20), 0);
+      const mergedWidth = safeWidths.slice(columnIndex, columnIndex + colspan).reduce((sum, width) => sum + width, 0);
+      const mergedHeight = safeHeights.slice(rowIndex, rowIndex + rowspan).reduce((sum, height) => sum + height, 0);
       const header = rowIndex < (table.headerRows ?? 0) || columnIndex < (table.headerColumns ?? 0);
       const fill = header
         ? color(columnIndex < (table.headerColumns ?? 0) ? table.headerColumnBackground : table.headerRowBackground, [0.92, 0.92, 0.92])
         : [1, 1, 1] as [number, number, number];
       page.drawRectangle({ x, y: y - mergedHeight, width: mergedWidth, height: mergedHeight, color: rgb(...fill), borderColor: rgb(...border), borderWidth: 0.5 });
       const cell = safePdfText(header ? headerFont : font, String(rows[rowIndex]?.[columnIndex] ?? ""));
-      const lines = wrapText(cell, header ? headerFont : font, size, Math.max(8, mergedWidth - 8)).slice(0, 4);
+      const lines = wrapText(cell, header ? headerFont : font, size, Math.max(8, mergedWidth - 8));
       for (const [lineIndex, line] of lines.entries()) {
-        page.drawText(line, { x: x + 4, y: y - size - 4 - lineIndex * size * 1.15, size, font: header ? headerFont : font, color: rgb(0.1, 0.12, 0.15) });
+        const lineWidth = (header ? headerFont : font).widthOfTextAtSize(line, size);
+        const lineY = y - size - 4 - lineIndex * size * 1.15;
+        if (lineWidth > mergedWidth - 8 + 0.5 || lineY < y - mergedHeight + 2) {
+          throw new AppleConversionError("This Apple table has cell text outside its row or column. No partial PDF was created.");
+        }
+        page.drawText(line, { x: x + 4, y: lineY, size, font: header ? headerFont : font, color: rgb(0.1, 0.12, 0.15) });
       }
       x += mergedWidth;
       columnIndex += colspan - 1;
@@ -417,8 +522,14 @@ async function renderNumbersScenePages(
 ): Promise<boolean> {
   if (scene.tables.length !== 1 || scene.tables[0].rows.length === 0 || scene.objects.some((object) => object.kind !== "table")) return false;
   const table = scene.tables[0];
-  const rows = table.rows.slice(0, MAX_ROWS_PER_TABLE);
+  const rows = table.rows;
+  if (rows.length > MAX_ROWS_PER_TABLE) {
+    throw new AppleConversionError("This Numbers table exceeds Folio’s safe PDF row limit. No partial PDF was created.");
+  }
   const sourceWidths = Array.from({ length: Math.max(1, ...rows.map((row) => row.length)) }, (_, index) => Math.max(12, number(table.columnWidths?.[index], 96)));
+  if (sourceWidths.length > MAX_COLUMNS_PER_TABLE) {
+    throw new AppleConversionError("This Numbers table exceeds Folio’s safe PDF column limit. No partial PDF was created.");
+  }
   const landscape = sourceWidths.reduce((sum, columnWidth) => sum + columnWidth, 0) > 547;
   const width = landscape ? 841.89 : 595.28;
   const height = landscape ? 595.28 : 841.89;
@@ -440,7 +551,7 @@ async function renderNumbersScenePages(
     }
     const page = pdf.addPage([width, height]);
     page.drawRectangle({ x: 0, y: 0, width, height, color: (await import("pdf-lib")).rgb(1, 1, 1) });
-    for (const block of scene.blocks) await drawTextBlock(pdf, page, height, block);
+    for (const block of scene.blocks) await drawTextBlock(pdf, page, height, block, false);
     const pageMerges = (table.merges ?? []).flatMap((merge) => {
       const mergeEnd = Math.min(rowEnd, merge.row + merge.rowspan);
       const mergeStart = Math.max(rowStart, merge.row);
@@ -474,9 +585,10 @@ async function drawChart(
   }
   const { rgb } = await import("pdf-lib");
   const x = number(object.x);
-  const y = sceneHeight - number(object.y) - number(object.height, 220);
   const width = Math.max(100, number(object.width, 360));
   const height = Math.max(80, number(object.height, 220));
+  const y = sceneHeight - number(object.y) - height;
+  assertInsidePage(number(object.x), number(object.y), width, height, page.getWidth(), sceneHeight, "chart");
   page.drawRectangle({ x, y, width, height, borderColor: rgb(0.7, 0.72, 0.76), borderWidth: 0.6 });
   const values = object.chart.series.flatMap((series) => series.values).filter(Number.isFinite);
   const max = Math.max(1, ...values.map((value) => Math.abs(value)));
@@ -517,6 +629,7 @@ async function drawObject(
   page: import("pdf-lib").PDFPage,
   sceneHeight: number,
   object: IworkVisualObject,
+  validateTextFrame: boolean,
 ): Promise<void> {
   const { rgb, degrees } = await import("pdf-lib");
   const x = number(object.x);
@@ -529,14 +642,16 @@ async function drawObject(
   }
   if (object.kind === "image" || object.kind === "media") {
     if (!object.bytes) throw new AppleConversionError("This Apple document contains media Folio cannot export safely.");
+    assertInsidePage(x, number(object.y), width, height, page.getWidth(), sceneHeight, "image", number(object.angle));
     const encoded = imageData(object.bytes, object.mimeType);
     const image = encoded.kind === "png" ? await pdf.embedPng(encoded.data) : await pdf.embedJpg(encoded.data);
     page.drawImage(image, { x, y, width, height, rotate: degrees(number(object.angle)) });
     return;
   }
+  assertInsidePage(x, number(object.y), width, height, page.getWidth(), sceneHeight, "shape", number(object.angle));
   page.drawRectangle({ x, y, width, height, color: rgb(0.94, 0.96, 0.98), borderColor: rgb(0.62, 0.68, 0.74), borderWidth: 0.8, rotate: degrees(number(object.angle)) });
   if (object.text) {
-    await drawTextBlock(pdf, page, sceneHeight, { id: object.id, text: object.text, x, y: number(object.y), width, height, fontSize: 12 });
+    await drawTextBlock(pdf, page, sceneHeight, { id: object.id, text: object.text, x, y: number(object.y), width, height, fontSize: 12 }, validateTextFrame);
   }
 }
 
@@ -545,8 +660,8 @@ export async function renderAppleDocumentToPdf(document: IworkDocument): Promise
   const pdf = await PDFDocument.create();
   for (const scene of document.scenes) {
     if (document.kind === "numbers" && await renderNumbersScenePages(pdf, scene)) continue;
-    const width = clampDimension(scene.width, 595.28);
-    const height = clampDimension(scene.height, 841.89);
+    const width = outputDimension(scene.width);
+    const height = outputDimension(scene.height);
     const page = pdf.addPage([width, height]);
     page.drawRectangle({ x: 0, y: 0, width, height, color: rgb(1, 1, 1) });
     const items = [
@@ -557,11 +672,11 @@ export async function renderAppleDocumentToPdf(document: IworkDocument): Promise
     for (const item of items) {
       if (item.type === "object") {
         if (item.value.kind === "table") continue;
-        await drawObject(pdf, page, height, item.value);
+        await drawObject(pdf, page, height, item.value, document.kind === "pages");
       } else if (item.type === "table") {
         await drawTable(pdf, page, height, item.value);
       } else {
-        await drawTextBlock(pdf, page, height, item.value);
+        await drawTextBlock(pdf, page, height, pdfTextBlock(document, scene, item.value), document.kind === "pages");
       }
     }
   }
@@ -570,7 +685,10 @@ export async function renderAppleDocumentToPdf(document: IworkDocument): Promise
     throw new AppleConversionError("Folio could not validate the generated Apple PDF.");
   }
   const checked = await loadPdfDocument(bytes);
-  if (checked.getPageCount() < document.scenes.length) {
+  if (
+    checked.getPageCount() < document.scenes.length ||
+    (document.kind !== "numbers" && checked.getPageCount() !== document.scenes.length)
+  ) {
     throw new AppleConversionError("Folio could not validate the generated Apple PDF page count.");
   }
   return bytes;
