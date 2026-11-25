@@ -85,6 +85,9 @@ jobs:
           excluded = re.compile(r"(^|/)(\.env($|\.)|\.npmrc$|.*(secret|credential|private.?key|token|password).*)(/|$)|\.(pem|key|p12|pfx|mobileprovision)$", re.I)
           secret_line = re.compile(r"(?i)(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|private[_-]?key)\s*[:=]\s*['\"]?[A-Za-z0-9/_+=.-]{16,}|(?:token|secret)\s*[:=]\s*['\"]?[A-Za-z0-9/_+=.-]{24,}")
           credential_blob = re.compile(r"(?i)\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16})\b")
+          if any(secret_line.search(value) or credential_blob.search(value) or "-----BEGIN " in value
+                 for value in (issue["title"], issue["body"], issue["triggering_comment"])):
+              raise SystemExit("Issue content contains secret-like data; refusing to send it to OpenCode")
           fixed = [
               "README.md", "package.json", "next.config.mjs", "tsconfig.json",
               ".github/workflows/ci.yml", ".github/workflows/browser-matrix.yml",
@@ -178,7 +181,7 @@ jobs:
           (temp / "opencode-prompt.txt").write_text(prompt, encoding="utf-8")
           PY
 
-      - name: Generate report with OpenCode (read-only context, no GitHub token)
+      - name: Run OpenCode and record sanitized diagnostics
         working-directory: ${{ runner.temp }}/opencode-work
         env:
           HOME: ${{ runner.temp }}/opencode-home
@@ -189,24 +192,138 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$HOME"
-          opencode run --model opencode/big-pickle \
-            < "$RUNNER_TEMP/opencode-prompt.txt" \
-            > "$RUNNER_TEMP/opencode-report.md" \
-            2> "$RUNNER_TEMP/opencode-cli.log"
           python3 - <<'PY'
-          import base64
-          import os
+          import base64, json, os, re, resource, subprocess, sys, tempfile
           from pathlib import Path
-          report = Path(os.environ["RUNNER_TEMP"]) / "opencode-report.md"
-          data = report.read_bytes()
-          if not data or len(data) > 50000:
-              raise SystemExit("OpenCode report is empty or exceeds 50,000 bytes")
-          if b"\x00" in data:
-              raise SystemExit("OpenCode report contains a NUL byte")
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          model = "opencode/big-pickle"
           key = os.environ.get("OPENCODE_API_KEY", "").encode("utf-8")
-          encoded_key = base64.b64encode(key) if key else b""
-          if key and (key in data or encoded_key in data):
-              raise SystemExit("OpenCode report contains the provider key; refusing artifact upload")
+          diag = {
+              "schema": 1,
+              "model": model,
+              "cli_version": "1.19.6",
+              "provider_key_present": bool(key),
+              "config_valid": False,
+              "model_matches_config": False,
+              "context_read_allowed": False,
+              "exit_code": None,
+              "category": "not_started",
+          }
+
+          def finish(category, exit_code=1):
+              diag["category"] = category
+              diag["exit_code"] = exit_code
+              encoded = json.dumps(diag, sort_keys=True, separators=(",", ":"))
+              (temp / "opencode-diagnostic.json").write_text(encoded, encoding="utf-8")
+              summary = ["### OpenCode sanitized diagnostic", "", "```json", encoded, "```", ""]
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+                  stream.write("\n".join(summary))
+              print(f"::error::OpenCode failed: category={category}; exit_code={exit_code}")
+              sys.exit(exit_code if isinstance(exit_code, int) and exit_code != 0 else 1)
+
+          if not key:
+              finish("missing_provider_key")
+
+          expected_config = json.loads(os.environ["OPENCODE_CONFIG_CONTENT"])
+          diag["config_valid"] = expected_config.get("model") == model
+          diag["model_matches_config"] = expected_config.get("model") == model
+          tools = expected_config.get("tools", {})
+          permissions = expected_config.get("permission", {}).get("read", {})
+          diag["context_read_allowed"] = (
+              tools.get("read") is True and permissions.get("*") == "deny"
+              and permissions.get("repository-context.json") == "allow"
+          )
+          if not diag["config_valid"] or not diag["context_read_allowed"]:
+              finish("invalid_local_config")
+
+          try:
+              resolved = subprocess.run(
+                  ["opencode", "debug", "config"], capture_output=True, text=True,
+                  timeout=20, check=False,
+              )
+              resolved_config = json.loads(resolved.stdout)
+              resolved_read = resolved_config.get("permission", {}).get("read", {})
+              if resolved.returncode != 0 or resolved_config.get("model") != model:
+                  finish("resolved_config_error", resolved.returncode or 1)
+              resolved_tools = resolved_config.get("tools", {})
+              if resolved_tools.get("read") is not True:
+                  finish("context_permission_mismatch")
+              if any(resolved_tools.get(name) is not False for name in ("bash", "edit", "write", "patch")):
+                  finish("unsafe_tool_config")
+              if resolved_read.get("*") != "deny" or resolved_read.get("repository-context.json") != "allow":
+                  finish("context_permission_mismatch")
+          except subprocess.TimeoutExpired:
+              finish("config_check_timeout")
+          except (OSError, json.JSONDecodeError):
+              finish("config_check_error")
+
+          prompt_path = temp / "opencode-prompt.txt"
+          if prompt_path.stat().st_size > 320000:
+              finish("prompt_too_large")
+          prompt = prompt_path.read_text(encoding="utf-8")
+          max_output_bytes = 128 * 1024
+
+          def limit_cli_output():
+              resource.setrlimit(resource.RLIMIT_FSIZE, (max_output_bytes, max_output_bytes))
+
+          try:
+              with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
+                  result = subprocess.run(
+                      ["opencode", "run", "--model", model], input=prompt.encode("utf-8"),
+                      stdout=stdout_file, stderr=stderr_file, timeout=600, check=False,
+                      preexec_fn=limit_cli_output,
+                  )
+                  stdout_size = stdout_file.tell()
+                  stderr_size = stderr_file.tell()
+                  stdout_file.seek(max(0, stdout_size - max_output_bytes))
+                  stderr_file.seek(max(0, stderr_size - max_output_bytes))
+                  stdout = stdout_file.read(max_output_bytes).decode("utf-8", errors="replace")
+                  stderr = stderr_file.read(max_output_bytes).decode("utf-8", errors="replace")
+          except subprocess.TimeoutExpired:
+              finish("model_request_timeout", 124)
+          except OSError:
+              finish("cli_start_error")
+
+          if stdout_size >= max_output_bytes or stderr_size >= max_output_bytes:
+              finish("output_limit_exceeded", result.returncode or 1)
+          diagnostic_text = stderr.lower()
+          diag["exit_code"] = result.returncode
+          if result.returncode != 0:
+              categories = [
+                  ("authentication_error", r"(?:http(?:/\d(?:\.\d)?)?\s*401\b|401\s+unauthori[sz]ed|unauthori[sz]ed|invalid (?:api )?key|authentication failed|not authenticated|invalid credential)"),
+                  ("rate_or_usage_limit", r"(?:http(?:/\d(?:\.\d)?)?\s*429\b|429\s+too many requests|rate.?limit exceeded|quota (?:exceeded|exhausted)|too many requests)"),
+                  ("billing_or_credit_limit", r"(?:insufficient credits|payment required|billing.{0,30}(?:failed|error|limit)|no credits available)"),
+                  ("model_unavailable", r"(?:model.{0,40}(?:not found|unavailable|unsupported)|unknown model)"),
+                  ("provider_unavailable", r"(?:provider.{0,40}(?:not found|unavailable|unsupported)|provider error)"),
+                  ("tool_permission_error", r"(?:permission.{0,40}(?:denied|rejected|not granted)|tool.{0,40}denied)"),
+                  ("configuration_error", r"(?:config(?:uration)?.{0,40}(?:invalid|parse|schema|unknown key)|failed to parse)"),
+                  ("network_error", r"(?:timed? out|econn|enotfound|dns|fetch failed|connection reset|http(?:/\d(?:\.\d)?)?\s*(?:502|503|504)\b)"),
+              ]
+              category = next((name for name, pattern in categories if re.search(pattern, diagnostic_text)), "unclassified_cli_error")
+              finish(category, result.returncode)
+
+          report = stdout.encode("utf-8")
+          if not report or len(report) > 50000 or b"\x00" in report:
+              finish("invalid_report", 1)
+          encoded_key = base64.b64encode(key)
+          if key in report or encoded_key in report:
+              finish("provider_key_detected_in_report", 1)
+          report_text = report.decode("utf-8", errors="strict")
+          credential_patterns = (
+              r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16})\b",
+              r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+              r"(?i)(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|private[_-]?key|token|secret)\s*[:=]\s*['\"]?[A-Za-z0-9/_+=.-]{16,}",
+          )
+          if any(re.search(pattern, report_text) for pattern in credential_patterns):
+              finish("secret_like_report_rejected", 1)
+          (temp / "opencode-report.md").write_bytes(report)
+          diag["category"] = "success"
+          diag["exit_code"] = 0
+          encoded = json.dumps(diag, sort_keys=True, separators=(",", ":"))
+          (temp / "opencode-diagnostic.json").write_text(encoded, encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+              stream.write("### OpenCode sanitized diagnostic\n\n```json\n" + encoded + "\n```\n")
           PY
 
       - name: Upload report as inert artifact
